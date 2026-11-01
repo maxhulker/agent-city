@@ -1,8 +1,10 @@
 import type { Agent, District, Session, World } from '../types.ts'
-import { TRACK_Y, TRAIN_MS, burbAt, esc, n, p, placeAt, standAt, walk } from './geo.ts'
-import type { Scene } from './geo.ts'
+import { TRACK_Y, TRAIN_MS, burbAt, esc, hash, keyed, n, p, placeAt, standAt, walk } from './geo.ts'
+import type { OverlayItem, Scene, Sprite } from './geo.ts'
 
-// The agents: who they are, where they stand, what they are doing.
+// The agents: who they are, where they stand, what they are doing. They go
+// to the page as sprites (docs/frames.md): the figure, the spot, and the walk
+// under way, which the page plays out itself.
 
 // The page sets --zs (sprites) and --zt (text) from its zoom. The figure scales
 // about its feet; text and bubbles scale back so they keep their screen size.
@@ -93,7 +95,8 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
     body += `<g transform="translate(0,${n(top - 12)})"><g class="bubble"><g class="tx"><path d="M-${e} -16H${e}Q${h} -16 ${h} -13V-7Q${h} -4 ${e} -4H3L0 0L-3 -4H-${e}Q-${h} -4 -${h} -7V-13Q-${h} -16 -${e} -16z" fill="#f8fafc" stroke="${INK}" stroke-width=".7"/><text x="0" y="-7.6" text-anchor="middle" font-size="8" font-weight="600" fill="#0f172a">${text}</text></g></g></g>`
   }
   const tip = `<title>${esc(`${a.name} (${a.kind}) · ${a.status}${a.activity ? ' · ' + a.activity : ''}`)}</title>`
-  return `<g class="fig">${tip}${body}</g>`
+  // The page wraps this in its own <g class="fig">, which scales with the zoom.
+  return tip + body
 }
 
 // How faded an agent is drawn, so the active ones stand out: full while it
@@ -111,39 +114,52 @@ export function opacityFor(a: Agent, now: number): number | undefined {
   return undefined
 }
 
-// Every agent, always on top so no tower hides one.
-export function drawAgents(world: World, sc: Scene): string {
+// Every agent as a sprite, in paint order (back to front). The page draws
+// them above the overlay, so no tower hides one, and moves them itself.
+export function drawSprites(world: World, sc: Scene): Sprite[] {
   const { byDistrict, byBurb, repoOf, k } = sc
   const sessions = new Map(world.sessions.map(x => [x.id, x]))
-  let s = ''
+  const out: Sprite[] = []
   const placed: { a: Agent; at: [number, number]; i: number }[] = []
   for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i), i }))
   for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: burbAt(b, i), i }))
   placed.sort((x, y) => x.at[0] + x.at[1] - (y.at[0] + y.at[1]))
+  const round = (v: number) => Math.round(v * 10) / 10
   for (const { a, at, i } of placed) {
     const dim = opacityFor(a, sc.now)
-    const fade = dim === undefined ? '' : ` opacity="${dim}"`
     const alert = a.status === 'waiting' || a.status === 'failed'
     // The lead of a borough shares the repo's name, which is already on the sign.
     const dup = !!a.burb && a.name.toLowerCase() === repoOf.get(a.burb)?.name.toLowerCase()
     const label = !dup || alert
-    const who = ` class="agent ${a.status}" data-agent="${esc(a.id)}" data-session="${esc(a.session)}"`
     const lift = (i % 2) * 9
-    const moved = a.walkFrom && (a.walkFrom.at !== a.at || a.walkFrom.burb !== a.burb)
-    const fig = figure(a, label, lift, k, sessions.get(a.session))
-    if (sc.animateWalks && a.walkFrom && moved) {
-      const { path, dur } = walk(a.walkFrom, { at: a.at, burb: a.burb }, at)
-      s += `<g${who}${fade}><animateMotion path="${path}" dur="${n(dur)}s" fill="freeze"/>${fig}</g>`
-    } else if (a.arriving && a.arriving > sc.now) {
+    let fig = figure(a, label, lift, k, sessions.get(a.session))
+    if (a.arriving && a.arriving > sc.now) {
       // Still aboard: it steps onto the platform once its train is in.
-      const [x, y] = p(at[0], at[1])
-      s += `<g${who} transform="translate(${n(x)},${n(y)})" opacity="0"><animate attributeName="opacity" values="0;1" begin="${n((a.arriving - sc.now) / 1000)}s" dur=".4s" fill="freeze"/>${fig}</g>`
-    } else {
-      const [x, y] = p(at[0], at[1])
-      s += `<g${who} transform="translate(${n(x)},${n(y)})"${fade}>${fig}</g>`
+      fig = `<g opacity="0"><animate attributeName="opacity" values="0;1" begin="${n((a.arriving - sc.now) / 1000)}s" dur=".4s" fill="freeze"/>${fig}</g>`
+    } else if (dim !== undefined) {
+      fig = `<g opacity="${dim}">${fig}</g>`
     }
+    const [x, y] = p(at[0], at[1])
+    const sprite: Sprite = {
+      id: a.id,
+      session: a.session,
+      cls: `agent ${a.status}`,
+      x: round(x),
+      y: round(y),
+      z: at[0] + at[1],
+      // Hashed without the begin offset, which counts down from now.
+      fig: { h: hash(fig.replace(/begin="[^"]*"/g, '')), svg: fig },
+    }
+    // The walk under way, sent on every frame until it is over, so the page
+    // always has the whole route and never cuts it short.
+    if (a.walk) {
+      const route = walk(a.walk.from, { at: a.at, ...(a.burb ? { burb: a.burb } : {}) }, at)
+      const dur = Math.round(route.dur * 1000)
+      if (sc.now < a.walk.at + dur) sprite.walk = { t0: a.walk.at, dur, pts: route.pts }
+    }
+    out.push(sprite)
   }
-  return s
+  return out
 }
 
 // The last train home: it waits on the street in front of Grand Central while
@@ -184,8 +200,10 @@ function car(x: number, color: string, isFront: boolean, boarding: boolean, lit 
   return g
 }
 
-export function drawTrains(world: World, sc: Scene): string {
-  let s = ''
+// One overlay item per train, keyed on its phase: the markup holds offsets
+// from now, which the page shifts onto its clock when the item arrives.
+export function drawTrains(world: World, sc: Scene): OverlayItem[] {
+  const out: OverlayItem[] = []
   const [dx, dy] = p(7, 0)
   const secs = n(TRAIN_MS / 1000)
   for (const t of world.trains ?? []) {
@@ -223,15 +241,17 @@ export function drawTrains(world: World, sc: Scene): string {
           : 'Leaving empty'
       : `${boarding ? 'Boarding' : 'Gone'}: ${t.who}`
     const name = arriving ? 'The train in from the east' : 'The last train home'
-    s += `<g class="train ${phase}"${phase === 'leaving' ? ' opacity="1"' : ''}>${motion}<title>${esc(`${name} · ${who}`)}</title>${cars}</g>`
+    const svg = `<g class="train ${phase}"${phase === 'leaving' ? ' opacity="1"' : ''}>${motion}<title>${esc(`${name} · ${who}`)}</title>${cars}</g>`
+    out.push(keyed(`train:${t.id}`, [phase, lit, t.color, who], svg))
   }
-  return s
+  return out
 }
 
-// Taxis across town. A negative begin makes a re-rendered frame carry on the
-// trip where the last one was, not start it over.
-export function drawRides(world: World, sc: Scene): string {
-  let s = ''
+// Taxis across town, drawn over everyone. The item is keyed on the ride, so
+// a frame mid-trip leaves it driving; a new client shifts its begin offset
+// onto its own clock and sees it where it is.
+export function drawRides(world: World, sc: Scene): OverlayItem[] {
+  const out: OverlayItem[] = []
   for (const ride of world.rides ?? []) {
     const { path, dur } = walk(ride.from, ride.to, placeAt(ride.to, 0))
     const age = (sc.now - ride.at) / 1000
@@ -242,7 +262,7 @@ export function drawRides(world: World, sc: Scene): string {
       ride.kind === 'report'
         ? `<rect x="-3.4" y="-18" width="6.8" height="4.6" rx=".6" fill="${c}" stroke="#fff" stroke-width=".7"/><path d="M-3.4 -17.7L0 -15.3L3.4 -17.7" fill="none" stroke="#fff" stroke-width=".7"/>`
         : `<path d="M-4 -19H4Q5 -19 5 -18V-15Q5 -14 4 -14H1L-1 -12.2V-14H-4Q-5 -14 -5 -15V-18Q-5 -19 -4 -19z" fill="#fff" stroke="${c}" stroke-width="1"/><path d="M-2.4 -17H2.4M-2.4 -15.4H1" stroke="${c}" stroke-width=".8"/>`
-    s +=
+    const svg =
       `<g class="ride"><animateMotion path="${path}" ${timing}/><animate attributeName="opacity" values="1;1;0" keyTimes="0;.85;1" ${timing}/><g class="fig">` +
       `<ellipse cx="0" cy="0" rx="9" ry="3" fill="#000" opacity=".4"/>` +
       `<rect x="-8" y="-6.5" width="16" height="5.5" rx="1.6" fill="#facc15" stroke="${INK}" stroke-width=".7"/>` +
@@ -252,6 +272,7 @@ export function drawRides(world: World, sc: Scene): string {
       `<circle cx="-4.6" cy="-1" r="1.7" fill="#111827"/><circle cx="4.6" cy="-1" r="1.7" fill="#111827"/>` +
       roof +
       `</g></g>`
+    out.push(keyed(`ride:${ride.at}:${ride.kind}:${ride.color}`, [ride.at, ride.kind, ride.color, ride.from, ride.to], svg, true))
   }
-  return s
+  return out
 }

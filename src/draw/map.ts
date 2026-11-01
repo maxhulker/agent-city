@@ -1,9 +1,13 @@
 import type { Burb, District, Landmark, Launch, Repo, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, TRACK_Y, blocksFor, edges, esc, frame, lots, n, p, padOf, poly, pts, r, seeded } from './geo.ts'
-import type { Pt, Scene } from './geo.ts'
+import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, TRACK_Y, blocksFor, edges, esc, frame, hash, item, keyed, lots, n, p, padOf, poly, pts, r, seeded } from './geo.ts'
+import type { OverlayItem, Pt, Scene } from './geo.ts'
 
-// The city itself: water, land, streets, buildings, landmarks, bridges, traffic
-// and the Statue of Liberty.
+// The city itself, in two layers (docs/frames.md): the still map (water, land,
+// streets, buildings, the landmarks' bodies, bridges, trees, names), which
+// changes only when something is built or a borough moves, and the overlay of
+// everything that lights up or moves (district pads and labels, smoke and
+// sparks, scaffolding, beacons, cars and boats, the Statue, fireworks), as
+// keyed items the page replaces one at a time.
 
 // ---- palettes -------------------------------------------------------------
 
@@ -196,12 +200,25 @@ function glow(gx: number, gy: number, r: number, id = 'halo'): string {
   return `<ellipse class="glow" cx="${n(x)}" cy="${n(y)}" rx="${n(r * 2)}" ry="${n(r)}" fill="url(#${id})"/>`
 }
 
-function spire(gx: number, gy: number, z: number, len: number, light = '#f87171'): string {
+// A mast on a roof. Its blinking light is the overlay's (spireLights), so the
+// map holds nothing that animates.
+function spire(gx: number, gy: number, z: number, len: number): string {
   const [x, y] = p(gx, gy, z)
-  return (
-    `<line x1="${n(x)}" y1="${n(y)}" x2="${n(x)}" y2="${n(y - len)}" stroke="#cbd5e1" stroke-width="1.2"/>` +
-    `<circle cx="${n(x)}" cy="${n(y - len)}" r="1.6" fill="${light}"><animate attributeName="opacity" values="1;.15;1" dur="1.5s" repeatCount="indefinite"/></circle>`
-  )
+  return `<line x1="${n(x)}" y1="${n(y)}" x2="${n(x)}" y2="${n(y - len)}" stroke="#cbd5e1" stroke-width="1.2"/>`
+}
+
+function spireLight(gx: number, gy: number, z: number, len: number, light = '#f87171'): string {
+  const [x, y] = p(gx, gy, z)
+  return `<circle cx="${n(x)}" cy="${n(y - len)}" r="1.6" fill="${light}"><animate attributeName="opacity" values="1;.15;1" dur="1.5s" repeatCount="indefinite"/></circle>`
+}
+
+// The spires' lights: One World Trade's always, the Chrysler's and the Empire
+// State's once they stand.
+function spireLights(sc: Scene): string {
+  let g = spireLight(4.55, 57.55, 92, 18)
+  if (sc.built.relay !== undefined) g += spireLight(12.575, 39.5, 73, 9, '#e2e8f0')
+  if (sc.built.empire !== undefined) g += spireLight(7.8, 42.5, 83, 15)
+  return g
 }
 
 function tree(gx: number, gy: number, r: number): string {
@@ -473,12 +490,13 @@ function streets(): string {
 
 // ---- districts ------------------------------------------------------------
 
-// The lit ground where each district's agents stand, in its own colour.
+// The lit ground where each district's agents stand, in its own colour: the
+// map draws every pad at rest, and padsLit adds the brighter look and the
+// pulse of the ones someone is working in.
 function pads(sc: Scene): string {
   let glows = ''
   let g = GRID
   for (const d of DISTRICTS) {
-    const on = sc.active.has(d)
     const c = ACCENT[d]
     const [x0, y0, x1, y1] = padOf(d)
     const cx = (x0 + x1) / 2
@@ -486,47 +504,78 @@ function pads(sc: Scene): string {
     if (d === 'plaza') {
       // The Great Lawn itself is the pad: bare earth until the park is green.
       const lawn = sc.built.plaza === undefined ? '#4a4034' : '#2d7040'
-      g += `<ellipse cx="${n(cx)}" cy="${n(cy)}" rx="${n((x1 - x0) / 2)}" ry="${n((y1 - y0) / 2)}" fill="${lawn}" stroke="${c}" stroke-width=".07" stroke-opacity="${on ? 0.9 : 0.5}"/>`
+      g += `<ellipse cx="${n(cx)}" cy="${n(cy)}" rx="${n((x1 - x0) / 2)}" ry="${n((y1 - y0) / 2)}" fill="${lawn}" stroke="${c}" stroke-width=".07" stroke-opacity=".5"/>`
     } else {
-      g += `<rect x="${n(x0)}" y="${n(y0)}" width="${n(x1 - x0)}" height="${n(y1 - y0)}" rx=".22" fill="${c}" fill-opacity="${on ? 0.3 : 0.17}" stroke="${c}" stroke-width=".06" stroke-opacity="${on ? 0.95 : 0.55}"/>`
-      if (on) {
-        g += `<rect x="${n(x0 + 0.12)}" y="${n(y0 + 0.08)}" width="${n(x1 - x0 - 0.24)}" height="${n(y1 - y0 - 0.16)}" rx=".16" fill="none" stroke="${c}" stroke-width=".04"><animate attributeName="opacity" values=".2;1;.2" dur="1.6s" repeatCount="indefinite"/></rect>`
-      }
+      g += `<rect x="${n(x0)}" y="${n(y0)}" width="${n(x1 - x0)}" height="${n(y1 - y0)}" rx=".22" fill="${c}" fill-opacity=".17" stroke="${c}" stroke-width=".06" stroke-opacity=".55"/>`
     }
     const [x, y] = p(cx, cy)
     const rad = d === 'plaza' ? 30 : 22
-    glows += `<ellipse class="glow" cx="${n(x)}" cy="${n(y)}" rx="${n(rad * 2)}" ry="${n(rad)}" fill="url(#p-${d})" opacity="${on ? 1 : 0.5}"/>`
+    glows += `<ellipse class="glow" cx="${n(x)}" cy="${n(y)}" rx="${n(rad * 2)}" ry="${n(rad)}" fill="url(#p-${d})" opacity=".5"/>`
   }
   return glows + g + '</g>'
+}
+
+function padsLit(sc: Scene): string {
+  let glows = ''
+  let g = ''
+  for (const d of DISTRICTS) {
+    if (!sc.active.has(d)) continue
+    const c = ACCENT[d]
+    const [x0, y0, x1, y1] = padOf(d)
+    const cx = (x0 + x1) / 2
+    const cy = (y0 + y1) / 2
+    if (d === 'plaza') {
+      g += `<ellipse cx="${n(cx)}" cy="${n(cy)}" rx="${n((x1 - x0) / 2)}" ry="${n((y1 - y0) / 2)}" fill="none" stroke="${c}" stroke-width=".07" stroke-opacity=".9"/>`
+    } else {
+      g += `<rect x="${n(x0)}" y="${n(y0)}" width="${n(x1 - x0)}" height="${n(y1 - y0)}" rx=".22" fill="${c}" fill-opacity=".15" stroke="${c}" stroke-width=".06" stroke-opacity=".95"/>`
+      g += `<rect x="${n(x0 + 0.12)}" y="${n(y0 + 0.08)}" width="${n(x1 - x0 - 0.24)}" height="${n(y1 - y0 - 0.16)}" rx=".16" fill="none" stroke="${c}" stroke-width=".04"><animate attributeName="opacity" values=".2;1;.2" dur="1.6s" repeatCount="indefinite"/></rect>`
+    }
+    const [x, y] = p(cx, cy)
+    const rad = d === 'plaza' ? 30 : 22
+    glows += `<ellipse class="glow" cx="${n(x)}" cy="${n(y)}" rx="${n(rad * 2)}" ry="${n(rad)}" fill="url(#p-${d})" opacity=".5"/>`
+  }
+  return g ? glows + GRID + g + '</g>' : ''
+}
+
+// Each district's lights wash over its buildings in its colour, brighter
+// while someone works there.
+function haze(sc: Scene): string {
+  let s = ''
+  for (const d of DISTRICTS) {
+    const [x0, y0, x1, y1] = padOf(d)
+    const [x, y] = p((x0 + x1) / 2, (y0 + y1) / 2, 14)
+    s += `<ellipse class="glow haze" cx="${n(x)}" cy="${n(y)}" rx="${d === 'plaza' ? 70 : 46}" ry="${d === 'plaza' ? 36 : 27}" fill="url(#p-${d})" opacity="${sc.active.has(d) ? 0.55 : 0.28}"/>`
+  }
+  return s
+}
+
+// The districts' names, in their own colours, brighter and bigger with work.
+function labels(sc: Scene): string {
+  let s = ''
+  for (const d of DISTRICTS) {
+    // A blueprint lot carries its own caption; Grand Central's terminal always stands.
+    if (sc.built[d] === undefined && d !== 'relay') continue
+    const [gx, gy, z, anchor] = SITES[d].label
+    const [x, y] = p(gx, gy, z)
+    const on = sc.active.has(d)
+    const cls = `lbl${on ? ' on' : MIDTOWN.has(d) ? ' minor' : ''}`
+    const fill = on ? ACCENT[d] : mix(ACCENT[d], '#e2e8f0', 0.5)
+    s += `<text class="${cls}" x="${n(x)}" y="${n(y)}" text-anchor="${anchor ?? 'middle'}" style="fill:${fill}">${LABELS[d].toUpperCase()}</text>`
+  }
+  return s
 }
 
 // ---- boroughs: one per other repository -----------------------------------
 
 const HOUSE_PALS: Pal[] = ['b', 'b', 'r', 'b', 'r', 's']
 
-// A Brooklyn-ish neighbourhood: brownstone rows back to back along their
-// streets, and a square at the front where the borough's agents gather. With
-// no repository (it packed up), the houses stay and the sign comes down.
-function burb(b: Burb, repo: Repo | undefined, sc: Scene): string {
+// A borough's houses: rows back to front, each row west to east, apartments
+// at the back, then brownstone rows back to back, the front row facing the
+// square, with the tall corner house at its east end.
+type House = { x: number; y0: number; w: number; h: number; pal: Pal; corner: boolean; ri: number }
+
+function houses(b: Burb): House[] {
   const [cx, cy] = BURBS[b].center
-  const here = (sc.byBurb.get(b) ?? []).filter(a => a.status !== 'done')
-  const isActive = here.some(a => a.status === 'working')
-  const isBuilding = here.some(a => a.at === 'workshop')
-  let g = isActive ? glow(cx - 0.6, cy + 3.4, 44) : ''
-  // The ground: pavement, the streets between the blocks, an avenue down the
-  // east side, and the square in front with a fountain behind the agents.
-  g += GRID
-  g += gRect(cx - 3.7, cy - 3.7, cx + 3.4, cy + 1.8, '#272c36', ' rx=".2"')
-  g += `<path d="M${n(cx - 3.7)} ${n(cy - 2.45)}H${n(cx + 3.4)}M${n(cx - 3.7)} ${n(cy - 0.5)}H${n(cx + 3.4)}M${n(cx - 0.35)} ${n(cy - 3.7)}V${n(cy - 0.5)}M${n(cx + 3.15)} ${n(cy - 3.7)}V${n(cy + 1.8)}" stroke="#191d26" stroke-width=".42"/>`
-  g += gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, '#343944', ` rx=".3" stroke="${isActive ? '#fde68a' : '#3f4552'}" stroke-width=".05"`)
-  let tiles = ''
-  for (const ty of [2.95, 3.95]) tiles += `M${n(cx - 3.4)} ${n(cy + ty)}H${n(cx + 2.65)}`
-  for (let tx = -2.25; tx < 2.7; tx += 1.25) tiles += `M${n(cx + tx)} ${n(cy + 2.05)}V${n(cy + 4.85)}`
-  g += `<path d="${tiles}" stroke="#3d4350" stroke-width=".04"/>`
-  g += `<circle cx="${n(cx - 0.3)}" cy="${n(cy + 2.4)}" r=".3" fill="#1e4f86" stroke="#9ca3af" stroke-width=".05"/>`
-  g += '</g>'
-  // Rows of houses, back to front, each row west to east: apartments at the
-  // back, then brownstone rows back to back, the front row facing the square.
   const rows: [number, number, number][] = [
     [cy - 3.4, 12, 3],
     [cy - 2.15, 6.4, 1.4],
@@ -534,11 +583,10 @@ function burb(b: Burb, repo: Repo | undefined, sc: Scene): string {
     [cy - 0.2, 6, 1.4],
     [cy + 0.5, 6, 1.4],
   ]
-  let scaffolded = ''
+  const out: House[] = []
   rows.forEach(([y0, base, spread], ri) => {
     let x = cx - 3.4
     let i = 0
-    let stoops = ''
     while (x < cx + 2.95) {
       // A cross street through the back blocks.
       if (ri < 3 && x < cx - 0.1 && x + 0.5 > cx - 0.6) {
@@ -551,21 +599,50 @@ function burb(b: Burb, repo: Repo | undefined, sc: Scene): string {
       const corner = ri === 4 && x + w >= cx + 2.9
       const h = corner ? 11 : base + q * spread
       const pal: Pal = ri === 0 ? (q > 0.5 ? 'k' : 's') : corner ? 'k' : HOUSE_PALS[Math.floor(q * HOUSE_PALS.length)]!
-      g += box(x, y0, w - 0.03, 0.62, h, pal)
-      if (corner && isBuilding) scaffolded = scaffold(x, y0, w - 0.03, 0.62, h)
-      // A stoop up to each front door on the rows that face a street.
-      if ((ri === 2 || ri === 4) && !corner) {
-        const sx = x + w * 0.3
-        stoops += `M${xy(p(sx, y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, y0 + 0.8))}L${xy(p(sx, y0 + 0.8))}z`
-      }
+      out.push({ x, y0, w: w - 0.03, h, pal, corner, ri })
       x += w
       i++
     }
-    if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
-    // Street trees along the middle street, in front of the brownstones.
-    if (ri === 2) for (const tx of [-3.0, -1.7, 0.4, 1.6, 2.7]) g += tree(cx + tx, cy - 0.74, 1.3)
   })
-  g += scaffolded
+  return out
+}
+
+// A Brooklyn-ish neighbourhood: brownstone rows back to back along their
+// streets, and a square at the front where the borough's agents gather. The
+// map draws the place itself, with the borough's name; burbLit adds the
+// repository's sign, the glow of work and the scaffolding of an edit.
+function burb(b: Burb): string {
+  const [cx, cy] = BURBS[b].center
+  // The ground: pavement, the streets between the blocks, an avenue down the
+  // east side, and the square in front with a fountain behind the agents.
+  let g = GRID
+  g += gRect(cx - 3.7, cy - 3.7, cx + 3.4, cy + 1.8, '#272c36', ' rx=".2"')
+  g += `<path d="M${n(cx - 3.7)} ${n(cy - 2.45)}H${n(cx + 3.4)}M${n(cx - 3.7)} ${n(cy - 0.5)}H${n(cx + 3.4)}M${n(cx - 0.35)} ${n(cy - 3.7)}V${n(cy - 0.5)}M${n(cx + 3.15)} ${n(cy - 3.7)}V${n(cy + 1.8)}" stroke="#191d26" stroke-width=".42"/>`
+  g += gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, '#343944', ` rx=".3" stroke="#3f4552" stroke-width=".05"`)
+  let tiles = ''
+  for (const ty of [2.95, 3.95]) tiles += `M${n(cx - 3.4)} ${n(cy + ty)}H${n(cx + 2.65)}`
+  for (let tx = -2.25; tx < 2.7; tx += 1.25) tiles += `M${n(cx + tx)} ${n(cy + 2.05)}V${n(cy + 4.85)}`
+  g += `<path d="${tiles}" stroke="#3d4350" stroke-width=".04"/>`
+  g += `<circle cx="${n(cx - 0.3)}" cy="${n(cy + 2.4)}" r=".3" fill="#1e4f86" stroke="#9ca3af" stroke-width=".05"/>`
+  g += '</g>'
+  let stoops = ''
+  let ri = -1
+  for (const h of houses(b)) {
+    if (h.ri !== ri) {
+      if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
+      stoops = ''
+      // Street trees along the middle street, in front of the brownstones.
+      if (ri === 2) for (const tx of [-3.0, -1.7, 0.4, 1.6, 2.7]) g += tree(cx + tx, cy - 0.74, 1.3)
+      ri = h.ri
+    }
+    g += box(h.x, h.y0, h.w, 0.62, h.h, h.pal)
+    // A stoop up to each front door on the rows that face a street.
+    if ((h.ri === 2 || h.ri === 4) && !h.corner) {
+      const sx = h.x + (h.w + 0.03) * 0.3
+      stoops += `M${xy(p(sx, h.y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, h.y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, h.y0 + 0.8))}L${xy(p(sx, h.y0 + 0.8))}z`
+    }
+  }
+  if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
   // Trees along the front, the square's lamps and its fountain.
   for (const tx of [-2.9, -1.5, 0.5, 1.9]) g += tree(cx + tx, cy + 1.5, 1.5)
   g += tree(cx - 3.3, cy + 2.15, 2) + tree(cx + 2.55, cy + 4.75, 2)
@@ -575,7 +652,30 @@ function burb(b: Burb, repo: Repo | undefined, sc: Scene): string {
   // The sign hangs at the back corner, clear of the square where agents stand.
   const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
   g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${BURBS[b].name.toUpperCase()}</text>`
-  if (repo) g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
+  return g
+}
+
+// What changes about a borough: the repository's name on the sign (none once
+// it has packed up), the glow and lit square while someone works there, and
+// scaffolding on the corner house while someone edits.
+function burbLit(b: Burb, repo: Repo | undefined, sc: Scene): string {
+  const [cx, cy] = BURBS[b].center
+  const here = (sc.byBurb.get(b) ?? []).filter(a => a.status !== 'done')
+  const isActive = here.some(a => a.status === 'working')
+  const isBuilding = here.some(a => a.at === 'workshop')
+  let g = ''
+  if (isActive) {
+    g += glow(cx - 0.6, cy + 3.4, 44)
+    g += GRID + gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, 'none', ` rx=".3" stroke="#fde68a" stroke-width=".05"`) + '</g>'
+  }
+  if (isBuilding) {
+    const corner = houses(b).find(h => h.corner)
+    if (corner) g += scaffold(corner.x, corner.y0, corner.w, 0.62, corner.h)
+  }
+  if (repo) {
+    const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
+    g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
+  }
   return g
 }
 
@@ -584,19 +684,250 @@ function burb(b: Burb, repo: Repo | undefined, sc: Scene): string {
 // Billboard colours.
 const NEON = ['#f43f5e', '#22d3ee', '#a3e635', '#f59e0b', '#c084fc', '#fb7185', '#38bdf8']
 
-// The landmarks, each pushed as depth-sorted items; their flat ground goes
-// in `ground`, under everything.
-function landmarks(items: Item[], sc: Scene): string {
+// The pieces of the landmarks that light up with work, drawn in the "off"
+// state on the map and again, lit and animated, by the overlay.
+
+// Times Square's screens, on the south and east walls of its towers.
+function billboards(live: boolean): string {
+  let g = ''
+  let i = 0
+  const bill = (list: [number, number, number][]) => {
+    const c = NEON[i % NEON.length]!
+    const c2 = NEON[(i + 3) % NEON.length]!
+    const anim = live ? `<animate attributeName="fill" values="${c};${c2};${c}" dur="${n(1.3 + (i % 4) * 0.35)}s" repeatCount="indefinite"/>` : ''
+    i++
+    return `<polygon points="${pts(list.map(([gx, gy, z]) => p(gx, gy, z)))}" fill="${c}" opacity=".92">${anim}</polygon>`
+  }
+  for (const [a, b2, z0, z1] of [
+    [3.4, 4.0, 8, 18],
+    [4.1, 4.55, 6, 14],
+    [3.5, 4.5, 22, 30],
+    [5.3, 5.9, 10, 22],
+    [5.35, 5.85, 28, 38],
+    [6.15, 6.65, 6, 16],
+    [6.2, 6.6, 20, 30],
+  ] as const) {
+    const gy = a < 6 ? 37.8 : 37.75
+    g += bill([
+      [a, gy, z0],
+      [b2, gy, z0],
+      [b2, gy, z1],
+      [a, gy, z1],
+    ])
+  }
+  for (const [gx, gy0, gy1, z0, z1] of [
+    [6.72, 37.35, 37.7, 12, 26],
+    [5.97, 37.3, 37.75, 30, 44],
+    [4.65, 37.3, 37.75, 10, 24],
+  ] as const) {
+    g += bill([
+      [gx, gy1, z0],
+      [gx, gy0, z0],
+      [gx, gy0, z1],
+      [gx, gy1, z1],
+    ])
+  }
+  return g
+}
+
+// The ball on Times Square's tallest tower, in the district's pink.
+function ball(live: boolean): string {
+  const [bx, by] = p(5.61, 37.5, 54)
+  return `<circle cx="${n(bx)}" cy="${n(by - 9)}" r="2.6" fill="${ACCENT.observatory}" stroke="#fff" stroke-width=".5">${live ? '<animate attributeName="r" values="2.4;3.2;2.4" dur="1s" repeatCount="indefinite"/>' : ''}</circle>`
+}
+
+// The Library's reading room windows, lit blue while someone reads.
+function readingRoom(live: boolean): string {
+  return face(
+    [
+      [7.85, 39.86, 4],
+      [8.15, 39.86, 4],
+      [8.15, 39.86, 11],
+      [7.85, 39.86, 11],
+    ],
+    live ? ACCENT.library : '#33415a',
+    '',
+    live ? '<animate attributeName="opacity" values="1;.55;1" dur="1.4s" repeatCount="indefinite"/>' : '',
+  )
+}
+
+// The MetLife sign along the top of the slab behind Grand Central.
+function metlife(live: boolean): string {
+  return face(
+    [
+      [9.85, 38.82, 50],
+      [10.95, 38.82, 50],
+      [10.95, 38.82, 53],
+      [9.85, 38.82, 53],
+    ],
+    live ? ACCENT.relay : '#64748b',
+    ' opacity=".9"',
+  )
+}
+
+// Grand Central's three great arches, lit teal when messages fly.
+function arches(live: boolean): string {
+  const [ax, ay] = p(9.65, 39.78)
+  let d = ''
+  for (let i = 0; i < 3; i++) {
+    const x = 4 + i * 6.4
+    d += `M${n(x)} -2v-6.2a2.1 2.1 0 0 1 4.2 0v6.2z`
+  }
+  return `<path transform="translate(${n(ax)} ${n(ay)}) skewY(26.565)" d="${d}" fill="${live ? ACCENT.relay : '#24384a'}" stroke="#e7e5e4" stroke-width=".4">${live ? '<animate attributeName="opacity" values="1;.6;1" dur="1.2s" repeatCount="indefinite"/>' : ''}</path>`
+}
+
+// Hudson Yards' crown lights, in the district's orange.
+function yardsCrown(live: boolean): string {
+  return face(
+    [
+      [3.3, 40.8, 62],
+      [3.95, 40.8, 62],
+      [3.95, 40.8, 66],
+      [3.3, 40.8, 66],
+    ],
+    ACCENT.foundry,
+    live ? '' : ' opacity=".6"',
+    live ? '<animate attributeName="opacity" values="1;.4;1" dur="1s" repeatCount="indefinite"/>' : '',
+  )
+}
+
+// The Vessel's copper lattice, brighter while the shell is busy.
+function lattice(live: boolean): string {
+  const [vx, vy] = p(2.6, 41.35)
+  let d = ''
+  for (let i = -3; i <= 3; i++) d += `M${n(vx + i * 1.2)} ${n(vy)}L${n(vx + i * 2.3 + 2.4)} ${n(vy - 12.5)}M${n(vx + i * 1.2)} ${n(vy)}L${n(vx + i * 2.3 - 2.4)} ${n(vy - 12.5)}`
+  return `<path d="${d}" stroke="${live ? '#fdba74' : '#e07a2f'}" stroke-width=".5" opacity=".9"/>`
+}
+
+// The Seaport's crane, which slews while git is at work. Always the overlay's.
+function crane(live: boolean): string {
+  const [cx, cy] = p(14.2, 57.4)
+  let g = `<g><line x1="${n(cx)}" y1="${n(cy)}" x2="${n(cx)}" y2="${n(cy - 30)}" stroke="#facc15" stroke-width="1.6"/><line x1="${n(cx)}" y1="${n(cy - 29)}" x2="${n(cx + 18)}" y2="${n(cy - 24)}" stroke="#facc15" stroke-width="1.6"/>`
+  if (live) {
+    g += `<animateTransform attributeName="transform" type="rotate" values="0 ${n(cx)} ${n(cy)};16 ${n(cx)} ${n(cy)};0 ${n(cx)} ${n(cy)}" dur="5s" repeatCount="indefinite"/>`
+  }
+  return g + `</g>`
+}
+
+// The flag over City Hall's dome, waving. Always the overlay's.
+function flag(): string {
+  const [dx, dy] = p(8.62, 55.5, 10)
+  return `<path d="M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z" fill="#60a5fa"><animate attributeName="d" values="M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z;M${n(dx)} ${n(dy - 12)}l6 2.5l-6 .5z;M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z" dur="1.2s" repeatCount="indefinite"/></path>`
+}
+
+// The Empire State's crown: the colour of the busiest district, as the real
+// one changes colour for the occasion; gold while an update waits.
+function crownColor(sc: Scene): string {
+  let busy: District | undefined
+  let most = 0
+  for (const [d, list] of sc.byDistrict) {
+    const working = list.filter(a => a.status === 'working').length
+    if (d !== 'plaza' && working > most) [busy, most] = [d, working]
+  }
+  return sc.update?.available ? '#fbbf24' : busy ? ACCENT[busy] : '#f8fafc'
+}
+
+// The box each landmark's scaffolding hugs while it goes up.
+const SCAFFOLDS: Partial<Record<Landmark, [number, number, number, number, number][]>> = {
+  observatory: [[5.25, 37.2, 0.72, 0.6, 54]],
+  library: [[7.25, 39.2, 1.5, 0.58, 12]],
+  relay: [
+    [9.75, 38.25, 1.35, 0.55, 56],
+    [12.3, 39.25, 0.55, 0.5, 60],
+  ],
+  workshop: [[5.25, 41.2, 1.5, 0.6, 22]],
+  empire: [[7.4, 42.2, 0.8, 0.6, 64]],
+  foundry: [[3.3, 40.25, 0.65, 0.55, 66]],
+  hall: [[8.0, 55.28, 1.25, 0.42, 9]],
+  harbor: [[12.7, 57.2, 0.9, 0.6, 8]],
+}
+
+// Everything that moves or lights up on the landmarks: one overlay item per
+// landmark, hashed by its markup (none of it holds the clock), so a frame
+// that changes nothing leaves its animations running.
+function landmarkLights(sc: Scene): OverlayItem[] {
+  const out: OverlayItem[] = []
+  const built = (id: Landmark) => sc.built[id] !== undefined
+  const rising = (id: Landmark) => built(id) && sc.now - sc.built[id]! < SCAFFOLD_MS
   const on = (d: District) => sc.active.has(d)
+  const scaf = (id: Landmark) => (rising(id) ? (SCAFFOLDS[id] ?? []).map(b => scaffold(...b)).join('') : '')
+  const put = (id: Landmark, svg: string) => {
+    if (svg) out.push(item(`lm:${id}`, svg))
+  }
+
+  put('observatory', built('observatory') ? (on('observatory') ? billboards(true) + ball(true) : '') + scaf('observatory') : '')
+  put('library', built('library') ? (on('library') ? readingRoom(true) : '') + scaf('library') : '')
+  {
+    let g = ''
+    if (built('relay')) {
+      if (on('relay')) {
+        const [mx, my] = p(10.42, 38.52, 56)
+        g += metlife(true) + rings(mx, my - 4, ACCENT.relay)
+      }
+      g += scaf('relay')
+    }
+    if (on('relay')) g += arches(true)
+    put('relay', g)
+  }
+  put('workshop', built('workshop') && (on('workshop') || rising('workshop')) ? scaffold(5.25, 41.2, 1.5, 0.6, 22) + sparks(...p(6.75, 41.6, 10)) : '')
+  {
+    let g = ''
+    if (built('empire')) {
+      const crown = crownColor(sc)
+      if (sc.update?.available) {
+        // A gold halo breathing around the tower.
+        const [hx, hy] = p(7.8, 42.5, 50)
+        g += `<ellipse cx="${n(hx)}" cy="${n(hy)}" rx="34" ry="60" fill="url(#halo)"><animate attributeName="opacity" values=".55;1;.55" dur="2s" repeatCount="indefinite"/></ellipse>`
+      }
+      g += slab(7.67, 42.42, 0.26, 0.16, 5, [crown, mix(crown, '#000000', 0.3), '#fff'], 78)
+      g += scaf('empire')
+    }
+    put('empire', g)
+  }
+  {
+    let g = ''
+    if (built('foundry')) {
+      if (on('foundry')) {
+        const [sx, sy] = p(1.6, 40.4)
+        g += yardsCrown(true) + smoke(sx, sy - 26, '#cbd5e1') + lattice(true)
+      }
+      g += scaf('foundry')
+    }
+    put('foundry', g)
+  }
+  {
+    let g = built('hall') ? flag() + scaf('hall') : ''
+    // A "?" goes up when something needs you, on the empty lot too.
+    if (sc.isWaiting) {
+      const [dx, dy] = p(8.62, 55.5, 10)
+      g += beacon(dx, dy - 30, '#fbbf24', '?', sc.k)
+    }
+    put('hall', g)
+  }
+  {
+    let g = built('harbor') ? crane(on('harbor')) + scaf('harbor') : ''
+    // A merge conflict raises the alarm, on the empty lot too.
+    if (sc.hasConflict) {
+      const [fx, fy] = p(13.2, 57.5, 8)
+      g += glow(13.6, 57.5, 34, 'alarm')
+      if (built('harbor')) g += smoke(fx, fy, '#f87171')
+      g += beacon(fx, fy - 26, '#ef4444', '!', sc.k)
+    }
+    put('harbor', g)
+  }
+  return out
+}
+
+// The landmarks' still bodies, each pushed as depth-sorted items; their flat
+// ground goes in `ground`, under everything. Only what is built matters here.
+function landmarks(items: Item[], sc: Scene): string {
   let ground = GRID
   const add = (depth: number, svg: string) => items.push({ depth, svg })
   const trees = (list: [number, number, number][]) => {
     for (const [gx, gy, rad] of list) add(gx + gy, tree(gx, gy, rad))
   }
-  // The game: a landmark not yet built is a blueprint lot; one just built
-  // stands in scaffolding for a few seconds.
+  // The game: a landmark not yet built is a blueprint lot.
   const built = (id: Landmark) => sc.built[id] !== undefined
-  const rising = (id: Landmark) => built(id) && sc.now - sc.built[id]! < SCAFFOLD_MS
   const lot = (id: Landmark, box: [number, number, number, number], name: string, at?: [number, number, ('start' | 'end')?], minor = false) => {
     ground += blueprint(items, id, box, name, at, minor)
   }
@@ -629,55 +960,16 @@ function landmarks(items: Item[], sc: Scene): string {
   if (!built('observatory')) {
     lot('observatory', [3, 37, 7, 38], LABELS.observatory)
   } else {
-    const live = on('observatory')
     ground += gRect(5.2, 38.15, 6.8, 38.85, '#3b2b40')
     // The red steps, at the plaza's south end.
     add(5.7 + 38.5 + 0.6, slab(5.75, 38.5, 0.7, 0.3, 3.2, ['#dc2626', '#991b1b', '#f87171']))
     let g = box(3.3, 37.2, 1.35, 0.6, 44, 'k')
     g += box(5.25, 37.2, 0.72, 0.6, 54, 'g')
     g += box(6.1, 37.25, 0.62, 0.5, 42, 'k')
-    // Screens on the south and east walls.
-    let i = 0
-    const bill = (list: [number, number, number][]) => {
-      const c = NEON[i % NEON.length]!
-      const c2 = NEON[(i + 3) % NEON.length]!
-      const anim = live ? `<animate attributeName="fill" values="${c};${c2};${c}" dur="${n(1.3 + (i % 4) * 0.35)}s" repeatCount="indefinite"/>` : ''
-      i++
-      return `<polygon points="${pts(list.map(([gx, gy, z]) => p(gx, gy, z)))}" fill="${c}" opacity=".92">${anim}</polygon>`
-    }
-    for (const [a, b2, z0, z1] of [
-      [3.4, 4.0, 8, 18],
-      [4.1, 4.55, 6, 14],
-      [3.5, 4.5, 22, 30],
-      [5.3, 5.9, 10, 22],
-      [5.35, 5.85, 28, 38],
-      [6.15, 6.65, 6, 16],
-      [6.2, 6.6, 20, 30],
-    ] as const) {
-      const gy = a < 6 ? 37.8 : 37.75
-      g += bill([
-        [a, gy, z0],
-        [b2, gy, z0],
-        [b2, gy, z1],
-        [a, gy, z1],
-      ])
-    }
-    for (const [gx, gy0, gy1, z0, z1] of [
-      [6.72, 37.35, 37.7, 12, 26],
-      [5.97, 37.3, 37.75, 30, 44],
-      [4.65, 37.3, 37.75, 10, 24],
-    ] as const) {
-      g += bill([
-        [gx, gy1, z0],
-        [gx, gy0, z0],
-        [gx, gy0, z1],
-        [gx, gy1, z1],
-      ])
-    }
-    // The ball, on the tallest tower, in the district's pink.
+    g += billboards(false)
+    // The ball, on the tallest tower.
     const [bx, by] = p(5.61, 37.5, 54)
-    g += `<path d="M${n(bx)} ${n(by)}v-7" stroke="#cbd5e1" stroke-width=".8"/><circle cx="${n(bx)}" cy="${n(by - 9)}" r="2.6" fill="${ACCENT.observatory}" stroke="#fff" stroke-width=".5">${live ? '<animate attributeName="r" values="2.4;3.2;2.4" dur="1s" repeatCount="indefinite"/>' : ''}</circle>`
-    if (rising('observatory')) g += scaffold(5.25, 37.2, 0.72, 0.6, 54)
+    g += `<path d="M${n(bx)} ${n(by)}v-7" stroke="#cbd5e1" stroke-width=".8"/>` + ball(false)
     add(37.2 + 5.25 + 1.3, g)
   }
 
@@ -686,7 +978,6 @@ function landmarks(items: Item[], sc: Scene): string {
   if (!built('library')) {
     lot('library', [7, 39, 9, 40], LABELS.library, [6.9, 41.1, 'start'])
   } else {
-    const live = on('library')
     const c = ACCENT.library
     let g = box(7.25, 39.2, 1.5, 0.58, 12, 's')
     g += box(7.45, 39.28, 1.1, 0.4, 2.4, 's', 12)
@@ -700,18 +991,7 @@ function landmarks(items: Item[], sc: Scene): string {
       cols += `M${n(x)} ${n(y)}v-8`
     }
     g += `<path d="${cols}" stroke="#e7e5e4" stroke-width=".7"/>`
-    // The reading room's tall windows, lit blue while someone reads.
-    g += face(
-      [
-        [7.85, 39.86, 4],
-        [8.15, 39.86, 4],
-        [8.15, 39.86, 11],
-        [7.85, 39.86, 11],
-      ],
-      live ? c : '#33415a',
-      '',
-      live ? '<animate attributeName="opacity" values="1;.55;1" dur="1.4s" repeatCount="indefinite"/>' : '',
-    )
+    g += readingRoom(false)
     // Steps, and the two lions.
     g += slab(7.6, 39.8, 0.8, 0.14, 1, ['#a8a29e', '#78716c', '#d6d3d1'])
     for (const gx of [7.55, 8.45]) {
@@ -722,7 +1002,6 @@ function landmarks(items: Item[], sc: Scene): string {
       const [x, y] = p(gx, 39.9)
       g += `<path d="M${n(x)} ${n(y)}v-6" stroke="#57534e" stroke-width=".6"/><circle cx="${n(x)}" cy="${n(y - 6.5)}" r="1.2" fill="${c}"/>`
     }
-    if (rising('library')) g += scaffold(7.25, 39.2, 1.5, 0.58, 12)
     add(39.2 + 7.25 + 1.4, g)
     // Bryant Park.
     ground += gRect(7.25, 40.18, 8.75, 40.82, '#1f5130')
@@ -740,39 +1019,17 @@ function landmarks(items: Item[], sc: Scene): string {
   // the MetLife slab behind and the Chrysler Building's crown beside it. The
   // terminal always stands (it is the way in); the towers are the game's.
   {
-    const live = on('relay')
-    const c = ACCENT.relay
     const towers = built('relay')
     let g = ''
     if (!towers) {
       lot('relay', [9, 38, 11, 39], 'Towers', [10, 38.5], true)
     } else {
       g += box(9.75, 38.25, 1.35, 0.55, 56, 'k')
-      // The MetLife sign along the top.
-      g += face(
-        [
-          [9.85, 38.82, 50],
-          [10.95, 38.82, 50],
-          [10.95, 38.82, 53],
-          [9.85, 38.82, 53],
-        ],
-        live ? c : '#64748b',
-        ' opacity=".9"',
-      )
-      const [mx, my] = p(10.42, 38.52, 56)
-      if (live) g += rings(mx, my - 4, c)
-      if (rising('relay')) g += scaffold(9.75, 38.25, 1.35, 0.55, 56)
+      g += metlife(false)
     }
     g += box(9.35, 39.22, 2.4, 0.56, 13, 's')
     g += box(9.6, 39.3, 1.9, 0.38, 2.5, 's', 13)
-    // The arches, lit teal when messages fly.
-    const [ax, ay] = p(9.65, 39.78)
-    let arches = ''
-    for (let i = 0; i < 3; i++) {
-      const x = 4 + i * 6.4
-      arches += `M${n(x)} -2v-6.2a2.1 2.1 0 0 1 4.2 0v6.2z`
-    }
-    g += `<path transform="translate(${n(ax)} ${n(ay)}) skewY(26.565)" d="${arches}" fill="${live ? c : '#24384a'}" stroke="#e7e5e4" stroke-width=".4">${live ? '<animate attributeName="opacity" values="1;.6;1" dur="1.2s" repeatCount="indefinite"/>' : ''}</path>`
+    g += arches(false)
     // The clock and Mercury on top.
     const [kx, ky] = p(10.55, 39.5, 15.5)
     g += `<circle cx="${n(kx)}" cy="${n(ky - 2)}" r="2.2" fill="#fde68a" stroke="#a16207" stroke-width=".5"/><path d="M${n(kx - 3)} ${n(ky - 4)}l3 -4l3 4z" fill="#d6c7a1"/>`
@@ -782,8 +1039,7 @@ function landmarks(items: Item[], sc: Scene): string {
       const [cx, cy] = p(12.575, 39.5, 60)
       g += `<path d="M${n(cx - 4.6)} ${n(cy)}Q${n(cx - 4.6)} ${n(cy - 9)} ${n(cx)} ${n(cy - 14)}Q${n(cx + 4.6)} ${n(cy - 9)} ${n(cx + 4.6)} ${n(cy)}z" fill="#cbd5e1"/>`
       g += `<path d="M${n(cx - 3.4)} ${n(cy - 2)}Q${n(cx - 3.4)} ${n(cy - 8)} ${n(cx)} ${n(cy - 11.5)}Q${n(cx + 3.4)} ${n(cy - 8)} ${n(cx + 3.4)} ${n(cy - 2)}M${n(cx - 2)} ${n(cy - 4)}Q${n(cx - 2)} ${n(cy - 7.4)} ${n(cx)} ${n(cy - 9.2)}Q${n(cx + 2)} ${n(cy - 7.4)} ${n(cx + 2)} ${n(cy - 4)}" fill="none" stroke="#fef3c7" stroke-width=".6"/>`
-      g += spire(12.575, 39.5, 73, 9, '#e2e8f0')
-      if (rising('relay')) g += scaffold(12.3, 39.25, 0.55, 0.5, 60)
+      g += spire(12.575, 39.5, 73, 9)
     }
     add(39.22 + 9.35 + 2.4, g)
   }
@@ -793,7 +1049,6 @@ function landmarks(items: Item[], sc: Scene): string {
   if (!built('workshop')) {
     lot('workshop', [5, 41, 7, 42], LABELS.workshop, [4.9, 43.1, 'end'])
   } else {
-    const live = on('workshop')
     const c = ACCENT.workshop
     let g = box(5.25, 41.2, 1.5, 0.6, 22, 'r')
     // A painted sign along the top floor.
@@ -821,10 +1076,6 @@ function landmarks(items: Item[], sc: Scene): string {
       const [x, y] = p(gx, 41.45, 22)
       g += `<use href="#wt" x="${n(x)}" y="${n(y)}"/>`
     }
-    if (live || rising('workshop')) {
-      g += scaffold(5.25, 41.2, 1.5, 0.6, 22)
-      g += sparks(...p(6.75, 41.6, 10))
-    }
     add(41.2 + 5.25 + 1.5, g)
     // Herald Square, with the needle threaded through its button.
     ground += gRect(5.25, 42.2, 6.75, 42.82, '#353a47')
@@ -847,31 +1098,15 @@ function landmarks(items: Item[], sc: Scene): string {
     ])
   }
 
-  // The Empire State Building, its crown lit in the colour of whichever
-  // district is busiest, as the real one changes colour for the occasion.
+  // The Empire State Building. Its crown (z 78 to 83) is the overlay's: it
+  // takes the colour of whichever district is busiest.
   if (!built('empire')) {
     lot('empire', [7, 42, 9, 43], 'Empire State', [8, 42.5], true)
   } else {
-    let busy: District | undefined
-    let most = 0
-    for (const [d, list] of sc.byDistrict) {
-      const working = list.filter(a => a.status === 'working').length
-      if (d !== 'plaza' && working > most) [busy, most] = [d, working]
-    }
-    // An update waiting turns the crown gold, whatever is busy.
-    const crown = sc.update?.available ? '#fbbf24' : busy ? ACCENT[busy] : '#f8fafc'
-    let e = ''
-    if (sc.update?.available) {
-      // A gold halo breathing around the tower.
-      const [hx, hy] = p(7.8, 42.5, 50)
-      e += `<ellipse cx="${n(hx)}" cy="${n(hy)}" rx="34" ry="60" fill="url(#halo)"><animate attributeName="opacity" values=".55;1;.55" dur="2s" repeatCount="indefinite"/></ellipse>`
-    }
-    e += box(7.4, 42.2, 0.8, 0.6, 34, 's')
+    let e = box(7.4, 42.2, 0.8, 0.6, 34, 's')
     e += box(7.52, 42.3, 0.56, 0.4, 30, 's', 34)
     e += box(7.62, 42.38, 0.36, 0.24, 14, 's', 64)
-    e += slab(7.67, 42.42, 0.26, 0.16, 5, [crown, mix(crown, '#000000', 0.3), '#fff'], 78)
     e += spire(7.8, 42.5, 83, 15)
-    if (rising('empire')) e += scaffold(7.4, 42.2, 0.8, 0.6, 64)
     add(42.2 + 7.4 + 1.4, e)
   }
 
@@ -881,7 +1116,6 @@ function landmarks(items: Item[], sc: Scene): string {
   if (!built('foundry')) {
     lot('foundry', [1, 40, 5, 42], LABELS.foundry, [1.3, 42.9, 'end'])
   } else {
-    const live = on('foundry')
     const c = ACCENT.foundry
     ground += gRect(1.2, 40.2, 4.8, 41.85, '#24262f')
     let tracks = ''
@@ -897,41 +1131,22 @@ function landmarks(items: Item[], sc: Scene): string {
     // The Edge, a wedge off the tall tower's east wall.
     const [ex, ey] = p(3.95, 40.6, 58)
     g += `<path d="M${n(ex)} ${n(ey)}l9 1.5l-1 1.6l-8 -0.6z" fill="#e2e8f0"/><path d="M${n(ex)} ${n(ey)}l9 1.5" stroke="${c}" stroke-width=".8"/>`
-    // Crown lights in the district's orange.
-    g += face(
-      [
-        [3.3, 40.8, 62],
-        [3.95, 40.8, 62],
-        [3.95, 40.8, 66],
-        [3.3, 40.8, 66],
-      ],
-      c,
-      live ? '' : ' opacity=".6"',
-      live ? '<animate attributeName="opacity" values="1;.4;1" dur="1s" repeatCount="indefinite"/>' : '',
-    )
+    g += yardsCrown(false)
+    // The stack that smokes while the shell is busy.
     const [sx, sy] = p(1.6, 40.4)
     g += `<rect x="${n(sx - 2)}" y="${n(sy - 24)}" width="4" height="24" fill="#64748b"/><rect x="${n(sx - 2)}" y="${n(sy - 24)}" width="4" height="2" fill="${c}"/>`
-    if (live) g += smoke(sx, sy - 26, '#cbd5e1')
-    if (rising('foundry')) g += scaffold(3.3, 40.25, 0.65, 0.55, 66)
     add(40.25 + 3.3 + 1.5, g)
     // The Vessel: a copper honeycomb cup.
     const [vx, vy] = p(2.6, 41.35)
     let v = `<path d="M${n(vx - 4)} ${n(vy)}L${n(vx - 7.5)} ${n(vy - 13)}L${n(vx + 7.5)} ${n(vy - 13)}L${n(vx + 4)} ${n(vy)}z" fill="#9a4a12"/>`
     v += `<ellipse cx="${n(vx)}" cy="${n(vy - 13)}" rx="7.5" ry="2.2" fill="#c2621a"/>`
-    let lattice = ''
-    for (let i = -3; i <= 3; i++) lattice += `M${n(vx + i * 1.2)} ${n(vy)}L${n(vx + i * 2.3 + 2.4)} ${n(vy - 12.5)}M${n(vx + i * 1.2)} ${n(vy)}L${n(vx + i * 2.3 - 2.4)} ${n(vy - 12.5)}`
-    v += `<path d="${lattice}" stroke="${live ? '#fdba74' : '#e07a2f'}" stroke-width=".5" opacity=".9"/>`
+    v += lattice(false)
     add(2.6 + 41.35, v)
   }
 
   // City Hall in its park, with the fountain, and the Woolworth Building.
   if (!built('hall')) {
     lot('hall', [7, 55, 10, 56], LABELS.hall)
-    // A "?" still goes up on the empty lot when something needs you.
-    if (sc.isWaiting) {
-      const [dx, dy] = p(8.62, 55.5, 10)
-      add(55.28 + 8.0 + 1.5, beacon(dx, dy - 30, '#fbbf24', '?', sc.k))
-    }
   } else {
     const c = ACCENT.hall
     ground += gRect(7.15, 55.1, 9.85, 55.88, '#1f5130')
@@ -947,13 +1162,10 @@ function landmarks(items: Item[], sc: Scene): string {
     const [dx, dy] = p(8.62, 55.5, 10)
     g += `<path d="M${n(dx - 3)} ${n(dy)}a3 3 0 0 1 6 0z" fill="#e7e5e4"/><circle cx="${n(dx)}" cy="${n(dy - 3.4)}" r="1" fill="${c}"/>`
     g += `<line x1="${n(dx)}" y1="${n(dy - 3)}" x2="${n(dx)}" y2="${n(dy - 12)}" stroke="#e2e8f0" stroke-width=".8"/>`
-    g += `<path d="M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z" fill="#60a5fa"><animate attributeName="d" values="M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z;M${n(dx)} ${n(dy - 12)}l6 2.5l-6 .5z;M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z" dur="1.2s" repeatCount="indefinite"/></path>`
     for (const gx of [8.05, 9.2]) {
       const [x, y] = p(gx, 55.72)
       g += `<circle cx="${n(x)}" cy="${n(y - 6)}" r="1.1" fill="${c}"/>`
     }
-    if (rising('hall')) g += scaffold(8.0, 55.28, 1.25, 0.42, 9)
-    if (sc.isWaiting) g += beacon(dx, dy - 30, '#fbbf24', '?', sc.k)
     add(55.28 + 8.0 + 1.5, g)
   }
   // The Woolworth Building: scenery, always there.
@@ -979,11 +1191,6 @@ function landmarks(items: Item[], sc: Scene): string {
   // crane; red alarm and smoke on a merge conflict.
   if (!built('harbor')) {
     lot('harbor', [11, 57, 15, 58], LABELS.harbor)
-    // A merge conflict on the empty lot still raises the alarm.
-    if (sc.hasConflict) {
-      const [fx, fy] = p(13.2, 57.5, 8)
-      add(57.2 + 12.7 + 3, glow(13.6, 57.5, 34, 'alarm') + beacon(fx, fy - 26, '#ef4444', '!', sc.k))
-    }
   } else {
     const c = ACCENT.harbor
     ground += gRect(12.6, 57.15, 15.4, 57.85, '#4a4540')
@@ -1009,19 +1216,6 @@ function landmarks(items: Item[], sc: Scene): string {
       g += `<path d="M${n(sx + dx - 4)} ${n(sy - 20)}h8l-1 10h-6z" fill="#f5f5f4" opacity=".85"/>`
     }
     g += `<path d="M${n(sx - 8)} ${n(sy - 24)}L${n(sx)} ${n(sy - 24)}L${n(sx + 6)} ${n(sy - 24)}" stroke="${c}" stroke-width=".5" stroke-dasharray="1 1.4"/>`
-    const [cx, cy] = p(14.2, 57.4)
-    g += `<g><line x1="${n(cx)}" y1="${n(cy)}" x2="${n(cx)}" y2="${n(cy - 30)}" stroke="#facc15" stroke-width="1.6"/><line x1="${n(cx)}" y1="${n(cy - 29)}" x2="${n(cx + 18)}" y2="${n(cy - 24)}" stroke="#facc15" stroke-width="1.6"/>`
-    if (on('harbor')) {
-      g += `<animateTransform attributeName="transform" type="rotate" values="0 ${n(cx)} ${n(cy)};16 ${n(cx)} ${n(cy)};0 ${n(cx)} ${n(cy)}" dur="5s" repeatCount="indefinite"/>`
-    }
-    g += `</g>`
-    if (sc.hasConflict) {
-      g += glow(13.6, 57.5, 34, 'alarm')
-      const [fx, fy] = p(13.2, 57.5, 8)
-      g += smoke(fx, fy, '#f87171')
-      g += beacon(fx, fy - 26, '#ef4444', '!', sc.k)
-    }
-    if (rising('harbor')) g += scaffold(12.7, 57.2, 0.9, 0.6, 8)
     add(57.2 + 12.7 + 3, g)
   }
   return ground + '</g>'
@@ -1033,7 +1227,6 @@ function landmarks(items: Item[], sc: Scene): string {
 function reflections(): string {
   let warm = ''
   let cool = ''
-  let twinkle = ''
   for (let gy = 16; gy < 62.6; gy += 0.7) {
     const e = edges(gy)[1]
     const q = seeded(gy, 7)
@@ -1042,9 +1235,6 @@ function reflections(): string {
     const streak = `M${n(x - w / 2)} ${n(y + 1.5)}h${n(w)}M${n(x - w * 0.35)} ${n(y + 3.5)}h${n(w * 0.7)}M${n(x - w * 0.2)} ${n(y + 5.5)}h${n(w * 0.4)}`
     if (q > 0.3) warm += streak
     else cool += streak
-    if (q > 0.9) {
-      twinkle += `<circle cx="${n(x)}" cy="${n(y + 3)}" r=".8" fill="#fff7d6"><animate attributeName="opacity" values="0;1;0" dur="${n(2 + q * 2)}s" begin="${n(-gy % 3)}s" repeatCount="indefinite"/></circle>`
-    }
   }
   // New Jersey's lights across the Hudson.
   for (let gy = -1; gy < 62; gy += 1.3) {
@@ -1054,9 +1244,20 @@ function reflections(): string {
   }
   return (
     `<path class="refl" d="${warm}" stroke="#fcd581" stroke-width=".9" opacity=".4"/>` +
-    `<path class="refl" d="${cool}" stroke="#c7ddff" stroke-width=".8" opacity=".3"/>` +
-    twinkle
+    `<path class="refl" d="${cool}" stroke="#c7ddff" stroke-width=".8" opacity=".3"/>`
   )
+}
+
+// A few of the reflections twinkle: the overlay's, so the map stays still.
+function twinkles(): string {
+  let twinkle = ''
+  for (let gy = 16; gy < 62.6; gy += 0.7) {
+    const q = seeded(gy, 7)
+    if (q <= 0.9) continue
+    const [x, y] = p(edges(gy)[1] + 0.2 + q * 0.5, gy)
+    twinkle += `<circle cx="${n(x)}" cy="${n(y + 3)}" r=".8" fill="#fff7d6"><animate attributeName="opacity" values="0;1;0" dur="${n(2 + q * 2)}s" begin="${n(-gy % 3)}s" repeatCount="indefinite"/></circle>`
+  }
+  return twinkle
 }
 
 function moon(x: number, y: number): string {
@@ -1069,26 +1270,38 @@ function moon(x: number, y: number): string {
 
 // ---- bridges, boats, traffic ----------------------------------------------
 
-function bridge(a: [number, number], b: [number, number], towers: number[], color: string, isAlarm = false): string {
+// The main cable of a suspension bridge, between its towers' tops.
+function cable(a: [number, number], b: [number, number], towers: number[]): string {
+  const [x1, y1] = p(a[0], a[1], 4)
+  const [x2, y2] = p(b[0], b[1], 4)
+  const [t1, t2] = towers.map(t => [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t - 15] as Pt)
+  if (!t1 || !t2) return ''
+  const midX = (t1[0] + t2[0]) / 2
+  const midY = (t1[1] + t2[1]) / 2 + 12
+  return `M${n(x1)} ${n(y1)}L${n(t1[0])} ${n(t1[1])}Q${n(midX)} ${n(midY)} ${n(t2[0])} ${n(t2[1])}L${n(x2)} ${n(y2)}`
+}
+
+function bridge(a: [number, number], b: [number, number], towers: number[], color: string): string {
   const [x1, y1] = p(a[0], a[1], 4)
   const [x2, y2] = p(b[0], b[1], 4)
   let g = `<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" stroke="#94a3b8" stroke-width="2.4"/>`
   // Lamps along the deck.
   g += `<line x1="${n(x1)}" y1="${n(y1 - 1)}" x2="${n(x2)}" y2="${n(y2 - 1)}" stroke="#ffe6a8" stroke-width=".9" stroke-linecap="round" stroke-dasharray="0 6"/>`
-  const tops: Pt[] = towers.map(t => {
+  for (const t of towers) {
     const x = x1 + (x2 - x1) * t
     const y = y1 + (y2 - y1) * t
     g += `<rect x="${n(x - 1.5)}" y="${n(y - 16)}" width="3" height="17" fill="#a8a29e"/>`
-    return [x, y - 15]
-  })
-  const [t1, t2] = tops
-  if (t1 && t2) {
-    const midX = (t1[0] + t2[0]) / 2
-    const midY = (t1[1] + t2[1]) / 2 + 12
-    const stroke = isAlarm ? '#f87171' : color
-    g += `<path d="M${n(x1)} ${n(y1)}L${n(t1[0])} ${n(t1[1])}Q${n(midX)} ${n(midY)} ${n(t2[0])} ${n(t2[1])}L${n(x2)} ${n(y2)}" fill="none" stroke="${stroke}" stroke-width="1">${isAlarm ? '<animate attributeName="opacity" values="1;.3;1" dur=".8s" repeatCount="indefinite"/>' : ''}</path>`
   }
+  const d = cable(a, b, towers)
+  if (d) g += `<path d="${d}" fill="none" stroke="${color}" stroke-width="1"/>`
   return g
+}
+
+// The Brooklyn Bridge's cable flashing red: a merge conflict needs you.
+const BROOKLYN_BRIDGE: [[number, number], [number, number], number[]] = [[14.4, 56], [19.8, 56.2], [0.22, 0.8]]
+
+function bridgeAlarm(): string {
+  return `<path d="${cable(...BROOKLYN_BRIDGE)}" fill="none" stroke="#f87171" stroke-width="1"><animate attributeName="opacity" values="1;.3;1" dur=".8s" repeatCount="indefinite"/></path>`
 }
 
 function mover(path: string, dur: number, begin: number, shape: string): string {
@@ -1130,15 +1343,9 @@ function traffic(): string {
 // How long each launch plays, in seconds.
 const LAUNCH_SECONDS = { commit: 3.5, push: 9 }
 
-// The Statue of Liberty: at rest, or mid-launch after a commit (a hop) or a
-// push (liftoff, off the top of the map, and back). Each frame the page gets
-// may land mid-launch, so every animation begins `elapsed` seconds in the
-// past and carries on from there rather than starting over. She stands dark
-// until the first commit, and her torch is unlit until the first push.
-function statue(launch: Launch | undefined, now: number, state: 'dark' | 'unlit' | 'lit'): string {
-  const copper = state === 'dark' ? '#2f3f42' : '#5eada0'
-  let g = `<g class="statue ${state}">`
-  g += poly(
+// Liberty Island: the ground under the Statue, on the map.
+function libertyIsland(): string {
+  return poly(
     [
       [1.4, 69.4],
       [2.8, 69.4],
@@ -1147,10 +1354,26 @@ function statue(launch: Launch | undefined, now: number, state: 'dark' | 'unlit'
     ],
     '#1f5130',
   )
+}
+
+// The launch under way, if any: the Statue's item is keyed on it.
+function launching(launch: Launch | undefined, now: number): Launch['kind'] | undefined {
+  return launch && (now - launch.at) / 1000 < LAUNCH_SECONDS[launch.kind] ? launch.kind : undefined
+}
+
+// The Statue of Liberty: at rest, or mid-launch after a commit (a hop) or a
+// push (liftoff, off the top of the map, and back). The item is sent while a
+// launch is under way, so every animation begins `elapsed` seconds in the
+// past and carries on from there; the page shifts those offsets onto its own
+// clock when the item arrives. She stands dark until the first commit, and
+// her torch is unlit until the first push.
+function statue(launch: Launch | undefined, now: number, state: 'dark' | 'unlit' | 'lit'): string {
+  const copper = state === 'dark' ? '#2f3f42' : '#5eada0'
+  let g = `<g class="statue ${state}">`
   const [x, y] = p(2.1, 70)
   if (state !== 'dark') g += `<ellipse cx="${n(x)}" cy="${n(y)}" rx="9" ry="4.5" fill="#5eada0" opacity=".12"/>`
   const elapsed = launch ? (now - launch.at) / 1000 : Infinity
-  const kind = launch && elapsed < LAUNCH_SECONDS[launch.kind] ? launch.kind : undefined
+  const kind = launching(launch, now)
   const dur = kind ? LAUNCH_SECONDS[kind] : 0
   // An animation `at` seconds into the launch, lasting `len`.
   const t = (at: number, len: number, rest: string) => `begin="${n(at - elapsed)}s" dur="${n(len)}s" fill="freeze" ${rest}`
@@ -1264,9 +1487,19 @@ function fireworks(): string {
   return g + '</g>'
 }
 
-// Everything but the agents, back to front.
-export function drawMap(world: World, sc: Scene): string {
-  const { active, hasConflict, repoOf, vacantOf, now } = sc
+// What the still map depends on: which landmarks stand, which boroughs have
+// houses, whether the rails are laid, and how many blocks the population has
+// earned. Its hash tells the page whether it already has this map.
+export function mapKey(sc: Scene): string {
+  const built = Object.keys(sc.built).sort()
+  const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].sort()
+  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population)]))
+}
+
+// The still city, back to front: everything but the agents and the overlay.
+// It reads only what mapKey hashes.
+export function drawMap(sc: Scene): string {
+  const { repoOf, vacantOf } = sc
   const vb = frame([...repoOf.keys(), ...vacantOf.keys()])
   let s = ''
   // The water's sparkle, and the city's lights reflected in it.
@@ -1306,14 +1539,13 @@ export function drawMap(world: World, sc: Scene): string {
   const items: Item[] = []
   s += landmarks(items, sc)
   s += pads(sc)
-  s += traffic()
 
   // Bridges.
   s += bridge([edges(4.5)[0], 4.5], [edges(4.5)[0] - 5.2, 4.5], [0.12, 0.88], '#cbd5e1') // George Washington
   s += bridge([edges(34.5)[1], 34.5], [19.2, 34.5], [0.3, 0.75], '#94a3b8') // Queensboro
   s += bridge([edges(50.5)[1], 50.5], [21.4, 50.5], [0.25, 0.75], '#94a3b8') // Williamsburg
   s += bridge([edges(54)[1], 54], [20.5, 54], [0.2, 0.8], '#94a3b8') // Manhattan
-  s += bridge([14.4, 56], [19.8, 56.2], [0.22, 0.8], '#e2e8f0', hasConflict) // Brooklyn
+  s += bridge(...BROOKLYN_BRIDGE, '#e2e8f0') // Brooklyn
   s += bridge([12.9, 11], [14.6, 11], [], '#94a3b8') // Third Avenue, to the Bronx
   {
     // The ferry to Jersey City.
@@ -1324,31 +1556,21 @@ export function drawMap(world: World, sc: Scene): string {
 
   // A borough for each repository in use besides the session's own, and the
   // houses of the ones that have moved out.
-  for (const [b] of vacantOf) s += burb(b, undefined, sc)
-  for (const [b, repo] of repoOf) s += burb(b, repo, sc)
+  for (const [b] of vacantOf) s += burb(b)
+  for (const [b] of repoOf) s += burb(b)
 
   // Buildings and landmarks, back to front.
   fabric(items, sc.population)
   items.sort((a, b) => a.depth - b.depth)
   s += items.map(i => i.svg).join('')
-  // Each district's lights wash over its buildings in its colour, brighter
-  // while someone works there.
-  for (const d of DISTRICTS) {
-    const [x0, y0, x1, y1] = padOf(d)
-    const [x, y] = p((x0 + x1) / 2, (y0 + y1) / 2, 14)
-    s += `<ellipse class="glow haze" cx="${n(x)}" cy="${n(y)}" rx="${d === 'plaza' ? 70 : 46}" ry="${d === 'plaza' ? 36 : 27}" fill="url(#p-${d})" opacity="${active.has(d) ? 0.55 : 0.28}"/>`
-  }
   // The city's glow on the haze above Midtown and downtown.
   s += `<ellipse class="sky" cx="${n(p(9, 41)[0])}" cy="${n(p(9, 41)[1] - 40)}" rx="190" ry="85" fill="url(#sky)"/>`
   s += `<ellipse class="sky" cx="${n(p(8, 58)[0])}" cy="${n(p(8, 58)[1] - 40)}" rx="130" ry="60" fill="url(#sky)"/>`
-  s += statue(world.launch, now, sc.built.torch !== undefined ? 'lit' : sc.built.harbor !== undefined ? 'unlit' : 'dark')
+  s += libertyIsland()
   s += moon(vb.x + vb.w * 0.3, vb.y + 34)
-  // Fireworks for an update waiting, and for a while once the city is complete.
-  const finished = sc.built.empire
-  if (sc.update?.available || (finished !== undefined && now - finished < FIREWORKS_MS)) s += fireworks()
 
-  // Names on the map: neighbourhoods once zoomed in, rivers, the boroughs not
-  // in use, and the districts in their own colours.
+  // Names on the map: neighbourhoods once zoomed in, rivers, and the boroughs
+  // not in use. The districts' names are the overlay's: they light up with work.
   for (const [name, gx, gy] of HOODS) {
     const [x, y] = p(gx, gy)
     s += `<text class="hood minor" x="${n(x)}" y="${n(y)}" text-anchor="middle">${name}</text>`
@@ -1373,15 +1595,35 @@ export function drawMap(world: World, sc: Scene): string {
     const [x, y] = p(gx, gy)
     s += `<text class="hood big" x="${n(x)}" y="${n(y)}" text-anchor="middle">${name}</text>`
   }
-  for (const d of DISTRICTS) {
-    // A blueprint lot carries its own caption; Grand Central's terminal always stands.
-    if (sc.built[d] === undefined && d !== 'relay') continue
-    const [gx, gy, z, anchor] = SITES[d].label
-    const [x, y] = p(gx, gy, z)
-    const on = active.has(d)
-    const cls = `lbl${on ? ' on' : MIDTOWN.has(d) ? ' minor' : ''}`
-    const fill = on ? ACCENT[d] : mix(ACCENT[d], '#e2e8f0', 0.5)
-    s += `<text class="${cls}" x="${n(x)}" y="${n(y)}" text-anchor="${anchor ?? 'middle'}" style="fill:${fill}">${LABELS[d].toUpperCase()}</text>`
-  }
   return s
+}
+
+// Everything on the city that moves or lights up, in paint order, as keyed
+// items (docs/frames.md). The trains, the hover zones, the taxis and the
+// agents are drawn elsewhere.
+export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
+  const out: OverlayItem[] = []
+  const put = (k: string, svg: string, top = false) => {
+    if (svg) out.push(item(k, svg, top))
+  }
+  put('twinkle', twinkles())
+  put('cars', traffic())
+  put('pads', padsLit(sc))
+  for (const [b] of sc.vacantOf) put(`burb:${b}`, burbLit(b, undefined, sc))
+  for (const [b, repo] of sc.repoOf) put(`burb:${b}`, burbLit(b, repo, sc))
+  out.push(...landmarkLights(sc))
+  put('spires', spireLights(sc))
+  put('haze', haze(sc))
+  if (sc.hasConflict) put('alarm', bridgeAlarm())
+  {
+    const state = sc.built.torch !== undefined ? 'lit' : sc.built.harbor !== undefined ? 'unlit' : 'dark'
+    const kind = launching(world.launch, sc.now)
+    // Keyed on the launch, not the markup: the markup holds offsets from now.
+    out.push(keyed('statue', [state, kind, kind ? world.launch!.at : 0, kind ? world.launch!.who : '', kind ? world.launch!.repo : ''], statue(world.launch, sc.now, state)))
+  }
+  put('labels', labels(sc))
+  // Fireworks for an update waiting, and for a while once the city is complete.
+  const finished = sc.built.empire
+  if (sc.update?.available || (finished !== undefined && sc.now - finished < FIREWORKS_MS)) put('fireworks', fireworks(), true)
+  return out
 }

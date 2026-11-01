@@ -207,6 +207,9 @@ export const AGENT_CAP = 24
 export { TRAIN_MS, SCAFFOLD_MS, FIREWORKS_MS }
 // An agent's walk to the station lasts this long at most (the SVG walk is capped at 4.5 s).
 const BOARDING_MS = 5_000
+// A walk is carried in the frames this long after it started, which outlasts
+// the longest one.
+export const WALK_MS = 5_000
 // An arriving train stands at the platform this long before it leaves empty.
 const DWELL_MS = 4_000
 // Sessions quiet for this long have closed without saying so (a backstop).
@@ -1032,6 +1035,10 @@ export class City {
     for (const a of w.agents) {
       const moved = a.shown.at !== a.at || a.shown.burb !== a.burb
       a.walkFrom = moved ? a.shown : undefined
+      // A move starts a walk, which the frames carry until it is over (the
+      // longest walk is 4.5 s); a move mid-walk starts a new one from here.
+      if (moved) a.walk = { from: a.shown, at: now }
+      else if (a.walk && now - a.walk.at > WALK_MS) delete a.walk
       a.shown = a.burb ? { at: a.at, burb: a.burb } : { at: a.at }
       if (a.arriving && now >= a.arriving) delete a.arriving
     }

@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { renderCity } from '../src/city.ts'
+import { renderFrame } from '../src/city.ts'
+import { renderCity } from './render.ts'
 import { BLOCK_EVERY, LANDMARKS, fullPopulation } from '../src/draw/geo.ts'
 import { City, FIREWORKS_MS, SCAFFOLD_MS, TRAIN_MS, emptyWorld } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
@@ -37,11 +38,11 @@ test('a brand-new city is bare land, and the welcome shows until a session is se
   assert.deepEqual(city.world.built, {})
   assert.equal(city.world.population, 0)
   assert.equal(city.isNew, true)
-  const svg = renderCity(city.world, T0, { animateWalks: false, connected: false })
+  const svg = renderCity(city.world, T0, { connected: false })
   assert.ok(svg.includes('class="bp'), 'blueprint lots are drawn')
   assert.ok(svg.includes('Read a file to build it'), 'with their hints')
   assert.ok(!svg.includes('class="rails"'), 'no rails until the hooks are in')
-  assert.ok(renderCity(city.world, T0, { animateWalks: false, connected: true }).includes('class="rails"'))
+  assert.ok(renderCity(city.world, T0, { connected: true }).includes('class="rails"'))
 
   city.apply(ev('SessionStart', 'S1'), T0)
   assert.equal(city.isNew, false, 'a session has been seen')
@@ -151,11 +152,11 @@ test('the population counts tool calls, and the fabric grows with it', () => {
   started(city)
   for (let i = 0; i < 5; i++) tool(city, 'S1', 'Read', { file_path: `${HOME}/${i}.ts` }, T0 + 1000 + i * 100)
   assert.equal(city.world.population, 5)
-  const bare = renderCity(city.world, T0 + 2000, { animateWalks: false })
+  const bare = renderCity(city.world, T0 + 2000, {})
   city.world.population = BLOCK_EVERY * 3
-  const some = renderCity(city.world, T0 + 2000, { animateWalks: false })
+  const some = renderCity(city.world, T0 + 2000, {})
   city.world.population = fullPopulation()
-  const full = renderCity(city.world, T0 + 2000, { animateWalks: false })
+  const full = renderCity(city.world, T0 + 2000, {})
   const blocks = (svg: string) => (svg.match(/class="[gsbrk]L"/g) ?? []).length
   assert.ok(blocks(bare) < blocks(some), 'blocks appear with the population')
   assert.ok(blocks(some) < blocks(full))
@@ -169,12 +170,12 @@ test('a landmark stands in scaffolding for a few seconds, then finished; the ser
   tool(city, 'S1', 'Read', { file_path: `${HOME}/a.ts` }, T0 + 3 * SCAFFOLD_MS)
   const at = city.world.built!.library!
   city.flush(at)
-  const rising = renderCity(city.world, at + 1000, { animateWalks: false })
+  const rising = renderCity(city.world, at + 1000, {})
   assert.ok(rising.includes('class="scaf"'), 'scaffolding on the Library')
   assert.ok(!rising.includes('Read a file to build it'), 'its blueprint is gone')
   assert.equal(city.due(at + SCAFFOLD_MS - 100), false)
   assert.equal(city.due(at + SCAFFOLD_MS + 100), true)
-  const done = renderCity(city.world, at + SCAFFOLD_MS + 1000, { animateWalks: false })
+  const done = renderCity(city.world, at + SCAFFOLD_MS + 1000, {})
   assert.ok(!done.includes('class="scaf"'))
 })
 
@@ -182,20 +183,20 @@ test('the finished city gets fireworks for a while', () => {
   const city = new City()
   city.buildAll(T0)
   city.world.built!.empire = T0 + 10_000
-  assert.ok(renderCity(city.world, T0 + 11_000, { animateWalks: false }).includes('class="fireworks"'))
-  assert.ok(!renderCity(city.world, T0 + 10_000 + FIREWORKS_MS + 1000, { animateWalks: false }).includes('class="fireworks"'))
+  assert.ok(renderCity(city.world, T0 + 11_000, {}).includes('class="fireworks"'))
+  assert.ok(!renderCity(city.world, T0 + 10_000 + FIREWORKS_MS + 1000, {}).includes('class="fireworks"'))
   assert.equal(city.due(T0 + 10_000 + FIREWORKS_MS + 100), true)
 })
 
 test('the Statue is dark until the first commit, and her torch unlit until the first push', () => {
   const city = new City()
   started(city)
-  assert.ok(renderCity(city.world, T0 + 500, { animateWalks: false }).includes('class="statue dark"'))
+  assert.ok(renderCity(city.world, T0 + 500, {}).includes('class="statue dark"'))
   tool(city, 'S1', 'Bash', { command: 'git commit -m x' }, T0 + 1000)
-  const lit = renderCity(city.world, T0 + 20_000, { animateWalks: false })
+  const lit = renderCity(city.world, T0 + 20_000, {})
   assert.ok(lit.includes('class="statue unlit"'))
   tool(city, 'S1', 'Bash', { command: 'git push' }, T0 + 30_000)
-  assert.ok(renderCity(city.world, T0 + 50_000, { animateWalks: false }).includes('class="statue lit"'))
+  assert.ok(renderCity(city.world, T0 + 50_000, {}).includes('class="statue lit"'))
 })
 
 test('a city saved before the game existed counts as fully built; a never-used one starts bare', () => {
@@ -256,18 +257,19 @@ test("the first session of a brand-new city arrives by train, and the train leav
   assert.ok(train.leaveAt > T0 + TRAIN_MS, 'it stands at the platform a while')
 
   city.flush(T0 + 500)
-  const coming = renderCity(city.world, T0 + 500, { animateWalks: true })
+  const coming = renderCity(city.world, T0 + 500, {})
   assert.ok(coming.includes('class="train arriving"'))
   assert.ok(coming.includes('Arriving: home'))
-  assert.ok(/class="agent idle"[^>]*opacity="0"/.test(coming), 'the passenger is not on the platform yet')
+  const aboard = renderFrame(city.world, T0 + 500).agents.find(a => a.id === 'lead:S1')!
+  assert.ok(aboard.cls === 'agent idle' && aboard.fig.svg.startsWith('<g opacity="0">'), 'the passenger is not on the platform yet')
   assert.equal(city.due(T0 + TRAIN_MS), true, 'redrawn when it steps off')
   city.flush(T0 + TRAIN_MS + 100)
   assert.equal(lead.arriving, undefined)
-  const standing = renderCity(city.world, T0 + TRAIN_MS + 100, { animateWalks: true })
+  const standing = renderCity(city.world, T0 + TRAIN_MS + 100, {})
   assert.ok(standing.includes('class="train standing"'))
-  assert.ok(!/class="agent idle"[^>]*opacity="0"/.test(standing))
+  assert.ok(!renderFrame(city.world, T0 + TRAIN_MS + 100).agents[0]!.fig.svg.startsWith('<g opacity="0">'))
   city.flush(train.leaveAt + 500)
-  const gone = renderCity(city.world, train.leaveAt + 500, { animateWalks: true })
+  const gone = renderCity(city.world, train.leaveAt + 500, {})
   assert.ok(gone.includes('class="train leaving"'), 'it pulls out again, empty')
   assert.equal(city.world.agents.length, 1, 'the lead stays')
   city.flush(train.leaveAt + TRAIN_MS + 100)

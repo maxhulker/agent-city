@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BLUEPRINTS, BURBS, LABELS, LANDMARKS, renderCity } from './city.ts'
+import { BLUEPRINTS, BURBS, LABELS, LANDMARKS, renderFrame } from './city.ts'
 import { Approvals } from './approvals.ts'
 import { changesIn } from './changes.ts'
 import { hooksInstalled } from './install.ts'
@@ -94,7 +94,9 @@ function save() {
 
 // ---- streaming frames to the page -----------------------------------------
 
-type Client = { res: ServerResponse }
+// Each client remembers which map it has, so the map goes out only when it
+// changes (docs/frames.md).
+type Client = { res: ServerResponse; mapHash?: string }
 const clients = new Set<Client>()
 
 // Folders the page offers for a new task: Manhattan, the boroughs, and wherever sessions run.
@@ -205,17 +207,21 @@ function meta(world: World) {
   }
 }
 
-function send(client: Client, world: World, animateWalks: boolean, info: ReturnType<typeof meta>) {
+// One frame for everyone: {map?, overlay, agents, meta}. The map rides along
+// only for clients that don't have this one yet.
+function broadcast(only?: Client) {
+  const info = meta(city.world)
   const u = updates.state
   const blocked = u.dirty ? 'this copy has local changes' : u.ahead > 0 ? "this copy has commits that aren't on main yet" : undefined
   const update = { available: u.available, behind: u.behind, ...(u.latest ? { latest: u.latest } : {}), ...(blocked ? { blocked } : {}) }
-  const svg = renderCity(world, Date.now(), { animateWalks, update, connected })
-  client.res.write(`data: ${JSON.stringify({ svg, meta: info })}\n\n`)
-}
-
-function broadcast(animateWalks: boolean) {
-  const info = meta(city.world)
-  for (const client of clients) send(client, city.world, animateWalks, info)
+  const frame = renderFrame(city.world, Date.now(), { update, connected })
+  const rest = `"overlay":${JSON.stringify(frame.overlay)},"agents":${JSON.stringify(frame.agents)},"meta":${JSON.stringify(info)}}\n\n`
+  const map = `"map":${JSON.stringify(frame.map)},`
+  for (const client of only ? [only] : clients) {
+    const withMap = client.mapHash !== frame.map.hash
+    if (withMap) client.mapHash = frame.map.hash
+    client.res.write(`data: {${withMap ? map : ''}${rest}`)
+  }
 }
 
 let lastSave = 0
@@ -224,7 +230,7 @@ setInterval(() => {
   // A train due to leave, or to be gone, is a change too.
   if (city.isDirty || city.due(now)) {
     city.flush(now)
-    broadcast(true)
+    broadcast()
     if (now - lastSave > 5000) {
       save()
       lastSave = now
@@ -411,7 +417,7 @@ const server = createServer(async (req, res) => {
       })
       const client: Client = { res }
       clients.add(client)
-      send(client, city.world, false, meta(city.world))
+      broadcast(client)
       const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
       req.on('close', () => {
         clearInterval(ping)

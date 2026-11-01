@@ -40,6 +40,9 @@ export type Agent = {
   // Where the last drawn frame showed it, and where it walks from in this one.
   shown: Place
   walkFrom?: Place
+  // The walk under way: from where, and when it set off. Kept until the walk
+  // is over, so every frame can give the page the whole route.
+  walk?: { from: Place; at: number }
   activity: string
   tools: number
   inFlight: number

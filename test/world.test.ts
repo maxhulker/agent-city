@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { renderCity } from '../src/city.ts'
+import { renderFrame } from '../src/city.ts'
+import { renderCity } from './render.ts'
 import { opacityFor } from '../src/draw/agents.ts'
 import { AGENT_CAP, BURB_LEAVE, City, IDLE_LEAVE, REST_LEAVE, TRAIN_MS } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
@@ -164,7 +165,7 @@ test('a borough packs up after an hour of quiet, and its repository moves straig
   city.flush(T0 + BURB_LEAVE + MIN)
   assert.ok(repo().left, 'packed up')
   assert.equal(repo().burb, 'brooklyn', 'still known, with its old address')
-  const svg = renderCity(city.world, T0 + BURB_LEAVE + MIN, { animateWalks: false })
+  const svg = renderCity(city.world, T0 + BURB_LEAVE + MIN, {})
   assert.ok(svg.includes('Brooklyn: empty'), 'the houses stay, with an empty sign')
 
   // Another repository may take the free borough.
@@ -249,13 +250,14 @@ test('the city renders with a train at the platform and then on its way', () => 
   idleSession(city, 'S1', T0)
   city.sendHome('S1', T0 + 1000)
   city.flush(T0 + 1000)
-  const boarding = renderCity(city.world, T0 + 1500, { animateWalks: true })
+  const boarding = renderCity(city.world, T0 + 1500, {})
   assert.ok(boarding.includes('class="train boarding"'))
   assert.ok(boarding.includes('Boarding: home'))
   assert.ok(boarding.includes('class="agent leaving"'), 'the passenger walks to the station')
   const leaveAt = city.world.trains!.find(t => t.kind !== 'arrive')!.leaveAt
   city.flush(leaveAt + 500)
-  const rolling = renderCity(city.world, leaveAt + 500, { animateWalks: true })
+  const rolling = renderCity(city.world, leaveAt + 500, {})
   assert.ok(rolling.includes('class="train leaving"'), 'the train pulls out')
   assert.ok(!rolling.includes('class="agent'), 'nobody is left on the platform')
 })
+

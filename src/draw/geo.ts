@@ -373,7 +373,7 @@ export function blocksFor(population: number): number {
 
 // Along the walker's street to Fifth Avenue, down Fifth, along the street to
 // the destination: the grid way, crossing a bridge in or out of a borough.
-export function walk(from: Place, to: Place, end: [number, number]): { path: string; dur: number } {
+export function walk(from: Place, to: Place, end: [number, number]): { path: string; dur: number; pts: Pt[] } {
   const trunk = 9
   const via: [number, number][] = [placeAt(from, 0)]
   if (from.burb) {
@@ -393,8 +393,9 @@ export function walk(from: Place, to: Place, end: [number, number]): { path: str
   for (let i = 1; i < via.length; i++) {
     dist += Math.abs(via[i]![0] - via[i - 1]![0]) + Math.abs(via[i]![1] - via[i - 1]![1])
   }
-  const path = 'M' + via.map(([gx, gy]) => p(gx, gy).map(n).join(',')).join(' L')
-  return { path, dur: Math.min(4.5, 1 + dist * 0.05) }
+  const route = via.map(([gx, gy]) => p(gx, gy).map(v => Math.round(v * 10) / 10) as Pt)
+  const path = 'M' + route.map(([x, y]) => `${x},${y}`).join(' L')
+  return { path, dur: Math.min(4.5, 1 + dist * 0.05), pts: route }
 }
 
 
@@ -441,7 +442,6 @@ export function frame(burbs: Burb[]): Frame {
 // What every layer knows about this frame.
 export type Scene = {
   now: number
-  animateWalks: boolean
   // Manhattan's agents by district; the others by borough.
   byDistrict: Map<District, Agent[]>
   byBurb: Map<Burb, Agent[]>
@@ -464,4 +464,42 @@ export type Scene = {
   built: Partial<Record<Landmark, number>>
   population: number
   connected: boolean
+}
+
+// ---- layers (docs/frames.md) ---------------------------------------------
+
+// One dynamic piece of the city, drawn over the static map. The page keeps a
+// <g> per key and replaces its content only when `h` changes, so `h` must come
+// from what the item shows, never from markup that holds the clock.
+export type OverlayItem = { k: string; h: string; svg: string; top?: true }
+
+// An agent as the page draws and moves it: its figure around (0,0), where it
+// stands, and the walk under way, if any, as a route in SVG units.
+export type Sprite = {
+  id: string
+  session: string
+  cls: string
+  x: number
+  y: number
+  z: number
+  fig: { h: string; svg: string }
+  walk?: { t0: number; dur: number; pts: Pt[] }
+}
+
+// FNV-1a over a string: short and stable, and quick enough for a few KB a frame.
+export function hash(text: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  return (h >>> 0).toString(36)
+}
+
+// An overlay item hashed by its markup, for pieces whose markup holds no clock.
+export function item(k: string, svg: string, top = false): OverlayItem {
+  return top ? { k, h: hash(svg), svg, top } : { k, h: hash(svg), svg }
+}
+
+// An overlay item hashed by its inputs, for markup with begin offsets from now.
+export function keyed(k: string, inputs: unknown[], svg: string, top = false): OverlayItem {
+  const h = hash(JSON.stringify(inputs))
+  return top ? { k, h, svg, top } : { k, h, svg }
 }
