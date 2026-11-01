@@ -3,6 +3,7 @@ import type { OverlayItem, Scene, Sprite } from './draw/geo.ts'
 import { AGENT_CSS, drawRides, drawSprites, drawTrains } from './draw/agents.ts'
 import { defs, drawMap, drawOverlay, mapKey } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
+import { manhattanLayout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
 
 export { AGENT_COLORS, BLUEPRINTS, BURBS, BURB_ORDER, LABELS, LANDMARKS, districtFor, mainColor } from './draw/geo.ts'
@@ -62,6 +63,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     built: world.built ?? Object.fromEntries(LANDMARKS.map(id => [id, 0])),
     population: world.built ? (world.population ?? 0) : Infinity,
     connected: opts.connected ?? true,
+    layout: world.layout ?? manhattanLayout(world.built),
     rev: world.layout?.rev ?? 0,
   }
 

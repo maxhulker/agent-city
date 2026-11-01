@@ -121,8 +121,16 @@ The direction after C: the person lays the city out themselves, briefed in
 (the `Layout` types, the Manhattan preset, the island's constants moved
 from `geo.ts` and re-exported there), `World.layout` with the migration in
 the `City` constructor, the revision in the map's hash, and the golden hash
-of the preset's map in `test/golden.json` (`test/layout.test.ts`). Nothing
-is drawn from the layout yet; step two is next.
+of the preset's map in `test/golden.json` (`test/layout.test.ts`). Step two
+is in too: the map, the overlay, the hover zones and the sprites read the
+layout. Each building is drawn by its kind at the kind's preset origin and
+moved by one translate (`sh`/`gsh` in map.ts), keyed `lm:<id>`; the station
+and Grand Central's towers are two buildings; streets, lots, the rails and
+the pads come from the layout. The picture is the same to the pixel but for
+a strip on MetLife's east wall (the golden hash notes it). Not done from the
+brief's step two: `World.built` stays as the game's record (the Blueprints
+card, the torch, the Empire State's timing read it) and is kept in step with
+the buildings' own `built`; step seven can retire it. Step three is next.
 
 ## Lessons from the first session, on cost
 

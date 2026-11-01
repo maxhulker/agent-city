@@ -248,23 +248,96 @@ export function lots(): Lot[] {
 
 // ---- the Manhattan preset as a layout ------------------------------------------
 
-// Where each landmark stands in the preset: its reserved lot's corner. The
-// relay's towers are the MetLife lot behind the station; the Chrysler rises
-// from the station's own lot. The Statue has Liberty Island.
-const PRESET_SITES: Record<Kind, [number, number]> = {
+// Where each kind stands in the preset: its reserved lot's corner, which is
+// also the origin its drawing is made at (map.ts draws a kind there and
+// shifts it to wherever the building is). The relay's towers are the MetLife
+// lot behind the station; the Chrysler rises from the station's own lot once
+// the towers are built. The Statue has Liberty Island. In drawing order.
+export const PRESET_SITES: Record<Kind, [number, number]> = {
   plaza: [5, 22],
   observatory: [3, 37],
   library: [7, 39],
   relay: [9, 38],
+  station: [9, 39],
   workshop: [5, 41],
   empire: [7, 42],
   foundry: [1, 40],
   hall: [7, 55],
-  harbor: [11, 57],
-  station: [9, 39],
-  liberty: [1, 69],
   woolworth: [5, 55],
   wtc: [3, 57],
+  harbor: [11, 57],
+  liberty: [1, 69],
+}
+
+// How far a building stands from its kind's preset origin, in cells.
+export function deltaOf(b: Building): [number, number] {
+  const [ox, oy] = PRESET_SITES[b.kind]
+  return [b.x - ox, b.y - oy]
+}
+
+// The city's buildings (not a borough's) of a kind.
+export function cityBuildings(layout: Layout, kind: Kind): Building[] {
+  return layout.buildings.filter(b => b.kind === kind && !b.burb)
+}
+
+// The building a district's agents stand in front of: the one of its kind in
+// the city (the first, until routes pick the nearest), the station for the
+// relay, and none when nothing of the kind is placed.
+export function siteFor(layout: Layout, d: District): Building | undefined {
+  return cityBuildings(layout, d === 'relay' ? 'station' : d)[0]
+}
+
+// Is the cell at x on row y land?
+export function landAt(layout: Layout, x: number, y: number): boolean {
+  return layout.land.some(([ry, x0, x1]) => ry === y && x >= x0 && x < x1)
+}
+
+// The land span of row y that holds x, if any.
+export function landSpan(layout: Layout, x: number, y: number): [number, number] | undefined {
+  const s = layout.land.find(([ry, x0, x1]) => ry === y && x >= x0 && x < x1)
+  return s ? [s[1], s[2]] : undefined
+}
+
+// The zoned lots with their widths, in zoning order: a lot runs from the
+// avenue at x + 0.26 to x + 1.74, clipped to the shore. The preset keeps its
+// smooth shoreline, so its lots are exactly `lots()`.
+export function lotsOf(layout: Layout): Lot[] {
+  const preset = 'preset' in layout.map
+  const out: Lot[] = []
+  for (const [x, y] of layout.zoned) {
+    let west: number
+    let east: number
+    if (preset) {
+      const [w0, e0] = edges(y)
+      const [w1, e1] = edges(y + 1)
+      west = Math.max(w0, w1) + 0.15
+      east = Math.min(e0, e1) - 0.15
+    } else {
+      const span = landSpan(layout, x, y) ?? landSpan(layout, x + 1, y)
+      if (!span) continue
+      west = span[0]
+      east = span[1]
+    }
+    const x0 = Math.max(x + 0.26, west)
+    const x1 = Math.min(x + 1.74, east)
+    if (x1 - x0 < 0.5) continue
+    out.push({ x, y, x0, x1 })
+  }
+  return out
+}
+
+// The rails: along the street behind the station's front, from the station
+// east to the shore, where the tunnel mouth is.
+export function trackOf(layout: Layout): { y: number; x0: number; x1: number; mouth: number } {
+  const station = cityBuildings(layout, 'station')[0] ?? { x: PRESET_SITES.station[0], y: PRESET_SITES.station[1] }
+  const y = station.y + 1.55
+  let shore: number
+  if ('preset' in layout.map) shore = edges(y)[1]
+  else {
+    const span = landSpan(layout, station.x, Math.floor(y))
+    shore = span ? span[1] : station.x + 4
+  }
+  return { y, x0: station.x + 0.2, x1: shore + 0.6, mouth: shore + 0.1 }
 }
 
 // The plazas and parks the landmarks open onto, which no building takes.

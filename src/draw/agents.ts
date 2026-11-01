@@ -1,6 +1,7 @@
 import type { Agent, District, Session, World } from '../types.ts'
-import { TRACK_Y, TRAIN_MS, burbAt, esc, hash, keyed, n, p, placeAt, standAt, walk } from './geo.ts'
+import { TRAIN_MS, burbAt, esc, hash, keyed, n, p, placeAt, shiftFor, standAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
+import { trackOf } from '../layout.ts'
 
 // The agents: who they are, where they stand, what they are doing. They go
 // to the page as sprites (docs/frames.md): the figure, the spot, and the walk
@@ -121,7 +122,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
   const sessions = new Map(world.sessions.map(x => [x.id, x]))
   const out: Sprite[] = []
   const placed: { a: Agent; at: [number, number]; i: number }[] = []
-  for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i), i }))
+  for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i, shiftFor(sc.layout, d)), i }))
   for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: burbAt(b, i), i }))
   placed.sort((x, y) => x.at[0] + x.at[1] - (y.at[0] + y.at[1]))
   const round = (v: number) => Math.round(v * 10) / 10
@@ -153,7 +154,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
     // The walk under way, sent on every frame until it is over, so the page
     // always has the whole route and never cuts it short.
     if (a.walk) {
-      const route = walk(a.walk.from, { at: a.at, ...(a.burb ? { burb: a.burb } : {}) }, at)
+      const route = walk(a.walk.from, { at: a.at, ...(a.burb ? { burb: a.burb } : {}) }, at, sc.layout)
       const dur = Math.round(route.dur * 1000)
       if (sc.now < a.walk.at + dur) sprite.walk = { t0: a.walk.at, dur, pts: route.pts }
     }
@@ -176,8 +177,7 @@ function quad(list: [number, number, number][], fill: string, extra = ''): strin
   return `<polygon points="${list.map(([gx, gy, z]) => p(gx, gy, z).map(n).join(',')).join(' ')}" fill="${fill}"${extra}/>`
 }
 
-function car(x: number, color: string, isFront: boolean, boarding: boolean, lit = true): string {
-  const y = TRACK_Y
+function car(x: number, y: number, color: string, isFront: boolean, boarding: boolean, lit = true): string {
   const y1 = y + CAR_D
   const x1 = x + CAR_L
   const edge = ` stroke="${INK}" stroke-width=".35" stroke-linejoin="round"`
@@ -206,6 +206,8 @@ export function drawTrains(world: World, sc: Scene): OverlayItem[] {
   const out: OverlayItem[] = []
   const [dx, dy] = p(7, 0)
   const secs = n(TRAIN_MS / 1000)
+  // The platform: along the track, in front of the station wherever it is.
+  const track = trackOf(sc.layout)
   for (const t of world.trains ?? []) {
     // Negative while boarding; once it is positive, the train is on its way.
     const age = (sc.now - t.leaveAt) / 1000
@@ -218,7 +220,7 @@ export function drawTrains(world: World, sc: Scene): OverlayItem[] {
     // Its windows are lit with passengers: coming in, or waiting for them.
     const lit = arriving ? incoming : true
     let cars = ''
-    for (let i = 0; i < 3; i++) cars += car(9.1 + i * (CAR_L + 0.1), esc(t.color), i === 2, boarding && !arriving, lit)
+    for (let i = 0; i < 3; i++) cars += car(track.x0 - 0.1 + i * (CAR_L + 0.1), track.y, esc(t.color), i === 2, boarding && !arriving, lit)
     let motion = ''
     let phase: string
     if (incoming) {
@@ -253,7 +255,7 @@ export function drawTrains(world: World, sc: Scene): OverlayItem[] {
 export function drawRides(world: World, sc: Scene): OverlayItem[] {
   const out: OverlayItem[] = []
   for (const ride of world.rides ?? []) {
-    const { path, dur } = walk(ride.from, ride.to, placeAt(ride.to, 0))
+    const { path, dur } = walk(ride.from, ride.to, placeAt(ride.to, 0, sc.layout), sc.layout)
     const age = (sc.now - ride.at) / 1000
     if (age > dur + 1) continue
     const timing = `begin="${(-age).toFixed(2)}s" dur="${n(dur)}s" fill="freeze"`

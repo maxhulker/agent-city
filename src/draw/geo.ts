@@ -1,5 +1,6 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
-import { BLOCK_EVERY, BURBS, PROFILE, SITES, edges, lots } from '../layout.ts'
+import { BLOCK_EVERY, BURBS, PROFILE, SITES, deltaOf, edges, lots, siteFor } from '../layout.ts'
+import type { Layout } from '../layout.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
 // its neighbours, where districts and boroughs are, and how agents walk. The
@@ -170,18 +171,31 @@ export const ACCENT: Record<District, string> = {
 // Midtown's five sit a block or two apart, so their names wait for a zoom.
 export const MIDTOWN = new Set<District>(['observatory', 'library', 'relay', 'workshop', 'foundry'])
 
-// The lit ground where a district's agents stand: [gx0, gy0, gx1, gy1].
-export function padOf(d: District): [number, number, number, number] {
+// Where a district's agents stand: its preset spot, moved with its building.
+export function spotOf(d: District, [dx, dy]: [number, number] = [0, 0]): [number, number] {
   const [sx, sy] = SITES[d].spot
-  if (d === 'plaza') return [5.5, 26.6, 8.5, 31.1]
+  return [sx + dx, sy + dy]
+}
+
+// The shift of the building a district's agents use, in cells; none when
+// nothing of the kind is placed (its agents then stand at the preset spot).
+export function shiftFor(layout: Layout | undefined, d: District): [number, number] {
+  const b = layout && siteFor(layout, d)
+  return b ? deltaOf(b) : [0, 0]
+}
+
+// The lit ground where a district's agents stand: [gx0, gy0, gx1, gy1].
+export function padOf(d: District, [dx, dy]: [number, number] = [0, 0]): [number, number, number, number] {
+  const [sx, sy] = spotOf(d, [dx, dy])
+  if (d === 'plaza') return [5.5 + dx, 26.6 + dy, 8.5 + dx, 31.1 + dy]
   // Times Square, the library and the Garment District open onto a plaza
   // or a park across the street, and their light spills over it.
   const deep = d === 'observatory' || d === 'library' || d === 'workshop'
   return [sx - 1.35, sy - 0.3, sx + 1.35, sy + (deep ? 0.85 : 0.42)]
 }
 
-export function standAt(d: District, i: number): [number, number] {
-  const [sx, sy] = SITES[d].spot
+export function standAt(d: District, i: number, shift: [number, number] = [0, 0]): [number, number] {
+  const [sx, sy] = spotOf(d, shift)
   if (d === 'plaza') {
     // On the Great Lawn, in loose rows.
     return [sx - 1.1 + (i % 3) * 1.1, sy - 1.6 + Math.floor(i / 3) * 1.1 + (i % 2) * 0.3]
@@ -200,14 +214,14 @@ export function burbAt(b: Burb, i: number): [number, number] {
   return [cx - 2.8 + col * 2 + (row % 2) * 1, cy + 3 + row * 1.4]
 }
 
-export function placeAt(place: Place, i: number): [number, number] {
-  return place.burb ? burbAt(place.burb, i) : standAt(place.at, i)
+export function placeAt(place: Place, i: number, layout?: Layout): [number, number] {
+  return place.burb ? burbAt(place.burb, i) : standAt(place.at, i, shiftFor(layout, place.at))
 }
 
 // How long the train home takes to pull out of Grand Central and be gone, and
-// an arriving one to come in. It runs along 42nd Street, east of the terminal.
+// an arriving one to come in. It runs along the track behind the station's
+// front (`trackOf` in src/layout.ts), east to the tunnel under the river.
 export const TRAIN_MS = 3_000
-export const TRACK_Y = 40.55
 
 // ---- the onboarding game --------------------------------------------------
 
@@ -240,19 +254,18 @@ export function fullPopulation(): number {
   return lots().length * BLOCK_EVERY
 }
 
-// How many blocks a population has earned: quick at first (a morning's work
-// shows), then one or two a day for weeks, until the island is full.
-export function blocksFor(population: number): number {
-  const all = lots().length
+// How many blocks a population has earned, of `all` lots: quick at first (a
+// morning's work shows), then one or two a day for weeks, until they are full.
+export function blocksFor(population: number, all = lots().length): number {
   if (!Number.isFinite(population)) return all
   return Math.min(all, Math.floor(all * Math.sqrt(Math.max(0, population) / fullPopulation())))
 }
 
 // Along the walker's street to Fifth Avenue, down Fifth, along the street to
 // the destination: the grid way, crossing a bridge in or out of a borough.
-export function walk(from: Place, to: Place, end: [number, number]): { path: string; dur: number; pts: Pt[] } {
+export function walk(from: Place, to: Place, end: [number, number], layout?: Layout): { path: string; dur: number; pts: Pt[] } {
   const trunk = 9
-  const via: [number, number][] = [placeAt(from, 0)]
+  const via: [number, number][] = [placeAt(from, 0, layout)]
   if (from.burb) {
     const b = BURBS[from.burb]
     via.push(b.far, b.near, [trunk, b.near[1]])
@@ -341,7 +354,9 @@ export type Scene = {
   built: Partial<Record<Landmark, number>>
   population: number
   connected: boolean
-  // The layout's revision (docs/city-builder.md): a placement changes the map.
+  // What stands where (docs/city-builder.md): the drawing reads it, and its
+  // revision is in the map's hash, since a placement changes the map.
+  layout: Layout
   rev: number
 }
 

@@ -1,4 +1,4 @@
 {
-  "comment": "The hash of the Manhattan preset's map SVG, as test/layout.test.ts renders it: a whole city with a borough in use and one packed up. The city builder's steps (docs/city-builder.md) must keep it until the drawing is meant to change.",
-  "manhattan": "1b4ajhu"
+  "comment": "The hash of the Manhattan preset's map SVG, as test/layout.test.ts renders it: a whole city with a borough in use and one packed up. The city builder's steps (docs/city-builder.md) must keep it until the drawing is meant to change. Step two set it: the station and the towers became two buildings, so the MetLife slab paints before the terminal (a pixel strip on its east wall, checked in the browser).",
+  "manhattan": "1pgpr08"
 }

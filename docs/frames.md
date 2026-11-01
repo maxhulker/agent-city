@@ -77,9 +77,10 @@ overlay's current time, so a negative offset still means "that long ago".
 Overlay items, in paint order: the twinkling reflections (`twinkle`), cars
 and boats (`cars`), the lit pads of the districts someone is working in
 (`pads`), each borough's sign, glow and scaffolding (`burb:<b>`), each
-landmark's lights, smoke, sparks, rings, beacons, crane, flag, crown and
-scaffolding (`lm:<id>`, the "?" at City Hall and the alarm at the Seaport
-included), the spires' lights (`spires`), the districts' haze (`haze`), the
+placed building's lights, smoke, sparks, rings, beacons, crane, flag, crown
+and scaffolding (`lm:<id>`, the building's id in the layout, which is its
+kind for the preset's: `lm:library`, `lm:station`; the "?" at City Hall and
+the alarm at the Seaport included), the spires' lights (`spires`), the districts' haze (`haze`), the
 Brooklyn Bridge's red cable on a merge conflict (`alarm`), the Statue of
 Liberty at rest or launching (`statue`), the districts' names (`labels`),
 the trains (`train:<id>`), the hover zones (`zones`: `polygon.zone` with the

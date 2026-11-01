@@ -1,6 +1,8 @@
-import type { Agent, Landmark, World } from '../types.ts'
+import type { Agent, District, Landmark, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BURBS, ISLAND, LABELS, esc, p, pts } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
+import { deltaOf } from '../layout.ts'
+import type { Kind } from '../layout.ts'
 
 // Invisible hover zones over every place on the map that means something, each
 // carrying what the page's tooltip shows: a title, what the place stands for,
@@ -31,17 +33,22 @@ const ABOUT: Record<keyof typeof LABELS, string> = {
   plaza: 'Finished subagents rest on the Great Lawn before they leave.',
 }
 
-// Each district's landmark lots and plaza, and how tall its landmark stands.
-const DISTRICTS: [keyof typeof LABELS, [number, number, number, number], number][] = [
-  ['plaza', [5, 22, 9, 35], 14],
-  ['observatory', [3, 37, 7.35, 39], 70],
-  ['relay', [9, 38, 13, 40.42], 90],
-  ['library', [6.65, 39, 9.35, 41], 32],
-  ['foundry', [1, 40, 5, 42.42], 72],
-  ['workshop', [4.05, 41, 7, 43], 48],
-  ['hall', [7, 55, 10, 56.42], 36],
-  ['harbor', [11, 57, 15, 58.42], 42],
-]
+// Each kind's hover box at its preset origin, and how tall it stands.
+const BOXES: Record<Kind, [[number, number, number, number], number]> = {
+  plaza: [[5, 22, 9, 35], 14],
+  observatory: [[3, 37, 7.35, 39], 70],
+  relay: [[9, 38, 11, 39], 56],
+  station: [[9, 39, 13, 40.42], 90],
+  library: [[6.65, 39, 9.35, 41], 32],
+  foundry: [[1, 40, 5, 42.42], 72],
+  workshop: [[4.05, 41, 7, 43], 48],
+  hall: [[7, 55, 10, 56.42], 36],
+  harbor: [[11, 57, 15, 58.42], 42],
+  empire: [[7, 42, 9, 43], 110],
+  wtc: [[3, 57, 6, 58], 120],
+  woolworth: [[5, 55, 7, 56], 64],
+  liberty: [[1.4, 69.4, 2.8, 70.6], 34],
+}
 
 // The outline of a box standing on the footprint: what the eye sees of it.
 function outline([x0, y0, x1, y1]: [number, number, number, number], h: number): Pt[] {
@@ -66,56 +73,69 @@ function whoLines(world: World, list: Agent[] | undefined): string {
 
 export function drawPlaces(world: World, sc: Scene): string {
   const zones: Zone[] = []
-  // A blueprint lot's zone says how to build it.
-  const unbuilt = (id: Landmark) => sc.built[id] === undefined
   const planned = (id: Landmark, title: string) => `${title} (blueprint): ${BLUEPRINTS[id].hint.toLowerCase()}.`
-
-  for (const [d, box, height] of DISTRICTS) {
-    const blueprint = unbuilt(d)
-    zones.push({
-      box,
-      height: blueprint ? 4 : height,
-      title: blueprint ? `${LABELS[d]}: blueprint` : LABELS[d],
-      text: blueprint ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}` : ABOUT[d],
-      color: blueprint ? '#7dd3fc' : ACCENT[d],
-      who: sc.byDistrict.get(d) ?? [],
-    })
-  }
   const up = sc.update
-  zones.push(
-    unbuilt('empire')
-      ? { box: [7, 42, 9, 43], height: 4, title: 'Empire State Building: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
-      : up?.available
-      ? {
-          box: [7, 42, 9, 43],
-          height: 110,
-          title: 'An update is ready: click the Empire State',
-          text: `${up.behind} new on main${up.latest ? `: "${up.latest}"` : ''}. Clicking updates Agent City and restarts it; your app sessions pick up where they left off.`,
-          color: '#fbbf24',
-          extra: up.blocked ? `It can't update cleanly yet: ${up.blocked}.` : undefined,
-          isUpdate: true,
-        }
-      : { box: [7, 42, 9, 43], height: 110, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
-    { box: [3, 57, 6, 58], height: 120, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' },
-    { box: [5, 55, 7, 56], height: 64, title: 'Woolworth Building', text: 'Scenery, beside City Hall.' },
-  )
-
-  // The Statue of Liberty, and the last commit or push it marked.
   const launch = world.launch
-  zones.push({
-    box: [1.4, 69.4, 2.8, 70.6],
-    height: 34,
-    title: unbuilt('harbor') ? 'Statue of Liberty: dark' : unbuilt('torch') ? 'Statue of Liberty: torch unlit' : 'Statue of Liberty',
-    text: unbuilt('harbor')
-      ? `${BLUEPRINTS.harbor.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
-      : unbuilt('torch')
-        ? `${BLUEPRINTS.torch.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
-        : 'Hops when an agent commits, and takes off like a rocket on a push.',
-    color: unbuilt('harbor') ? '#7dd3fc' : '#5eada0',
-    extra: launch
-      ? `Last ${launch.kind === 'push' ? 'push' : 'commit'}: ${launch.who}${launch.repo ? ` in ${launch.repo}` : ''}, ${ago(sc.now - launch.at)}`
-      : 'No commits or pushes seen yet.',
-  })
+
+  // One zone per building, over its box moved to where it stands.
+  for (const b of sc.layout.buildings) {
+    const [[x0, y0, x1, y1], height] = BOXES[b.kind]
+    const [dx, dy] = deltaOf(b)
+    const box: [number, number, number, number] = [x0 + dx, y0 + dy, x1 + dx, y1 + dy]
+    const lot = b.built === undefined
+    const kind = b.kind
+    if (kind in ABOUT) {
+      const d = kind as District
+      zones.push({
+        box,
+        height: lot ? 4 : height,
+        title: lot ? `${LABELS[d]}: blueprint` : d === 'relay' ? BLUEPRINTS.relay.name : LABELS[d],
+        text: lot ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}` : d === 'relay' ? 'MetLife and the Chrysler, raised by the first subagent.' : ABOUT[d],
+        color: lot ? '#7dd3fc' : ACCENT[d],
+        // The relay's agents stand at the station.
+        ...(d === 'relay' ? {} : { who: sc.byDistrict.get(d) ?? [] }),
+      })
+    } else if (kind === 'station') {
+      zones.push({ box, height, title: LABELS.relay, text: ABOUT.relay, color: ACCENT.relay, who: sc.byDistrict.get('relay') ?? [] })
+    } else if (kind === 'empire') {
+      zones.push(
+        lot
+          ? { box, height: 4, title: 'Empire State Building: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
+          : up?.available
+            ? {
+                box,
+                height,
+                title: 'An update is ready: click the Empire State',
+                text: `${up.behind} new on main${up.latest ? `: "${up.latest}"` : ''}. Clicking updates Agent City and restarts it; your app sessions pick up where they left off.`,
+                color: '#fbbf24',
+                extra: up.blocked ? `It can't update cleanly yet: ${up.blocked}.` : undefined,
+                isUpdate: true,
+              }
+            : { box, height, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
+      )
+    } else if (kind === 'wtc') {
+      zones.push({ box, height, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' })
+    } else if (kind === 'woolworth') {
+      zones.push({ box, height, title: 'Woolworth Building', text: 'Scenery, beside City Hall.' })
+    } else if (kind === 'liberty') {
+      // The Statue of Liberty, and the last commit or push it marked.
+      const unlit = sc.built.torch === undefined
+      zones.push({
+        box,
+        height,
+        title: lot ? 'Statue of Liberty: dark' : unlit ? 'Statue of Liberty: torch unlit' : 'Statue of Liberty',
+        text: lot
+          ? `${BLUEPRINTS.harbor.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
+          : unlit
+            ? `${BLUEPRINTS.torch.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
+            : 'Hops when an agent commits, and takes off like a rocket on a push.',
+        color: lot ? '#7dd3fc' : '#5eada0',
+        extra: launch
+          ? `Last ${launch.kind === 'push' ? 'push' : 'commit'}: ${launch.who}${launch.repo ? ` in ${launch.repo}` : ''}, ${ago(sc.now - launch.at)}`
+          : 'No commits or pushes seen yet.',
+      })
+    }
+  }
 
   // A borough for each other repository.
   for (const [b, repo] of sc.repoOf) {

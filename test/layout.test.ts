@@ -163,6 +163,49 @@ test("the map's hash covers the layout's revision, and only that of the layout",
   assert.equal(renderFrame(city.world, T0).map.hash, a)
 })
 
+test('a building draws where it stands: moved by its shift, keyed by its id, a lot while unbuilt', () => {
+  const city = wholeCity()
+  const l = city.world.layout!
+  const lib = byKind(l, 'library')
+  const at = (f: ReturnType<typeof renderFrame>) => f.overlay.find(i => i.k === 'lm:library')
+  // The Library's lights, lit by a read, are drawn at its preset origin: no translate.
+  city.apply(ev('SessionStart', 'S1'), T0)
+  city.apply(ev('PreToolUse', 'S1', { tool_name: 'Read', tool_use_id: 't1', tool_input: { file_path: `${HOME}/a.ts` } }), T0 + 100)
+  city.flush(T0 + 100)
+  const home = renderFrame(city.world, T0 + 200)
+  assert.ok(at(home)?.svg.includes('<animate'), 'the reading room is lit')
+  assert.ok(!at(home)!.svg.includes('<g transform="translate('), 'at its origin, nothing is shifted')
+  // Moved six cells south and two east, it is drawn there: one translate, in
+  // screen units ((dx - dy) * 10, (dx + dy) * 5), and its hover zone and its
+  // readers' pad move with it.
+  lib.x += 2
+  lib.y += 6
+  l.rev += 1
+  const moved = renderFrame(city.world, T0 + 200)
+  assert.ok(at(moved)!.svg.startsWith('<g transform="translate(-40,40)">'), 'the lights are shifted')
+  assert.ok(moved.map.svg.includes('<g transform="translate(-40,40)">'), 'and so is the building on the map')
+  assert.notEqual(moved.map.hash, home.map.hash)
+  const zone = (f: ReturnType<typeof renderFrame>) => f.overlay.find(i => i.k === 'zones')!.svg.split('<polygon').find(z => z.includes('data-tip-title="Public Library"'))!
+  assert.notEqual(zone(moved), zone(home), 'the hover zone moved')
+  assert.equal(zone(moved).replace(/points="[^"]*"/, ''), zone(home).replace(/points="[^"]*"/, ''), 'and says the same')
+  const lead = (f: ReturnType<typeof renderFrame>) => f.agents.find(a => a.id === 'lead:S1')!
+  assert.equal(lead(moved).x, lead(home).x - 40, 'the reader stands in front of the new place')
+  assert.equal(lead(moved).y, lead(home).y + 40)
+
+  // A second Library, placed as a lot: both draw, the lot as a blueprint.
+  l.buildings.push({ id: 'library-2', kind: 'library', x: 11, y: 50, face: 's' })
+  l.rev += 1
+  const two = renderFrame(city.world, T0 + 200)
+  const caption = (two.map.svg.match(/PUBLIC LIBRARY</g) ?? []).length
+  assert.equal(caption, 1, 'one blueprint caption: the lot')
+  // Its dashed lot is ground, shifted in cells; its caption is an item, shifted in screen units.
+  assert.ok(two.map.svg.includes('<g transform="translate(4,11)"><rect'), 'the lot is drawn at its place')
+  assert.ok(two.map.svg.includes('<g transform="translate(-70,75)"><g class="bp'), 'with its caption')
+  assert.ok(two.map.svg.includes('<g transform="translate(-40,40)">'), 'and the built one at its')
+  assert.ok(two.overlay.find(i => i.k === 'zones')!.svg.includes('data-tip-title="Public Library: blueprint"'))
+  assert.ok(!two.overlay.some(i => i.k === 'lm:library-2'), 'a lot has no lights')
+})
+
 test('the preset draws the same city as before: the golden hash', () => {
   const golden = JSON.parse(readFileSync(new URL('./golden.json', import.meta.url), 'utf8')) as { manhattan: string }
   const city = wholeCity()
