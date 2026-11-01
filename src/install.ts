@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 // Connects every Claude Code session on this machine to Agent City by adding
 // HTTP hooks to the user settings file, or removes them with --uninstall.
@@ -40,8 +41,9 @@ const path = at >= 0 && args[at + 1] ? args[at + 1]! : join(homedir(), '.claude'
 
 // Same JSON as the HTTP hook (stdin), but never fails: a down server is not an error.
 // On Windows a closed local port isn't refused, it hangs: --connect-timeout keeps
-// that to a fraction of a second per event.
-const COMMAND = `curl -s --connect-timeout 0.3 -m 1 -o /dev/null -H "content-type: application/json" --data-binary @- ${URL} || exit 0`
+// that to a fraction of a second per event. The server's reply goes to stdout, so
+// a message sent from the page still reaches the session.
+const COMMAND = `curl -s --connect-timeout 0.3 -m 1 -H "content-type: application/json" --data-binary @- ${URL} || exit 0`
 
 // Either mode, so installing one removes the other and --uninstall gets both.
 function isOurs(h: Handler): boolean {
@@ -73,20 +75,23 @@ function add(settings: Settings) {
   }
 }
 
-const settings: Settings = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Settings) : {}
-strip(settings)
-if (!isUninstall) add(settings)
-const text = JSON.stringify(settings, null, 2) + '\n'
+function main() {
+  const settings: Settings = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Settings) : {}
+  strip(settings)
+  if (!isUninstall) add(settings)
+  const text = JSON.stringify(settings, null, 2) + '\n'
 
-if (isPrint) {
-  process.stdout.write(text)
-} else {
-  if (existsSync(path)) {
-    const backup = `${path}.agent-city-backup`
+  if (isPrint) {
+    process.stdout.write(text)
+    return
+  }
+  const backup = `${path}.agent-city-backup`
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true })
+  } else if (!existsSync(backup)) {
+    // The first backup only: it keeps the settings as they were before Agent City.
     copyFileSync(path, backup)
     console.log(`Backed up ${path} to ${backup}`)
-  } else {
-    mkdirSync(dirname(path), { recursive: true })
   }
   writeFileSync(path, text)
   console.log(
@@ -95,3 +100,6 @@ if (isPrint) {
       : `Added Agent City's hooks to ${path} (${EVENTS.length} events → ${URL}; ${isQuiet ? 'quiet mode, curl command hooks' : 'HTTP hooks'}).\nSessions started from now on report to Agent City; restart any that are open.`,
   )
 }
+
+// Only when run as a command: importing this file (to check it loads) changes nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main()

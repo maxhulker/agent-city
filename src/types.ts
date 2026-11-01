@@ -52,6 +52,38 @@ export type Session = {
   bullet?: string
   startedAt: number
   updatedAt: number
+  // What the person typed for it in the page: queued until its next hook event
+  // can carry them, then kept for a while as delivered.
+  messages?: Message[]
+}
+
+export type Message = {
+  id: string
+  text: string
+  at: number
+  status: 'queued' | 'delivered'
+  deliveredAt?: number
+  // The hook reply that carried it: after a tool call, with a prompt, or instead of stopping.
+  via?: 'tool' | 'prompt' | 'stop'
+}
+
+export type TaskLevel = 'read' | 'edit' | 'run'
+export type TaskModel = 'default' | 'haiku' | 'sonnet' | 'opus'
+
+// A headless Claude Code session started from the page.
+export type Task = {
+  id: string
+  cwd: string
+  prompt: string
+  level: TaskLevel
+  model: TaskModel
+  status: 'running' | 'done' | 'failed' | 'stopped'
+  startedAt: number
+  endedAt?: number
+  result?: string
+  error?: string
+  sessionId?: string
+  costUsd?: number
 }
 
 export type Repo = { root: string; name: string; burb: Burb; lastSeen: number }
@@ -88,5 +120,7 @@ export type World = {
   launch?: Launch
   // Taxis on the road now (each lasts a few seconds).
   rides?: Ride[]
+  // Tasks started from the page, newest last (the last 20).
+  tasks?: Task[]
   flushedAt: number
 }

@@ -6,8 +6,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { BURBS, LABELS, renderCity } from './city.ts'
-import type { World } from './types.ts'
-import { City, forgetRoots } from './world.ts'
+import { Tasks } from './tasks.ts'
+import type { Task, World } from './types.ts'
+import { base, City, forgetRoots } from './world.ts'
 import type { HookEvent } from './world.ts'
 
 // Agent City: a local server Claude Code sessions post their hook events to,
@@ -33,6 +34,19 @@ function loadWorld(): World | undefined {
 const BOOT = Date.now()
 const city = new City(loadWorld())
 
+// Tasks live in the world so state.json keeps them; the list itself is Tasks'.
+const AMBER = '#fbbf24'
+const ENDS = { done: 'FINISHED', failed: 'FAILED', stopped: 'STOPPED' } as const
+const tasks = new Tasks(city.world.tasks, (task, what) => {
+  city.world.tasks = tasks.list
+  const folder = base(task.cwd)
+  const text = what === 'start' ? `STARTED A TASK IN ${folder}` : `TASK IN ${folder} ${ENDS[what]}`
+  city.announce('YOU', text, '★', AMBER, Date.now())
+  // A finished task is worth keeping straight away, not at the next five-second save.
+  if (what !== 'start') save()
+})
+city.world.tasks = tasks.list
+
 function save() {
   try {
     mkdirSync(STATE_DIR, { recursive: true })
@@ -46,6 +60,22 @@ function save() {
 
 type Client = { res: ServerResponse }
 const clients = new Set<Client>()
+
+// Folders the page offers for a new task: Manhattan, the boroughs, and wherever sessions run.
+function places(world: World): { path: string; name: string }[] {
+  const seen = new Set<string>()
+  const out: { path: string; name: string }[] = []
+  for (const path of [world.homeRoot, ...world.repos.map(r => r.root), ...world.sessions.map(s => s.root)]) {
+    if (!path || seen.has(path.toLowerCase())) continue
+    seen.add(path.toLowerCase())
+    out.push({ path, name: base(path) })
+  }
+  return out
+}
+
+function taskView(t: Task): Task {
+  return t.result && t.result.length > 4000 ? { ...t, result: t.result.slice(0, 3999) + '…' } : t
+}
 
 function meta(world: World) {
   return {
@@ -82,6 +112,8 @@ function meta(world: World) {
     asks: world.asks.map(q => ({ ...q, who: world.agents.find(a => a.id === q.agentId)?.name ?? '' })),
     log: city.log.slice(-30).reverse(),
     toasts: city.toasts.splice(0),
+    tasks: tasks.list.slice().reverse().map(taskView),
+    places: places(world),
   }
 }
 
@@ -153,9 +185,36 @@ const server = createServer(async (req, res) => {
       // AGENT_CITY_DEBUG=1 keeps every event as it came, for checking what a session sends.
       if (process.env.AGENT_CITY_DEBUG) appendFileSync(join(STATE_DIR, 'events.log'), text.replace(/\n/g, ' ') + '\n')
       const ev = JSON.parse(text) as HookEvent
-      city.apply(ev, Date.now())
-      // An empty answer: the hook decides nothing, Claude Code carries on.
-      return reply(res, 200, '{}')
+      // Usually {}: the hook decides nothing. With messages waiting, it carries them to the lead.
+      return reply(res, 200, JSON.stringify(city.apply(ev, Date.now())))
+    }
+    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task'))) {
+      if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
+      const args = JSON.parse((await body(req, 256 * 1024)) || '{}') as Record<string, unknown>
+      const fail = (error: string) => reply(res, 400, JSON.stringify({ error }))
+      if (url.pathname === '/message') {
+        const out = city.queueMessage(args.session, args.text, Date.now())
+        return 'error' in out ? fail(out.error) : reply(res, 200, JSON.stringify({ ok: true, id: out.id }))
+      }
+      if (url.pathname === '/message/cancel') {
+        return city.cancelMessage(args.session, args.id) ? reply(res, 200, '{"ok":true}') : fail('No such queued message')
+      }
+      if (url.pathname === '/task') {
+        try {
+          const task = tasks.start(args, Date.now())
+          return reply(res, 200, JSON.stringify({ ok: true, id: task.id }))
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err))
+        }
+      }
+      if (url.pathname === '/task/stop') {
+        const task = tasks.list.find(t => t.id === args.id && t.status === 'running')
+        if (!task || !tasks.stop(args.id)) return fail('No such running task')
+        // Its session was killed mid-turn and won't say goodbye itself.
+        city.endSessionsIn(task.cwd, task.startedAt, Date.now())
+        return reply(res, 200, '{"ok":true}')
+      }
+      return reply(res, 404, '{}')
     }
     if (req.method === 'POST' && (url.pathname === '/resolve' || url.pathname === '/home')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
@@ -209,6 +268,7 @@ server.listen(PORT, HOST, () => {
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
+    tasks.stopAll()
     save()
     process.exit(0)
   })

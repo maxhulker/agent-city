@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, BURBS, BURB_ORDER, districtFor } from './city.ts'
-import type { Agent, Burb, District, Place, Session, World } from './types.ts'
+import type { Agent, Burb, District, Message, Place, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
 
@@ -187,6 +188,20 @@ function resultText(value: unknown): string {
 
 const ACTIVITY_WINDOW = 10 * 60_000
 
+// Messages for a session: how long one may be, how many may wait, how long a
+// delivered one stays listed.
+export const MESSAGE_MAX = 4000
+const MESSAGES_QUEUED = 10
+const MESSAGE_KEPT = 10 * 60_000
+
+// What a hook reply carries: Claude reads it as a note from the person.
+function frame(m: Message): string {
+  return `Message from the user, sent through Agent City (a dashboard on their machine): ${m.text}`
+}
+
+// A hook's answer to Claude Code: {} decides nothing.
+export type HookReply = Record<string, unknown>
+
 export class City {
   world: World
   isDirty = true
@@ -221,12 +236,77 @@ export class City {
 
   // Adds a ticker line; a repeat of the last one within ten seconds is dropped.
   private tick(a: Agent | undefined, text: string, now: number) {
-    const who = a?.name ?? 'CITY HALL'
+    const s = a && this.world.sessions.find(one => one.id === a.session)
+    this.announce(a?.name ?? 'CITY HALL', text, s?.bullet ?? '★', a?.color ?? '#94a3b8', now)
+  }
+
+  // A ticker line from anyone, the person included.
+  announce(who: string, text: string, bullet: string, color: string, now: number) {
     const t = text.toUpperCase()
     if (this.ticker.some(i => i.who === who && i.text === t && now - i.at < 10_000)) return
-    const s = a && this.world.sessions.find(one => one.id === a.session)
-    this.ticker.push({ at: now, bullet: s?.bullet ?? '★', color: a?.color ?? '#94a3b8', who, text: t })
+    this.ticker.push({ at: now, bullet, color, who, text: t })
     if (this.ticker.length > 40) this.ticker.splice(0, this.ticker.length - 40)
+    this.isDirty = true
+  }
+
+  // ---- messages to sessions ------------------------------------------------
+
+  // Queues text for a session's lead; it goes out with the next hook reply that can carry it.
+  queueMessage(sessionId: unknown, text: unknown, now: number): { id: string } | { error: string } {
+    const s = this.world.sessions.find(one => one.id === sessionId)
+    if (!s) return { error: 'No such session' }
+    const body = typeof text === 'string' ? text.trim() : ''
+    if (!body) return { error: 'The message is empty' }
+    if (body.length > MESSAGE_MAX) return { error: `The message is longer than ${MESSAGE_MAX} characters` }
+    s.messages ??= []
+    if (s.messages.filter(m => m.status === 'queued').length >= MESSAGES_QUEUED) {
+      return { error: `${MESSAGES_QUEUED} messages are already waiting for this session` }
+    }
+    const m: Message = { id: randomUUID(), text: body, at: now, status: 'queued' }
+    s.messages.push(m)
+    this.isDirty = true
+    return { id: m.id }
+  }
+
+  // Takes back a message not yet delivered.
+  cancelMessage(sessionId: unknown, id: unknown): boolean {
+    const s = this.world.sessions.find(one => one.id === sessionId)
+    const m = s?.messages?.find(one => one.id === id && one.status === 'queued')
+    if (!s || !m) return false
+    s.messages = s.messages!.filter(one => one !== m)
+    this.isDirty = true
+    return true
+  }
+
+  // The reply that hands a lead its queued messages, when this event can carry them.
+  private deliver(ev: HookEvent, s: Session, now: number): HookReply {
+    const queued = (s.messages ?? []).filter(m => m.status === 'queued')
+    // Subagents' events would hand the note to the wrong reader.
+    if (!queued.length || ev.agent_id) return {}
+    const event = ev.hook_event_name
+    let via: Message['via']
+    if (event === 'PostToolUse' || event === 'PostToolUseFailure') via = 'tool'
+    else if (event === 'UserPromptSubmit') via = 'prompt'
+    // stop_hook_active: Claude is already carrying on because of a Stop hook; blocking again could loop.
+    else if (event === 'Stop' && ev.stop_hook_active !== true) via = 'stop'
+    else return {}
+    const text = queued.map(frame).join('\n\n')
+    const lead = this.lead(s, now)
+    for (const m of queued) {
+      m.status = 'delivered'
+      m.deliveredAt = now
+      m.via = via
+      this.announce('YOU', `TO ${lead.name}: ${short(m.text, 40)}`, s.bullet ?? '★', s.color, now)
+    }
+    this.say(lead, `got ${queued.length === 1 ? 'your message' : `${queued.length} messages from you`}`, now)
+    this.isDirty = true
+    if (via === 'stop') {
+      // It carries on instead of stopping.
+      lead.status = 'working'
+      lead.activity = 'Reading your message'
+      return { decision: 'block', reason: text }
+    }
+    return { hookSpecificOutput: { hookEventName: event, additionalContext: text } }
   }
 
   private ride(from: Place, to: Place, color: string, kind: 'report' | 'message', now: number) {
@@ -363,8 +443,9 @@ export class City {
     else delete a.burb
   }
 
-  apply(ev: HookEvent, now: number) {
-    if (!ev || typeof ev.session_id !== 'string' || typeof ev.hook_event_name !== 'string') return
+  // Applies one hook event; the answer goes back to Claude Code as the hook's reply.
+  apply(ev: HookEvent, now: number): HookReply {
+    if (!ev || typeof ev.session_id !== 'string' || typeof ev.hook_event_name !== 'string') return {}
     const w = this.world
     const s = this.session(ev, now)
     const input = (ev.tool_input ?? {}) as Record<string, unknown>
@@ -541,6 +622,8 @@ export class City {
       default:
         this.isDirty = false
     }
+    // SessionEnd has just removed the session; nothing is left to deliver to.
+    return w.sessions.includes(s) ? this.deliver(ev, s, now) : {}
   }
 
   resolve(id?: string) {
@@ -564,6 +647,14 @@ export class City {
       else if (!a.burb) a.burb = repo.burb
     }
     this.isDirty = true
+  }
+
+  // Ends the sessions a stopped task started: a killed session never posts its
+  // SessionEnd. Matched by folder and by starting after the task did.
+  endSessionsIn(cwd: string, since: number, now: number) {
+    for (const s of this.world.sessions.filter(one => same(one.cwd, norm(cwd)) && one.startedAt >= since - 2_000)) {
+      this.apply({ hook_event_name: 'SessionEnd', session_id: s.id }, now)
+    }
   }
 
   // Lets the busiest repository take Manhattan again.
@@ -607,12 +698,23 @@ export class City {
     const live = new Set(w.sessions.map(s => s.id))
     // Sessions quiet for six hours have closed without saying so.
     w.sessions = w.sessions.filter(s => now - s.updatedAt < 6 * 3600_000)
+    for (const s of w.sessions) {
+      if (!s.messages) continue
+      s.messages = s.messages.filter(m => m.status === 'queued' || now - (m.deliveredAt ?? m.at) < MESSAGE_KEPT)
+      if (!s.messages.length) delete s.messages
+    }
     w.agents = w.agents
       // An ended session's agents fade for a few seconds, then leave.
       .filter(a => live.has(a.session) || now - a.updatedAt < 8_000)
       .filter(a => a.isMain || a.status !== 'done' || now - a.updatedAt < 600_000)
       .slice(-60)
     for (const a of w.agents) {
+      // Ten quiet minutes while "working" means the session went away unannounced.
+      if ((a.status === 'working' || a.status === 'waiting') && now - a.updatedAt > 10 * 60_000) {
+        a.status = 'idle'
+        a.inFlight = 0
+        a.activity = 'Quiet for a while'
+      }
       const moved = a.shown.at !== a.at || a.shown.burb !== a.burb
       a.walkFrom = moved ? a.shown : undefined
       a.shown = a.burb ? { at: a.at, burb: a.burb } : { at: a.at }

@@ -121,6 +121,49 @@
   .card[data-session-card] { cursor: pointer; }
   .card[data-session-card].selected { border-color: var(--accent); }
   .agents li[data-session-card] { cursor: pointer; }
+  .fold { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+  .fold .chev { display: inline-block; transition: transform .15s; width: 10px; }
+  .fold.shut .chev { transform: rotate(-90deg); }
+  .fold .tcount { margin-left: auto; color: var(--accent); letter-spacing: 0; text-transform: none; font-weight: 400; }
+  #nt-body.shut { display: none; }
+  .field, .compose textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font: inherit; }
+  .field:focus, .compose textarea:focus { outline: none; border-color: var(--dim); }
+  select.field { padding: 4px 6px; }
+  textarea.field, .compose textarea { resize: none; display: block; }
+  #newform label { display: block; font-size: 11px; color: var(--dim); margin: 8px 0 3px; }
+  #newform label:first-child { margin-top: 0; }
+  #newform .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  [hidden] { display: none !important; }
+  .warn { color: #fbbf24; font-size: 11px; margin-top: 4px; }
+  .err { color: var(--red); font-size: 12px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
+  .err:empty { display: none; }
+  .btn.primary { background: #3a2a07; border-color: #b45309; color: #fde68a; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.sm { padding: 0 9px; font-size: 11px; }
+  .compose { display: flex; gap: 6px; align-items: flex-end; margin-top: 8px; cursor: default; }
+  .compose textarea { flex: 1; min-height: 26px; max-height: 88px; overflow-y: auto; font-size: 12px; }
+  .compose .btn { padding: 2px 10px; font-size: 12px; }
+  .hint { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .msgs { cursor: default; }
+  .msg { display: flex; align-items: baseline; gap: 6px; margin-top: 5px; font-size: 12px; }
+  .msg .mt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .msg.delivered .mt { color: var(--dim); }
+  .chip { font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--line); color: var(--dim); flex: none; white-space: nowrap; }
+  .chip.queued { background: #713f12; color: #fde68a; }
+  .chip.delivered { background: #14532d; color: #bbf7d0; }
+  .chip.running { background: #1e3a8a; color: #bfdbfe; }
+  .chip.done { background: #14532d; color: #bbf7d0; }
+  .chip.failed { background: #7f1d1d; color: #fecaca; }
+  .xbtn { background: none; border: 0; color: var(--dim); cursor: pointer; font: inherit; padding: 0 3px; flex: none; }
+  .xbtn:hover { color: var(--red); }
+  .spin { display: inline-block; width: 8px; height: 8px; border: 2px solid #93c5fd55; border-top-color: #bfdbfe; border-radius: 50%; animation: spin .8s linear infinite; margin-right: 4px; vertical-align: -1px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #tasks { margin-top: 10px; }
+  .task { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
+  .task.link { cursor: pointer; }
+  .task .tp { font-size: 11px; color: var(--dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task .res { margin: 6px 0 0; padding: 6px 8px; background: var(--bg); border-radius: 6px; font: 11px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; cursor: text; }
+  .task .res.bad { color: var(--red); }
   @media (max-width: 900px) {
     main { grid-template-columns: minmax(0, 1fr) !important; }
     aside { position: absolute; top: 0; right: 0; bottom: 0; width: min(var(--side), 86vw); z-index: 5; box-shadow: -8px 0 24px #000a; }
@@ -144,6 +187,35 @@
     <div id="ticker"><div id="track"></div></div>
   </div>
   <aside id="side">
+    <section id="newtask">
+      <h2 class="fold" id="nt-head" role="button" tabindex="0"><span class="chev">&#9662;</span>New task<span class="tcount" id="nt-count"></span></h2>
+      <div id="nt-body">
+        <div id="newform">
+          <label for="nt-folder">Folder</label>
+          <select class="field" id="nt-folder"><option value="__other">Other folder...</option></select>
+          <input class="field" id="nt-other" placeholder="Full path to a folder" style="margin-top:6px" spellcheck="false">
+          <label for="nt-prompt">What should it do?</label>
+          <textarea class="field" id="nt-prompt" rows="3" placeholder="Describe the task..."></textarea>
+          <div class="two">
+            <div><label for="nt-level">Permissions</label>
+              <select class="field" id="nt-level">
+                <option value="read">Read only</option>
+                <option value="edit">Can edit files</option>
+                <option value="run">Can edit and run commands</option>
+              </select></div>
+            <div><label for="nt-model">Model</label>
+              <select class="field" id="nt-model">
+                <option value="default">Default</option><option value="haiku">Haiku</option>
+                <option value="sonnet">Sonnet</option><option value="opus">Opus</option>
+              </select></div>
+          </div>
+          <div class="warn" id="nt-warn" hidden>Warning: this level may run any shell command in that folder.</div>
+          <div style="margin-top:8px"><button class="btn primary" id="nt-start" type="button">Start</button></div>
+          <div class="err" id="nt-err"></div>
+        </div>
+        <div id="tasks"></div>
+      </div>
+    </section>
     <div id="needs"></div>
     <h2>Sessions</h2>
     <div id="sessions"></div>
@@ -295,7 +367,12 @@
   }
 
   async function post(path, args) {
-    await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
+    try {
+      const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
+      return await r.json().catch(() => ({ error: r.ok ? '' : `HTTP ${r.status}` }))
+    } catch (e) {
+      return { error: String(e?.message || e) }
+    }
   }
 
   function ago(at) {
@@ -368,6 +445,193 @@
   }
   requestAnimationFrame(tickFrame)
 
+  // ---- sessions: cards are kept (keyed by id) so the message fields survive every frame ----
+  let lastMeta = null
+  const cards = new Map()
+  const MSG_TTL = 10 * 60 * 1000
+  const VIA = { tool: 'mid-task', prompt: 'with your prompt', stop: 'at end of turn' }
+
+  function headHtml(s) {
+    const lead = s.agents.find(a => a.isMain)
+    const subs = s.agents.filter(a => !a.isMain)
+    return `<div class="row">${s.bullet ? bullet(s.bullet, s.color) : `<span class="dot" style="background:${esc(s.color)}"></span>`}
+        <span class="name">${esc(lead?.name ?? s.name)}</span>
+        ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : ''}</div>
+      <div class="path" style="margin-left:26px">${esc(s.cwd)}</div>
+      ${lead ? `<div class="small dim" style="margin-left:26px">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}
+      ${subs.length ? `<ul class="agents">${subs.map(a => `<li data-session-card="${esc(s.id)}"><div class="row">${s.bullet ? bullet(s.bullet, a.color || s.color, true) : `<span class="dot" style="background:${esc(a.color)}"></span>`}
+        <span>${esc(a.name)}</span><span class="status ${esc(a.status)}">${esc(a.status)}</span></div>
+        <div class="small dim" style="margin-left:22px">${esc(a.where)} · ${esc(a.activity)}</div></li>`).join('')}</ul>` : ''}`
+  }
+
+  function msgsHtml(s) {
+    const now = Date.now()
+    return (s.messages || []).filter(x => x.status === 'queued' || now - (x.deliveredAt || x.at) < MSG_TTL).map(x =>
+      x.status === 'queued'
+        ? `<div class="msg queued"><span class="chip queued">queued</span><span class="mt">${esc(x.text)}</span><button class="xbtn" title="Cancel" data-msg-cancel="${esc(x.id)}" data-sid="${esc(s.id)}">×</button></div>`
+        : `<div class="msg delivered"><span class="chip delivered">delivered${x.via && VIA[x.via] ? ' · ' + VIA[x.via] : ''}</span><span class="mt">${esc(x.text)}</span></div>`
+    ).join('')
+  }
+
+  function makeCard(id) {
+    const el = document.createElement('div')
+    el.className = 'card'
+    el.dataset.sessionCard = id
+    el.innerHTML = '<div class="shead"></div>' +
+      '<div class="compose"><textarea class="msg-in" rows="1" placeholder="Message this session…" aria-label="Message this session"></textarea><button class="btn" type="button" data-send="1">Send</button></div>' +
+      '<div class="hint">Delivered at its next step; an idle session gets it when it next does something.</div>' +
+      '<div class="err cerr"></div><div class="msgs"></div>'
+    return { el, head: el.querySelector('.shead'), msgs: el.querySelector('.msgs'), err: el.querySelector('.cerr'), ta: el.querySelector('textarea'), h: '', mh: '' }
+  }
+
+  function growTa(ta) {
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight + 2, 88) + 'px'
+  }
+
+  function drawSessions(m) {
+    const box = $('sessions')
+    const ids = new Set(m.sessions.map(s => s.id))
+    for (const [id, c] of cards) if (!ids.has(id)) { c.el.remove(); cards.delete(id) }
+    let empty = $('sess-empty')
+    if (!m.sessions.length) {
+      if (!empty) { empty = document.createElement('div'); empty.id = 'sess-empty'; empty.className = 'empty'; empty.textContent = 'No sessions yet. Start Claude Code anywhere on this machine.'; box.append(empty) }
+      return
+    }
+    empty?.remove()
+    let prev = null
+    for (const s of m.sessions) {
+      let c = cards.get(s.id)
+      if (!c) { c = makeCard(s.id); cards.set(s.id, c) }
+      const h = headHtml(s)
+      if (h !== c.h) { c.head.innerHTML = h; c.h = h }
+      const mh = msgsHtml(s)
+      if (mh !== c.mh) { c.msgs.innerHTML = mh; c.mh = mh }
+      c.el.classList.toggle('selected', s.id === selected)
+      const want = prev ? prev.nextSibling : box.firstChild
+      if (c.el !== want) {
+        const ae = document.activeElement
+        const keep = ae && c.el.contains(ae) && ae.tagName === 'TEXTAREA' ? { ae, a: ae.selectionStart, b: ae.selectionEnd } : null
+        box.insertBefore(c.el, want)
+        if (keep) { keep.ae.focus(); try { keep.ae.setSelectionRange(keep.a, keep.b) } catch {} }
+      }
+      prev = c.el
+    }
+  }
+
+  async function sendMessage(c, sid) {
+    const text = c.ta.value.trim()
+    if (!text) return
+    c.err.textContent = ''
+    const r = await post('/message', { session: sid, text })
+    if (r.error || r.ok === false) { c.err.textContent = r.error || 'Not sent.'; return }
+    if (c.ta.value.trim() === text) { c.ta.value = ''; growTa(c.ta) }
+  }
+
+  document.addEventListener('input', e => { if (e.target.matches?.('textarea.msg-in')) growTa(e.target) })
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches?.('textarea.msg-in')) return
+    e.preventDefault()
+    const el = e.target.closest('[data-session-card]')
+    const c = el && cards.get(el.dataset.sessionCard)
+    if (c) sendMessage(c, el.dataset.sessionCard)
+  })
+
+  // ---- new task ----------------------------------------------------------
+  let ntOpen = true
+  try { ntOpen = localStorage.getItem('agent-city-newtask') !== '0' } catch {}
+  function setNt(open) {
+    ntOpen = open
+    $('nt-body').classList.toggle('shut', !open)
+    $('nt-head').classList.toggle('shut', !open)
+    try { localStorage.setItem('agent-city-newtask', open ? '1' : '0') } catch {}
+  }
+  setNt(ntOpen)
+  $('nt-head').addEventListener('click', () => setNt(!ntOpen))
+  $('nt-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setNt(!ntOpen) } })
+
+  function syncOther() { $('nt-other').hidden = $('nt-folder').value !== '__other' }
+  function syncWarn() { $('nt-warn').hidden = $('nt-level').value !== 'run' }
+  $('nt-folder').addEventListener('change', syncOther)
+  $('nt-level').addEventListener('change', syncWarn)
+  syncOther(); syncWarn()
+  $('nt-prompt').addEventListener('input', e => growTa(e.target))
+
+  let placesKey = ''
+  function drawPlaces(places) {
+    const key = JSON.stringify(places)
+    if (key === placesKey) return
+    placesKey = key
+    const sel = $('nt-folder'), cur = sel.value
+    sel.innerHTML = places.map(p => `<option value="${esc(p.path)}">${esc(p.name)} — ${esc(p.path)}</option>`).join('') + '<option value="__other">Other folder…</option>'
+    if (cur && cur !== '__other' && [...sel.options].some(o => o.value === cur)) sel.value = cur
+    else if (places.length && (!cur || cur === '__other') && !$('nt-other').value) sel.value = places[0].path
+    else sel.value = '__other'
+    syncOther()
+  }
+
+  $('nt-start').addEventListener('click', async () => {
+    const btn = $('nt-start'), err = $('nt-err')
+    const cwd = ($('nt-folder').value === '__other' ? $('nt-other').value : $('nt-folder').value).trim()
+    const prompt = $('nt-prompt').value.trim()
+    if (!cwd) { err.textContent = 'Pick a folder.'; return }
+    if (!prompt) { err.textContent = 'Describe the task first.'; return }
+    err.textContent = ''
+    btn.disabled = true
+    const r = await post('/task', { cwd, prompt, level: $('nt-level').value, model: $('nt-model').value })
+    btn.disabled = false
+    if (r.error || r.ok === false) { err.textContent = r.error || 'The task was not started.'; return }
+    if ($('nt-prompt').value.trim() === prompt) { $('nt-prompt').value = ''; growTa($('nt-prompt')) }
+  })
+
+  const openTasks = new Set()
+  const taskEls = new Map()
+  const baseName = p => String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || String(p || '')
+  function dur(ms) {
+    const s = Math.max(0, Math.round(ms / 1000))
+    return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`
+  }
+
+  function taskHtml(t) {
+    const running = t.status === 'running'
+    const time = dur((t.endedAt || Date.now()) - t.startedAt)
+    const bad = t.status === 'failed' || !!t.error
+    const body = bad ? (t.error || t.result || '') : (t.result || '')
+    const can = !running && !!body
+    const open = can && openTasks.has(t.id)
+    return `<div class="row"><span class="name">${esc(baseName(t.cwd))}</span>
+        <span class="chip ${esc(t.status)}">${running ? '<span class="spin"></span>' : ''}${esc(t.status)}</span>
+        <span class="dim small">${esc(time)}${t.costUsd != null ? ' · $' + Number(t.costUsd).toFixed(2) : ''}</span>
+        <span style="margin-left:auto">${running ? `<button class="btn sm" data-task-stop="${esc(t.id)}">Stop</button>` : can ? `<button class="btn sm" data-task-toggle="${esc(t.id)}">${open ? 'Hide' : 'Result'}</button>` : ''}</span></div>
+      <div class="tp" title="${esc(t.prompt)}">${esc(t.prompt)}</div>
+      ${open ? `<pre class="res${bad ? ' bad' : ''}">${esc(body)}</pre>` : ''}`
+  }
+
+  function drawTasks(m) {
+    drawPlaces(m.places || [])
+    const tasks = m.tasks || []
+    const nrun = tasks.filter(t => t.status === 'running').length
+    $('nt-count').textContent = nrun ? `${nrun} running` : ''
+    const box = $('tasks')
+    const ids = new Set(tasks.map(t => t.id))
+    for (const [id, c] of taskEls) if (!ids.has(id)) { c.el.remove(); taskEls.delete(id) }
+    let prev = null
+    for (const t of tasks) {
+      let c = taskEls.get(t.id)
+      if (!c) { c = { el: document.createElement('div'), h: '' }; c.el.className = 'task'; c.el.dataset.taskId = t.id; taskEls.set(t.id, c) }
+      const linked = !!(t.sessionId && m.sessions.some(s => s.id === t.sessionId))
+      c.el.classList.toggle('link', linked)
+      if (linked) c.el.dataset.taskSession = t.sessionId; else delete c.el.dataset.taskSession
+      const h = taskHtml(t)
+      if (h !== c.h) { c.el.innerHTML = h; c.h = h }
+      const want = prev ? prev.nextSibling : box.firstChild
+      if (c.el !== want) box.insertBefore(c.el, want)
+      prev = c.el
+    }
+    if (!tasks.length) { if (!$('tasks-empty')) box.insertAdjacentHTML('beforeend', '<div class="empty" id="tasks-empty">No tasks yet.</div>') }
+    else $('tasks-empty')?.remove()
+  }
+
   // ---- sidebar + overlays ------------------------------------------------
   function draw(m) {
     const conflicts = m.conflicts || [], asks = m.asks || []
@@ -392,20 +656,9 @@
     }
     $('needs').innerHTML = needs ? `<h2>Needs you</h2>${needs}` : ''
 
-    $('sessions').innerHTML = m.sessions.length ? m.sessions.map(s => {
-      const lead = s.agents.find(a => a.isMain)
-      const subs = s.agents.filter(a => !a.isMain)
-      return `<div class="card${s.id === selected ? ' selected' : ''}" data-session-card="${esc(s.id)}">
-        <div class="row">${s.bullet ? bullet(s.bullet, s.color) : `<span class="dot" style="background:${esc(s.color)}"></span>`}
-          <span class="name">${esc(lead?.name ?? s.name)}</span>
-          ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : ''}</div>
-        <div class="path" style="margin-left:26px">${esc(s.cwd)}</div>
-        ${lead ? `<div class="small dim" style="margin-left:26px">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}
-        ${subs.length ? `<ul class="agents">${subs.map(a => `<li data-session-card="${esc(s.id)}"><div class="row">${s.bullet ? bullet(s.bullet, a.color || s.color, true) : `<span class="dot" style="background:${esc(a.color)}"></span>`}
-          <span>${esc(a.name)}</span><span class="status ${esc(a.status)}">${esc(a.status)}</span></div>
-          <div class="small dim" style="margin-left:22px">${esc(a.where)} · ${esc(a.activity)}</div></li>`).join('')}</ul>` : ''}
-      </div>`
-    }).join('') : '<div class="empty">No sessions yet. Start Claude Code anywhere on this machine.</div>'
+    lastMeta = m
+    drawSessions(m)
+    drawTasks(m)
 
     $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">Manhattan</span>
         <span class="dim">${esc(m.home || 'the first repository seen')}</span>
@@ -432,6 +685,9 @@
   document.addEventListener('click', e => {
     const b = e.target.closest('button')
     if (!b) {
+      if (e.target.closest('.compose, .msgs, .res, .cerr')) return
+      const tk = e.target.closest('[data-task-session]')
+      if (tk) { if (selected !== tk.dataset.taskSession) select(tk.dataset.taskSession, true); return }
       const card = e.target.closest('[data-session-card]')
       if (card) { select(card.dataset.sessionCard, false); return }
       if (e.target.closest('#map')) {
@@ -441,7 +697,20 @@
       }
       return
     }
-    if (b.dataset.needs) {
+    if (b.dataset.send) {
+      const el = b.closest('[data-session-card]'), c = el && cards.get(el.dataset.sessionCard)
+      if (c) sendMessage(c, el.dataset.sessionCard)
+    } else if (b.dataset.msgCancel) {
+      const c = cards.get(b.dataset.sid)
+      post('/message/cancel', { session: b.dataset.sid, id: b.dataset.msgCancel }).then(r => { if (c && (r.error || r.ok === false)) c.err.textContent = r.error || 'Could not cancel.' })
+    } else if (b.dataset.taskStop) {
+      post('/task/stop', { id: b.dataset.taskStop })
+    } else if (b.dataset.taskToggle) {
+      const id = b.dataset.taskToggle
+      if (openTasks.has(id)) openTasks.delete(id); else openTasks.add(id)
+      const c = taskEls.get(id), t = lastMeta?.tasks?.find(x => x.id === id)
+      if (c && t) { c.h = taskHtml(t); c.el.innerHTML = c.h }
+    } else if (b.dataset.needs) {
       setCollapsed(false)
       ;($('needs').firstChild || $('side')).scrollIntoView?.({ block: 'start', behavior: 'smooth' })
     } else if (b.dataset.homeAuto) {

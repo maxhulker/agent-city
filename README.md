@@ -31,6 +31,22 @@ to see the whole island. Hover over a district, borough or landmark to see what
 it stands for and who's there. Click an agent or a session card to highlight
 that session.
 
+## Talk to your sessions
+
+- **Message a running session** from its card in the sidebar. The message rides
+  back on the session's next hook event: after its next tool call while it
+  works, with your next prompt, or instead of stopping at the end of a turn
+  (it carries on with your message). A session sitting idle gets it when it
+  next does something; until then it shows as queued, and you can cancel it.
+- **Start a new task** from the New task form: pick a folder, describe the
+  task, and choose what it may do (read only, edit files, or edit and run
+  commands) and a model. It runs as a headless Claude Code session, shows up in
+  the city like any other, and its answer lands in the task list. Stop ends it
+  and everything it started.
+
+Both work only from the page itself (the server refuses other origins), and
+only with the HTTP hooks or the `--quiet` hooks from this version on.
+
 It works with any account Claude Code is signed into, personal or company,
 because hooks are set on the machine, not the account. It does not work with
 claude.ai chat, which has no hooks.
