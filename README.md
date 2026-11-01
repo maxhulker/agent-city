@@ -34,6 +34,18 @@ npm start
 
 Open http://localhost:4777.
 
+### Desktop shortcut (Windows)
+
+```bash
+npm run shortcut
+```
+
+This puts an **Agent City** shortcut on the desktop. Opening it starts the
+server if it isn't running, in a minimized window titled "Agent City" (close
+that window to stop the server), and opens the city in its own Edge app window,
+or in the default browser where Edge isn't installed. Opening it again while
+the server runs just opens another window.
+
 ## Connect Claude Code
 
 ```bash

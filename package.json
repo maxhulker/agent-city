@@ -4,10 +4,14 @@
   "private": true,
   "description": "Watch every Claude Code session on this machine at work in an isometric Manhattan",
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "start": "node src/server.ts",
     "connect": "node src/install.ts",
-    "disconnect": "node src/install.ts --uninstall"
+    "disconnect": "node src/install.ts --uninstall",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-shortcut.ps1",
+    "icon": "node scripts/make-icon.mjs assets/agent-city.ico assets/agent-city-preview.bmp"
   }
 }
