@@ -455,5 +455,30 @@
 
   connect()
 </script>
+<style>
+  #tip { position: fixed; z-index: 20; max-width: 300px; pointer-events: none; display: none;
+    background: #0f172aee; border: 1px solid #334155; border-left: 3px solid var(--accent, #fbbf24);
+    border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px #0009; font-size: 12px; }
+  #tip b { display: block; font-size: 13px; margin-bottom: 2px; }
+  #tip .more { margin-top: 6px; color: var(--dim); white-space: pre-line; }
+</style>
+<div id="tip"></div>
+<script>
+  // Hovering a place on the map shows what it stands for and who's there.
+  const tip = document.getElementById('tip')
+  document.getElementById('map').addEventListener('mousemove', e => {
+    const zone = !e.buttons && !e.target.closest('.agent') && e.target.closest('[data-tip-title]')
+    if (!zone) { tip.style.display = 'none'; return }
+    const d = zone.dataset
+    tip.style.setProperty('--accent', zone.style.getPropertyValue('--accent') || '#fbbf24')
+    tip.innerHTML = `<b>${esc(d.tipTitle)}</b>${esc(d.tipText)}${d.tipMore ? `<div class="more">${esc(d.tipMore)}</div>` : ''}`
+    tip.style.display = 'block'
+    const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)
+    const y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8)
+    tip.style.left = `${x}px`
+    tip.style.top = `${y}px`
+  })
+  document.getElementById('map').addEventListener('mouseleave', () => { tip.style.display = 'none' })
+</script>
 </body>
 </html>
