@@ -57,6 +57,19 @@ This adds HTTP hooks to `~/.claude/settings.json` (backed up first to
 it is. Sessions started afterwards report to Agent City; restart any that are
 open.
 
+To stop Claude Code printing a failure line when Agent City isn't running, add
+`--quiet`:
+
+```bash
+npm run connect -- --quiet
+```
+
+This installs command hooks that post the same events with `curl` and always
+succeed silently. It needs `curl` in the shell Claude Code runs hooks in (Git
+Bash on Windows has it). The trade-off: while Agent City is closed, each event
+waits up to a third of a second for it, where the HTTP hooks fail at once.
+Running `npm run connect` again, with or without `--quiet`, switches modes.
+
 To disconnect:
 
 ```bash
@@ -75,7 +88,8 @@ claude --settings hooks.json
 - Everything stays on this machine. The server listens on 127.0.0.1 only,
   refuses other hosts, and refuses hook posts that come from a web page.
 - When Agent City isn't running, sessions carry on at full speed. Claude Code
-  may print one `ECONNREFUSED` line for the failed hook.
+  may print one `ECONNREFUSED` line for the failed hook; connect with
+  `--quiet` (see above) to avoid it.
 - State is kept in `~/.agent-city/state.json`, so a restart keeps the city.
 - `AGENT_CITY_PORT` changes the port (set it for both `npm start` and
   `npm run connect`). `AGENT_CITY_DEBUG=1` writes every raw event to

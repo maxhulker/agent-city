@@ -65,14 +65,20 @@ export type Conflict = {
 
 export type Ask = { id: string; agentId: string; label: string; at: number }
 
+// The latest commit or push: the Statue of Liberty hops for one, launches for the other.
+export type Launch = { kind: 'commit' | 'push'; at: number; who: string; repo: string }
+
 export type World = {
   // The repository drawn as Manhattan.
   home: string
   homeRoot: string
+  // True once the person picked Manhattan themselves.
+  homePinned?: boolean
   repos: Repo[]
   sessions: Session[]
   agents: Agent[]
   conflicts: Conflict[]
   asks: Ask[]
+  launch?: Launch
   flushedAt: number
 }

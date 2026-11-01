@@ -29,6 +29,8 @@ function loadWorld(): World | undefined {
   }
 }
 
+// The page compares this to reload itself after a restart.
+const BOOT = Date.now()
 const city = new City(loadWorld())
 
 function save() {
@@ -49,6 +51,8 @@ function meta(world: World) {
   return {
     home: world.home,
     homeRoot: world.homeRoot,
+    homePinned: !!world.homePinned,
+    boot: BOOT,
     repos: world.repos.map(r => ({ ...r, borough: BURBS[r.burb].name })),
     sessions: world.sessions.map(s => ({
       ...s,
@@ -149,9 +153,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && (url.pathname === '/resolve' || url.pathname === '/home')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
-      const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string }
+      const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean }
       if (url.pathname === '/resolve') city.resolve(args.id)
-      else if (args.root) city.makeHome(args.root, Date.now())
+      else if (args.auto) city.autoHome()
+      else if (args.root) city.makeHome(args.root, Date.now(), true)
       return reply(res, 200, '{}')
     }
     if (req.method === 'GET' && url.pathname === '/stream') {

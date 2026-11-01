@@ -1,4 +1,4 @@
-import type { Agent, Burb, District, Place, Repo, View, World } from './types.ts'
+import type { Agent, Burb, District, Launch, Place, Repo, View, World } from './types.ts'
 
 // Draws the world as one animated isometric SVG of Manhattan at night. Pure:
 // no I/O, so the server renders it on each change.
@@ -235,6 +235,7 @@ function defs(): string {
   for (const [k, [, , top]] of Object.entries(PALETTES)) {
     d += `.${k}L{fill:url(#${k}L)}.${k}R{fill:url(#${k}R)}.${k}T{fill:${top}}`
   }
+  d += `.ring{display:none}`
   d += `.lbl{font-weight:700;letter-spacing:.06em;fill:#e2e8f0;paint-order:stroke;stroke:#0b1224;stroke-width:3px}`
   d += `.hood{font-weight:600;letter-spacing:.18em;fill:#cbd5e1;opacity:.45}`
   d += `.water{font-style:italic;letter-spacing:.3em;fill:#7aa2d6;opacity:.6}`
@@ -319,12 +320,12 @@ export const BURBS: Record<Burb, { name: string; center: [number, number]; near:
 
 export const BURB_ORDER: Burb[] = ['brooklyn', 'queens', 'bronx', 'jersey']
 
+// Rows along the borough's front edge, facing the viewer, a body's width apart.
 function burbAt(b: Burb, i: number): [number, number] {
   const [cx, cy] = BURBS[b].center
-  if (i === 0) return [cx - 1.6, cy + 1.6]
-  const ang = i * 1.1
-  const rad = 1.3 + Math.floor(i / 6) * 0.7
-  return [cx - 1.6 + Math.cos(ang) * rad, cy + 1.6 + Math.sin(ang) * rad]
+  const col = i % 3
+  const row = Math.floor(i / 3)
+  return [cx - 2.8 + col * 2 + (row % 2) * 1, cy + 3 + row * 1.4]
 }
 
 function placeAt(place: Place, i: number): [number, number] {
@@ -376,7 +377,8 @@ function burb(b: Burb, repo: Repo, isActive: boolean, hud: number): string {
   lots.sort((a, c) => a.depth - c.depth)
   g += lots.map(l => l.svg).join('')
   g += tree(cx - 2.2, cy + 0.6, 2.4) + tree(cx - 1, cy + 2.9, 2.2)
-  const [lx, ly] = p(cx, cy, 34)
+  // The sign hangs at the back corner, clear of the square where agents stand.
+  const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
   g += `<text class="hood" x="${n(lx)}" y="${n(ly - 12 * hud)}" text-anchor="middle" font-size="${n(7 * hud)}" style="opacity:.8">${BURBS[b].name.toUpperCase()}</text>`
   g += `<text class="lbl" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" font-size="${n(10 * hud)}" style="stroke-width:${n(3 * hud)}px;fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
   return g
@@ -760,7 +762,14 @@ function traffic(): string {
   return g
 }
 
-function statue(): string {
+// How long each launch plays, in seconds.
+const LAUNCH_SECONDS = { commit: 3.5, push: 9 }
+
+// The Statue of Liberty: at rest, or mid-launch after a commit (a hop) or a
+// push (liftoff, off the top of the map, and back). Each frame the page gets
+// may land mid-launch, so every animation begins `elapsed` seconds in the
+// past and carries on from there rather than starting over.
+function statue(launch: Launch | undefined, now: number, hud: number): string {
   let g = poly(
     [
       [1.4, 69.4],
@@ -771,11 +780,68 @@ function statue(): string {
     '#1f5130',
   )
   const [x, y] = p(2.1, 70)
+  const elapsed = launch ? (now - launch.at) / 1000 : Infinity
+  const kind = launch && elapsed < LAUNCH_SECONDS[launch.kind] ? launch.kind : undefined
+  const dur = kind ? LAUNCH_SECONDS[kind] : 0
+  // An animation `at` seconds into the launch, lasting `len`.
+  const t = (at: number, len: number, rest: string) => `begin="${n(at - elapsed)}s" dur="${n(len)}s" fill="freeze" ${rest}`
+
+  // The figure, with its engine flame tucked under the robe.
+  let figure = ''
+  if (kind) {
+    const flame = (rx: number, ry: number, color: string) =>
+      `<ellipse cx="${n(x)}" cy="${n(y - 6 + ry * 0.6)}" rx="${rx}" ry="${ry}" fill="${color}"><animate attributeName="ry" values="${ry};${n(ry * 1.5)};${ry}" dur=".12s" repeatCount="indefinite"/></ellipse>`
+    figure += `<g opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.85;1" ${t(kind === 'push' ? 0.3 : 0.5, kind === 'push' ? 4.4 : 1.2, '')}/>`
+    figure += flame(3.2, kind === 'push' ? 9 : 5, '#f97316') + flame(1.8, kind === 'push' ? 6 : 3, '#fde047') + `</g>`
+  }
+  figure += `<path d="M${n(x - 2.4)} ${n(y - 8)}l1 -12h3l1 12z" fill="#5eada0"/>`
+  figure += `<circle cx="${n(x)}" cy="${n(y - 21.5)}" r="1.8" fill="#5eada0"/>`
+  figure += `<line x1="${n(x + 1.4)}" y1="${n(y - 19)}" x2="${n(x + 3)}" y2="${n(y - 27)}" stroke="#5eada0" stroke-width="1.2"/>`
+  figure += `<circle cx="${n(x + 3)}" cy="${n(y - 28.5)}" r="1.8" fill="#fbbf24"><animate attributeName="r" values="1.6;2.4;1.6" dur="1.6s" repeatCount="indefinite"/></circle>`
+
+  if (!kind || !launch) {
+    g += `<rect x="${n(x - 3)}" y="${n(y - 8)}" width="6" height="8" fill="#a8a29e"/>` + figure
+    return g
+  }
+
+  // Smoke billowing from the pad.
+  for (let i = 0; i < (kind === 'push' ? 7 : 3); i++) {
+    const dx = (i - 3) * 4
+    g += `<circle cx="${n(x)}" cy="${n(y - 2)}" r="2" fill="#e2e8f0" opacity="0">`
+    g += `<animate attributeName="cx" values="${n(x)};${n(x + dx * 2.2)}" ${t(0.3 + i * 0.12, 2.6, '')}/>`
+    g += `<animate attributeName="r" values="2;${8 + (i % 3) * 3}" ${t(0.3 + i * 0.12, 2.6, '')}/>`
+    g += `<animate attributeName="opacity" values="0;.85;0" ${t(0.3 + i * 0.12, 2.6, '')}/></circle>`
+  }
   g += `<rect x="${n(x - 3)}" y="${n(y - 8)}" width="6" height="8" fill="#a8a29e"/>`
-  g += `<path d="M${n(x - 2.4)} ${n(y - 8)}l1 -12h3l1 12z" fill="#5eada0"/>`
-  g += `<circle cx="${n(x)}" cy="${n(y - 21.5)}" r="1.8" fill="#5eada0"/>`
-  g += `<line x1="${n(x + 1.4)}" y1="${n(y - 19)}" x2="${n(x + 3)}" y2="${n(y - 27)}" stroke="#5eada0" stroke-width="1.2"/>`
-  g += `<circle cx="${n(x + 3)}" cy="${n(y - 28.5)}" r="1.8" fill="#fbbf24"><animate attributeName="r" values="1.6;2.4;1.6" dur="1.6s" repeatCount="indefinite"/></circle>`
+
+  let move: string
+  if (kind === 'push') {
+    const height = 560
+    // Exhaust puffs left behind along the climb (it speeds up as it goes).
+    for (let i = 0; i < 10; i++) {
+      const at = 1.4 + i * 0.3
+      const h = height * ((at - 1.2) / 3.3) ** 2
+      g += `<circle cx="${n(x)}" cy="${n(y - 4 - h)}" r="2" fill="#cbd5e1" opacity="0">`
+      g += `<animate attributeName="r" values="2;${7 + i}" ${t(at, 2.2, '')}/>`
+      g += `<animate attributeName="opacity" values=".8;0" ${t(at, 2.2, '')}/></circle>`
+    }
+    move =
+      `<animateTransform attributeName="transform" type="translate" values="0,0;0,0;0,-${height};0,-${height};0,0;0,0" keyTimes="0;.133;.5;.77;.78;1" calcMode="spline" keySplines="0 0 1 1;.6 0 .9 .5;0 0 1 1;0 0 1 1;0 0 1 1" ${t(0, dur, '')}/>` +
+      `<animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;.49;.5;.78;1" ${t(0, dur, '')}/>`
+  } else {
+    move = `<animateTransform attributeName="transform" type="translate" values="0,0;0,0;0,-16;0,0;0,0" keyTimes="0;.17;.31;.46;1" calcMode="spline" keySplines="0 0 1 1;.2 .6 .4 1;.6 0 .8 .4;0 0 1 1" ${t(0, dur, '')}/>`
+  }
+  // The rumble before it goes.
+  const shake = `<animateTransform attributeName="transform" type="translate" additive="sum" values="0,0;-.8,0;.8,0;0,0" dur=".1s" begin="${n(-elapsed)}s" repeatDur="${kind === 'push' ? 1.2 : 0.6}s"/>`
+  g += `<g>${move}${shake}${figure}</g>`
+
+  // A caption saying who launched it, from which repository.
+  const [cx, cy] = p(2.1, 70, kind === 'push' ? 70 : 44)
+  const title = kind === 'push' ? '🚀 PUSHED' : '✓ COMMITTED'
+  const where = launch.repo ? ` · ${launch.repo}` : ''
+  g += `<g opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.85;1" ${t(0, dur, '')}/>`
+  g += `<text class="lbl" x="${n(cx + 12 * hud)}" y="${n(cy)}" font-size="${n(10 * hud)}" style="stroke-width:${n(3 * hud)}px;fill:${kind === 'push' ? '#fdba74' : '#86efac'}">${esc(title + where)}</text>`
+  g += `<text class="lbl" x="${n(cx + 12 * hud)}" y="${n(cy + 12 * hud)}" font-size="${n(7.5 * hud)}" style="stroke-width:${n(2.6 * hud)}px">${esc(launch.who)}</text></g>`
   return g
 }
 
@@ -784,7 +850,8 @@ function statue(): string {
 function figure(a: Agent, label: boolean, lift: number, k: number): string {
   const s = (a.isMain ? 1.3 : 1) * k
   const isWorking = a.status === 'working'
-  let body = `<ellipse cx="0" cy="0" rx="${n(5 * s)}" ry="${n(2.5 * s)}" fill="#000" opacity=".4"/><g>`
+  let body = `<ellipse class="ring" cx="0" cy="0" rx="${n(9 * s)}" ry="${n(4.5 * s)}" fill="none" stroke="#fde047" stroke-width="${n(1.6 * k)}"/>`
+  body += `<ellipse cx="0" cy="0" rx="${n(5 * s)}" ry="${n(2.5 * s)}" fill="#000" opacity=".4"/><g>`
   if (isWorking) {
     body += `<animateTransform attributeName="transform" type="translate" values="0,0;0,${n(-2.4 * s)};0,0" dur=".55s" repeatCount="indefinite"/>`
   }
@@ -834,6 +901,8 @@ function frame(view: View, burbs: Burb[]): Frame {
   if (view === 'island' || view === 'downtown') {
     for (const [gx, gy] of [
       [0.5, 71],
+      // Room below Liberty Island, so the statue's pad and smoke show.
+      [3.5, 71.5],
       [12, 67],
     ] as const) {
       const [x, y] = p(gx, gy)
@@ -983,7 +1052,7 @@ export function renderCity(world: World, now: number, opts: { animateWalks: bool
   landmarks(items, { active, hasConflict, isWaiting, k })
   items.sort((a, b) => a.depth - b.depth)
   s += items.map(i => i.svg).join('')
-  s += statue()
+  s += statue(world.launch, now, hud)
   s += traffic()
 
   // Names on the map.
@@ -1029,15 +1098,19 @@ export function renderCity(world: World, now: number, opts: { animateWalks: bool
   const crowd = isWhole || placed.length > 8
   for (const { a, at, i } of placed) {
     const fade = a.status === 'done' ? ` opacity=".6"` : ''
-    const label = a.isMain || !crowd || a.status === 'waiting' || a.status === 'failed'
+    const alert = a.status === 'waiting' || a.status === 'failed'
+    // The lead of a borough shares the repo's name, which is already on the sign.
+    const dup = !!a.burb && a.name.toLowerCase() === repoOf.get(a.burb)?.name.toLowerCase()
+    const label = (a.isMain || !crowd || alert) && (!dup || alert)
+    const who = ` class="agent" data-agent="${esc(a.id)}" data-session="${esc(a.session)}"`
     const lift = (i % 2) * 9
     const moved = a.walkFrom && (a.walkFrom.at !== a.at || a.walkFrom.burb !== a.burb)
     if (opts.animateWalks && a.walkFrom && moved) {
       const { path, dur } = walk(a.walkFrom, { at: a.at, burb: a.burb }, at)
-      s += `<g${fade}><animateMotion path="${path}" dur="${n(dur)}s" fill="freeze"/>${figure(a, label, lift, k)}</g>`
+      s += `<g${who}${fade}><animateMotion path="${path}" dur="${n(dur)}s" fill="freeze"/>${figure(a, label, lift, k)}</g>`
     } else {
       const [x, y] = p(at[0], at[1])
-      s += `<g transform="translate(${n(x)},${n(y)})"${fade}>${figure(a, label, lift, k)}</g>`
+      s += `<g${who} transform="translate(${n(x)},${n(y)})"${fade}>${figure(a, label, lift, k)}</g>`
     }
   }
 

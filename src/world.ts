@@ -22,6 +22,9 @@ const CONFLICT =
 const RESOLVED =
   /\bgit\s+(commit|merge\s+--(continue|abort)|rebase\s+--(continue|abort|skip)|cherry-pick\s+--(continue|abort)|reset\s+--(hard|merge))\b/
 const ASKS = /^(AskUserQuestion|ExitPlanMode)$/
+// git commit / git push, with any -C <dir> or -c key=value options before the verb.
+const COMMIT = /\bgit(?:\s+-[cC]\s+\S+)*\s+commit\b/
+const PUSH = /\bgit(?:\s+-[cC]\s+\S+)*\s+push\b/
 const SPAWNS = /^(Agent|Task)$/
 // The first directory a shell command works in: a leading cd, or git -C.
 const CD = /(?:^|&&|;|\|\|)\s*(?:cd|Set-Location|pushd)\s+(?:-(?:Literal)?Path\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/
@@ -118,6 +121,14 @@ function activityFor(tool: string, input: Record<string, unknown>): string {
   return tool.replace(/^mcp__[^_]+__/, '')
 }
 
+// A shell command without its quoted strings and heredoc bodies, so a commit
+// message that mentions "git push" reads as text, not as a push.
+function shellCode(command: string): string {
+  return command
+    .replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(?=\n|$)/g, '<<heredoc')
+    .replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""')
+}
+
 function resultText(value: unknown): string {
   try {
     return (typeof value === 'string' ? value : JSON.stringify(value ?? '')).replace(/\\n/g, '\n')
@@ -128,6 +139,8 @@ function resultText(value: unknown): string {
 
 // ---- the city -------------------------------------------------------------
 
+const ACTIVITY_WINDOW = 10 * 60_000
+
 export class City {
   world: World
   isDirty = true
@@ -135,6 +148,19 @@ export class City {
   log: LogLine[] = []
   // Per session, descriptions of Agent calls not yet matched to a SubagentStart.
   private spawns = new Map<string, string[]>()
+  // Tool-call times per repository root (lower-cased), for the last ten minutes. Not saved.
+  private activity = new Map<string, number[]>()
+  private activityRoots = new Map<string, string>()
+  private lastFollow = 0
+
+  private touch(root: string | undefined, now: number) {
+    if (!root) return
+    const key = root.toLowerCase()
+    const hits = (this.activity.get(key) ?? []).filter(t => now - t < ACTIVITY_WINDOW)
+    hits.push(now)
+    this.activity.set(key, hits)
+    this.activityRoots.set(key, root)
+  }
 
   constructor(world?: World) {
     this.world = world ?? emptyWorld()
@@ -295,7 +321,14 @@ export class City {
         const cwd = str(ev.cwd) || s.cwd
         const path = pathOf(tool, input, cwd)
         let burb = a.burb
-        if (path) burb = this.burbFor(repoRoot(path) ?? s.root, now)
+        let worked: string | undefined
+        if (path) {
+          worked = repoRoot(path) ?? s.root
+          burb = this.burbFor(worked, now)
+        } else {
+          worked = a.burb ? w.repos.find(r => r.burb === a.burb)?.root : w.homeRoot
+        }
+        this.touch(worked, now)
         const isAsk = ASKS.test(tool)
         this.goTo(a, isAsk ? 'hall' : districtFor(tool, str(input.command)), isAsk ? this.homeOf(s, now) : burb)
         a.status = isAsk ? 'waiting' : 'working'
@@ -347,6 +380,15 @@ export class City {
           } else if (RESOLVED.test(command) && ev.hook_event_name === 'PostToolUse') {
             w.conflicts = w.conflicts.filter(c => c.agentId !== a.id)
           }
+        }
+        // A commit or push that went through: liftoff. A push outranks a commit in one command.
+        const code = shellCode(command)
+        const kind = PUSH.test(code) ? 'push' : COMMIT.test(code) ? 'commit' : undefined
+        if (kind && ev.hook_event_name === 'PostToolUse' && (tool === 'Bash' || tool === 'PowerShell')) {
+          const repo = (a.burb ? w.repos.find(r => r.burb === a.burb)?.name : w.home) ?? ''
+          w.launch = { kind, at: now, who: a.name, repo }
+          this.say(a, `${kind === 'push' ? 'pushed' : 'committed'}${repo ? ` in ${repo}` : ''}`, now)
+          if (kind === 'push') this.toasts.push(`🚀 ${a.name} pushed${repo ? ` ${repo}` : ''}`)
         }
         break
       }
@@ -414,10 +456,11 @@ export class City {
   }
 
   // Makes the repository at root Manhattan; the old home takes its borough.
-  makeHome(root: string, now: number) {
+  makeHome(root: string, now: number, pinned = true) {
     const w = this.world
     const repo = w.repos.find(r => same(r.root, root))
     if (!repo) return
+    w.homePinned = pinned
     const old = { root: w.homeRoot, name: w.home }
     w.homeRoot = repo.root
     w.home = repo.name
@@ -430,14 +473,48 @@ export class City {
     this.isDirty = true
   }
 
+  // Lets the busiest repository take Manhattan again.
+  autoHome() {
+    this.world.homePinned = false
+    this.isDirty = true
+  }
+
+  // Manhattan follows the work: the busiest borough takes over once it clearly is.
+  private followWork(now: number) {
+    const w = this.world
+    if (w.homePinned || now - this.lastFollow < 60_000) return
+    this.lastFollow = now
+    const counts = new Map<string, { root: string; n: number }>()
+    for (const [key, hits] of this.activity) {
+      const recent = hits.filter(t => now - t < ACTIVITY_WINDOW)
+      if (recent.length) this.activity.set(key, recent)
+      else {
+        this.activity.delete(key)
+        this.activityRoots.delete(key)
+      }
+    }
+    for (const [key, hits] of this.activity) counts.set(key, { root: this.activityRoots.get(key) ?? key, n: hits.length })
+    let top: { root: string; n: number } | undefined
+    for (const c of counts.values()) if (!top || c.n > top.n) top = c
+    if (!top || top.n < 8 || same(top.root, w.homeRoot)) return
+    if (counts.has(w.homeRoot.toLowerCase())) return
+    const repo = w.repos.find(r => same(r.root, top.root))
+    if (!repo) return
+    this.makeHome(repo.root, now, false)
+    this.toasts.push(`${repo.name} became Manhattan`)
+    this.say(undefined, `${repo.name} became Manhattan`, now)
+  }
+
   // Readies the world for a frame: who walks where, who has left.
   flush(now: number): World {
     const w = this.world
+    this.followWork(now)
     const live = new Set(w.sessions.map(s => s.id))
     // Sessions quiet for six hours have closed without saying so.
     w.sessions = w.sessions.filter(s => now - s.updatedAt < 6 * 3600_000)
     w.agents = w.agents
-      .filter(a => live.has(a.session) || now - a.updatedAt < 60_000)
+      // An ended session's agents fade for a few seconds, then leave.
+      .filter(a => live.has(a.session) || now - a.updatedAt < 8_000)
       .filter(a => a.isMain || a.status !== 'done' || now - a.updatedAt < 600_000)
       .slice(-60)
     for (const a of w.agents) {
