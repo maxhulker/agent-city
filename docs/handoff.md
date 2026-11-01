@@ -138,7 +138,11 @@ with the rules served as JavaScript at `/layout.js` through
 `stripTypeScriptTypes`, which prints one ExperimentalWarning on first use)
 are in too. Checked in the app's browser against a sandboxed server by
 driving the tools with synthetic mouse events: each op re-sends the map once
-and leaves the other overlay items alone. Step five (walking the roads) is
+and leaves the other overlay items alone. Step five is in: `doorOf`,
+`spotFor` and `route` in `src/layout.ts` (a shortest way along the road
+segments with a small cost per corner), `walk()` in `geo.ts` on top of it
+with the straight-line fallback, and the station's forecourt for a kind with
+nothing placed (`test/route.test.ts`). Step six (boroughs by the person) is
 next; the page does not yet draw player-laid bridges or parks (step nine).
 
 ## Lessons from the first session, on cost
