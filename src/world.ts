@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, BURBS, BURB_ORDER, districtFor } from './city.ts'
-import { TRAIN_MS, placeAt, walk } from './draw/geo.ts'
-import type { Agent, Burb, District, Message, Place, Repo, Session, World } from './types.ts'
+import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
+import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
 
@@ -39,8 +39,15 @@ const CD = /(?:^|&&|;|\|\|)\s*(?:cd|Set-Location|pushd)\s+(?:-(?:Literal)?Path\s
 const GIT_C = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/
 
 export function emptyWorld(): World {
-  return { home: '', homeRoot: '', repos: [], sessions: [], agents: [], conflicts: [], asks: [], flushedAt: 0 }
+  return { home: '', homeRoot: '', repos: [], sessions: [], agents: [], conflicts: [], asks: [], built: {}, population: 0, flushedAt: 0 }
 }
+
+// Tools that build each landmark the first time any session uses one.
+const READS = /^(Read|Grep|Glob|NotebookRead)$/
+const EDITS = /^(Edit|Write|MultiEdit|NotebookEdit)$/
+const SHELLS = /^(Bash|PowerShell)$/
+// The districts whose landmarks must all stand before the Empire State goes up.
+const DISTRICT_LANDMARKS: District[] = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
 
 // ---- paths and repositories -----------------------------------------------
 
@@ -197,9 +204,11 @@ export const IDLE_LEAVE = 30 * 60_000
 export const REST_LEAVE = 2 * 60_000
 export const BURB_LEAVE = 60 * 60_000
 export const AGENT_CAP = 24
-export { TRAIN_MS }
+export { TRAIN_MS, SCAFFOLD_MS, FIREWORKS_MS }
 // An agent's walk to the station lasts this long at most (the SVG walk is capped at 4.5 s).
 const BOARDING_MS = 5_000
+// An arriving train stands at the platform this long before it leaves empty.
+const DWELL_MS = 4_000
 // Sessions quiet for this long have closed without saying so (a backstop).
 const SESSION_LEAVE = 6 * 3600_000
 const STATION: Place = { at: 'relay' }
@@ -243,6 +252,87 @@ export class City {
 
   constructor(world?: World) {
     this.world = world ?? emptyWorld()
+    const w = this.world
+    if (!w.built) {
+      // A city saved before the game existed. Anyone who has used theirs keeps
+      // it whole; only a city that never saw a session starts as bare land.
+      w.built = {}
+      const used = w.sessions.length || w.agents.length || w.repos.length || w.homeRoot || w.tasks?.length || w.appSessions?.length
+      if (used) this.buildAll(w.flushedAt)
+    }
+    w.population ??= 0
+  }
+
+  // ---- the onboarding game -------------------------------------------------
+
+  // Raises a landmark the first time its kind of work is done; the Empire
+  // State follows the last district, and the city is complete.
+  private build(id: Landmark, a: Agent | undefined, now: number) {
+    const w = this.world
+    w.built ??= {}
+    if (w.built[id] !== undefined) return
+    w.built[id] = now
+    const name = BLUEPRINTS[id].name
+    const text = id === 'torch' ? `${name} is lit` : id === 'plaza' ? `${name} is green` : `${name} opened`
+    this.toasts.push(text)
+    this.say(a, text, now)
+    this.tick(a, text, now)
+    if (id === 'empire') {
+      this.toasts.push('The city is complete')
+      this.tick(undefined, 'the city is complete', now)
+    } else if (DISTRICT_LANDMARKS.every(d => w.built![d] !== undefined)) {
+      this.build('empire', a, now)
+    }
+  }
+
+  // "Rebuild the city": back to bare land and blueprints, for whoever wants to play.
+  rebuild(now: number) {
+    const w = this.world
+    w.built = {}
+    w.population = 0
+    for (const a of w.agents) delete a.arriving
+    this.toasts.push('The island is bare again: build it by working')
+    this.say(undefined, 'the island is bare again', now)
+    this.isDirty = true
+  }
+
+  // "Build it all now": every landmark stands, the fabric is full, no ceremony.
+  buildAll(now: number) {
+    const w = this.world
+    w.built ??= {}
+    for (const id of LANDMARKS) w.built[id] ??= now - SCAFFOLD_MS
+    w.population = Math.max(w.population ?? 0, fullPopulation())
+    this.isDirty = true
+  }
+
+  // True while nothing is built and no session has ever been seen: the page
+  // shows its welcome.
+  get isNew(): boolean {
+    const w = this.world
+    return !Object.keys(w.built ?? {}).length && !w.sessions.length && !w.homeRoot
+  }
+
+  // A brand-new city's first lead comes in by train: it steps off at Grand
+  // Central once the train is in, and the train leaves again empty.
+  private arrive(lead: Agent, s: Session, now: number) {
+    const w = this.world
+    this.goTo(lead, 'relay', undefined)
+    lead.shown = { at: 'relay' }
+    lead.arriving = now + TRAIN_MS
+    lead.activity = 'Just off the train'
+    this.tick(lead, 'arrived at Grand Central', now)
+    w.trains = [
+      ...(w.trains ?? []),
+      {
+        id: randomUUID(),
+        kind: 'arrive' as const,
+        at: now,
+        leaveAt: now + TRAIN_MS + DWELL_MS,
+        color: s.color,
+        ...(s.bullet ? { bullet: s.bullet } : {}),
+        who: lead.name,
+      },
+    ].slice(-8)
   }
 
   private say(a: Agent | undefined, text: string, now: number) {
@@ -499,9 +589,12 @@ export class City {
 
     switch (ev.hook_event_name) {
       case 'SessionStart': {
+        // The first session of a brand-new city arrives by train.
+        const byTrain = !w.agents.some(a => a.id === `lead:${s.id}`) && w.sessions.length === 1 && !Object.keys(w.built ?? {}).length
         const lead = this.lead(s, now)
         lead.status = 'idle'
         lead.activity = str(ev.source) === 'resume' ? 'Resumed' : 'Session started'
+        if (byTrain) this.arrive(lead, s, now)
         break
       }
       case 'UserPromptSubmit': {
@@ -513,6 +606,7 @@ export class City {
         lead.activity = `Thinking: ${short(str(ev.prompt), 40)}`
         lead.updatedAt = now
         this.say(lead, 'got a new prompt', now)
+        this.build('hall', lead, now)
         break
       }
       case 'PreToolUse': {
@@ -556,6 +650,14 @@ export class City {
           list.push(str(input.description) || str(input.subagent_type) || 'Subagent')
           this.spawns.set(s.id, list.slice(-10))
         }
+        // The game: the first of each kind of work raises its landmark, and
+        // every tool call adds to the population.
+        w.population = (w.population ?? 0) + 1
+        if (READS.test(tool)) this.build('library', a, now)
+        else if (EDITS.test(tool)) this.build('workshop', a, now)
+        else if (SHELLS.test(tool)) this.build('foundry', a, now)
+        else if (districtFor(tool) === 'observatory') this.build('observatory', a, now)
+        else if (SPAWNS.test(tool)) this.build('relay', a, now)
         break
       }
       case 'PostToolUse':
@@ -602,6 +704,9 @@ export class City {
           this.say(a, `${kind === 'push' ? 'pushed' : 'committed'}${repo ? ` in ${repo}` : ''}`, now)
           this.tick(a, kind === 'push' ? `🚀 pushed${repo ? ` ${repo}` : ''}` : `committed${repo ? ` in ${repo}` : ''}`, now)
           if (kind === 'push') this.toasts.push(`🚀 ${a.name} pushed${repo ? ` ${repo}` : ''}`)
+          // The first commit builds the Seaport and the Statue; the first push lights her torch.
+          this.build('harbor', a, now)
+          if (kind === 'push') this.build('torch', a, now)
         }
         break
       }
@@ -628,6 +733,8 @@ export class City {
           const to = placeOf(this.lead(s, now))
           this.ride(from, to, a.color, 'report', now)
           a.restUntil = now + walk(from, to, placeAt(to, 0)).dur * 1000 + REST_LEAVE
+          // The first subagent to finish and go to rest greens Central Park.
+          this.build('plaza', a, now)
         }
         break
       }
@@ -769,12 +876,19 @@ export class City {
     return n
   }
 
-  // True when a train is due to leave or to be gone: the server redraws then
+  // True when a train is due to leave or to be gone, a passenger to step off,
+  // a scaffold to come down or the fireworks to end: the server redraws then
   // even if nothing else has happened.
   due(now: number): boolean {
     const w = this.world
-    if (w.agents.some(a => a.leaving && now >= a.leaving)) return true
-    return (w.trains ?? []).some(t => now >= t.leaveAt + TRAIN_MS)
+    if (w.agents.some(a => (a.leaving && now >= a.leaving) || (a.arriving && now >= a.arriving))) return true
+    if ((w.trains ?? []).some(t => now >= t.leaveAt + TRAIN_MS)) return true
+    // The 800 ms tick lands in a 900 ms window at least once.
+    const within = (at: number, after: number) => now >= at + after && now < at + after + 900
+    for (const [id, at] of Object.entries(w.built ?? {}) as [Landmark, number][]) {
+      if (within(at, SCAFFOLD_MS) || (id === 'empire' && within(at, FIREWORKS_MS))) return true
+    }
+    return false
   }
 
   // The departure rules, in order of urgency: ended app sessions, the idle
@@ -919,6 +1033,7 @@ export class City {
       const moved = a.shown.at !== a.at || a.shown.burb !== a.burb
       a.walkFrom = moved ? a.shown : undefined
       a.shown = a.burb ? { at: a.at, burb: a.burb } : { at: a.at }
+      if (a.arriving && now >= a.arriving) delete a.arriving
     }
     w.flushedAt = now
     this.isDirty = false

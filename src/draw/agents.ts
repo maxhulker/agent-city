@@ -1,5 +1,5 @@
 import type { Agent, District, Session, World } from '../types.ts'
-import { TRAIN_MS, burbAt, esc, n, p, placeAt, standAt, walk } from './geo.ts'
+import { TRACK_Y, TRAIN_MS, burbAt, esc, n, p, placeAt, standAt, walk } from './geo.ts'
 import type { Scene } from './geo.ts'
 
 // The agents: who they are, where they stand, what they are doing.
@@ -134,6 +134,10 @@ export function drawAgents(world: World, sc: Scene): string {
     if (sc.animateWalks && a.walkFrom && moved) {
       const { path, dur } = walk(a.walkFrom, { at: a.at, burb: a.burb }, at)
       s += `<g${who}${fade}><animateMotion path="${path}" dur="${n(dur)}s" fill="freeze"/>${fig}</g>`
+    } else if (a.arriving && a.arriving > sc.now) {
+      // Still aboard: it steps onto the platform once its train is in.
+      const [x, y] = p(at[0], at[1])
+      s += `<g${who} transform="translate(${n(x)},${n(y)})" opacity="0"><animate attributeName="opacity" values="0;1" begin="${n((a.arriving - sc.now) / 1000)}s" dur=".4s" fill="freeze"/>${fig}</g>`
     } else {
       const [x, y] = p(at[0], at[1])
       s += `<g${who} transform="translate(${n(x)},${n(y)})"${fade}>${fig}</g>`
@@ -145,8 +149,9 @@ export function drawAgents(world: World, sc: Scene): string {
 // The last train home: it waits on the street in front of Grand Central while
 // its passengers walk over, windows lit, then pulls out eastward, towards the
 // tunnel under the river, and is gone. Drawn under the agents, so whoever is
-// boarding stands in front of it. Three cars along 42nd Street.
-const TRACK_Y = 40.55
+// boarding stands in front of it. Three cars along 42nd Street. The arriving
+// train is the same one run backwards: in from the tunnel, a stop at the
+// platform, then out again with its windows dark.
 const CAR_D = 0.32
 const CAR_H = 6
 const CAR_L = 1
@@ -155,7 +160,7 @@ function quad(list: [number, number, number][], fill: string, extra = ''): strin
   return `<polygon points="${list.map(([gx, gy, z]) => p(gx, gy, z).map(n).join(',')).join(' ')}" fill="${fill}"${extra}/>`
 }
 
-function car(x: number, color: string, isFront: boolean, boarding: boolean): string {
+function car(x: number, color: string, isFront: boolean, boarding: boolean, lit = true): string {
   const y = TRACK_Y
   const y1 = y + CAR_D
   const x1 = x + CAR_L
@@ -169,7 +174,7 @@ function car(x: number, color: string, isFront: boolean, boarding: boolean): str
   let windows = ''
   for (let i = 0; i < 4; i++) {
     const wx = x + 0.1 + i * 0.22
-    windows += quad([[wx, y1, 3.5], [wx + 0.14, y1, 3.5], [wx + 0.14, y1, 5.1], [wx, y1, 5.1]], '#fde68a')
+    windows += quad([[wx, y1, 3.5], [wx + 0.14, y1, 3.5], [wx + 0.14, y1, 5.1], [wx, y1, 5.1]], lit ? '#fde68a' : '#334155')
   }
   g += `<g opacity=".9">${boarding ? '<animate attributeName="opacity" values=".9;.45;.9" dur="1.1s" repeatCount="indefinite"/>' : ''}${windows}</g>`
   if (isFront) {
@@ -182,20 +187,43 @@ function car(x: number, color: string, isFront: boolean, boarding: boolean): str
 export function drawTrains(world: World, sc: Scene): string {
   let s = ''
   const [dx, dy] = p(7, 0)
+  const secs = n(TRAIN_MS / 1000)
   for (const t of world.trains ?? []) {
     // Negative while boarding; once it is positive, the train is on its way.
     const age = (sc.now - t.leaveAt) / 1000
     if (age > TRAIN_MS / 1000 + 1) continue
+    const arriving = t.kind === 'arrive'
+    // An arriving train is coming in for its first few seconds.
+    const since = (sc.now - t.at) / 1000
+    const incoming = arriving && since < TRAIN_MS / 1000
     const boarding = age < 0
+    // Its windows are lit with passengers: coming in, or waiting for them.
+    const lit = arriving ? incoming : true
     let cars = ''
-    for (let i = 0; i < 3; i++) cars += car(9.1 + i * (CAR_L + 0.1), esc(t.color), i === 2, boarding)
-    const timing = `begin="${(-age).toFixed(2)}s" dur="${n(TRAIN_MS / 1000)}s" fill="freeze"`
-    const motion = boarding
-      ? ''
-      : `<animateTransform attributeName="transform" type="translate" from="0,0" to="${n(dx)},${n(dy)}" ${timing} calcMode="spline" keySplines=".5 0 1 1"/>` +
+    for (let i = 0; i < 3; i++) cars += car(9.1 + i * (CAR_L + 0.1), esc(t.color), i === 2, boarding && !arriving, lit)
+    let motion = ''
+    let phase: string
+    if (incoming) {
+      motion = `<animateTransform attributeName="transform" type="translate" from="${n(dx)},${n(dy)}" to="0,0" begin="${(-since).toFixed(2)}s" dur="${secs}s" fill="freeze" calcMode="spline" keySplines="0 0 .4 1"/>`
+      phase = 'arriving'
+    } else if (boarding) {
+      phase = arriving ? 'standing' : 'boarding'
+    } else {
+      const timing = `begin="${(-age).toFixed(2)}s" dur="${secs}s" fill="freeze"`
+      motion =
+        `<animateTransform attributeName="transform" type="translate" from="0,0" to="${n(dx)},${n(dy)}" ${timing} calcMode="spline" keySplines=".5 0 1 1"/>` +
         `<animate attributeName="opacity" values="1;1;0" keyTimes="0;.55;1" ${timing}/>`
-    const who = `${boarding ? 'Boarding' : 'Gone'}: ${t.who}`
-    s += `<g class="train"${boarding ? '' : ' opacity="1"'}>${motion}<title>${esc(`The last train home · ${who}`)}</title>${cars}</g>`
+      phase = 'leaving'
+    }
+    const who = arriving
+      ? incoming
+        ? `Arriving: ${t.who}`
+        : boarding
+          ? `${t.who} stepped off`
+          : 'Leaving empty'
+      : `${boarding ? 'Boarding' : 'Gone'}: ${t.who}`
+    const name = arriving ? 'The train in from the east' : 'The last train home'
+    s += `<g class="train ${phase}"${phase === 'leaving' ? ' opacity="1"' : ''}>${motion}<title>${esc(`${name} · ${who}`)}</title>${cars}</g>`
   }
   return s
 }

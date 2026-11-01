@@ -1,4 +1,4 @@
-import { frame, n } from './draw/geo.ts'
+import { LANDMARKS, frame, n } from './draw/geo.ts'
 import type { Scene } from './draw/geo.ts'
 import { AGENT_CSS, drawAgents, drawRides, drawTrains } from './draw/agents.ts'
 import { defs, drawMap } from './draw/map.ts'
@@ -10,7 +10,7 @@ export { AGENT_COLORS, BURBS, BURB_ORDER, LABELS, districtFor, mainColor } from 
 // Draws the world as one animated isometric SVG of Manhattan at night. Pure:
 // no I/O, so the server renders it on each change. The page zooms and pans it.
 
-export function renderCity(world: World, now: number, opts: { animateWalks: boolean; update?: Scene['update'] }): string {
+export function renderCity(world: World, now: number, opts: { animateWalks: boolean; update?: Scene['update']; connected?: boolean }): string {
   // Everyone still in the world is drawn; whoever has left is gone from it.
   const visible = world.agents
   const byDistrict = new Map<District, Agent[]>()
@@ -42,6 +42,10 @@ export function renderCity(world: World, now: number, opts: { animateWalks: bool
     vacantOf,
     k: 1.4,
     ...(opts.update ? { update: opts.update } : {}),
+    // A world saved before the game existed counts as fully built.
+    built: world.built ?? Object.fromEntries(LANDMARKS.map(id => [id, 0])),
+    population: world.built ? (world.population ?? 0) : Infinity,
+    connected: opts.connected ?? true,
   }
 
   const vb = frame([...repoOf.keys(), ...vacantOf.keys()])

@@ -8,6 +8,10 @@ export type District =
   | 'relay'
   | 'plaza'
 
+// What the onboarding game builds: each district's landmark, the Statue's
+// torch, and the Empire State Building as the capstone.
+export type Landmark = District | 'torch' | 'empire'
+
 // The boroughs a repository other than Manhattan's moves into.
 export type Burb = 'brooklyn' | 'queens' | 'bronx' | 'jersey'
 
@@ -45,12 +49,17 @@ export type Agent = {
   restUntil?: number
   // When its train leaves Grand Central; set once it is on its way there.
   leaving?: number
+  // When it steps off the train it arrived on (a brand-new city's first lead).
+  arriving?: number
 }
 
-// A departing train at Grand Central: it waits while its passengers walk over,
-// pulls out at leaveAt, and is gone a few seconds later.
+// A train at Grand Central. Departing: it waits while its passengers walk
+// over, pulls out at leaveAt, and is gone a few seconds later. Arriving: it
+// comes in from the east at `at`, stands at the platform, and leaves empty at
+// leaveAt.
 export type Train = {
   id: string
+  kind?: 'arrive'
   at: number
   leaveAt: number
   color: string
@@ -246,5 +255,10 @@ export type World = {
   tasks?: Task[]
   // Sessions that live in the app, newest last.
   appSessions?: AppSession[]
+  // The onboarding game: when each landmark went up. Absent in a city saved
+  // before the game existed, which counts as fully built.
+  built?: Partial<Record<Landmark, number>>
+  // Cumulative tool calls: the filler blocks grow with it.
+  population?: number
   flushedAt: number
 }

@@ -1,4 +1,4 @@
-import type { Agent, Burb, District, Place, Repo } from '../types.ts'
+import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
 // its neighbours, where districts and boroughs are, and how agents walk.
@@ -298,8 +298,70 @@ export function placeAt(place: Place, i: number): [number, number] {
   return place.burb ? burbAt(place.burb, i) : standAt(place.at, i)
 }
 
-// How long the train home takes to pull out of Grand Central and be gone.
+// How long the train home takes to pull out of Grand Central and be gone, and
+// an arriving one to come in. It runs along 42nd Street, east of the terminal.
 export const TRAIN_MS = 3_000
+export const TRACK_Y = 40.55
+
+// ---- the onboarding game --------------------------------------------------
+
+// The landmarks in the order the Blueprints card lists them, with the hint
+// that says how to build each.
+export const LANDMARKS: Landmark[] = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'torch', 'plaza', 'empire']
+
+export const BLUEPRINTS: Record<Landmark, { name: string; hint: string }> = {
+  hall: { name: 'City Hall', hint: 'Send a prompt to build it' },
+  library: { name: 'Public Library', hint: 'Read a file to build it' },
+  workshop: { name: 'Garment District', hint: 'Edit a file to build it' },
+  foundry: { name: 'Hudson Yards', hint: 'Run a shell command to build it' },
+  observatory: { name: 'Times Square', hint: 'Fetch a web page to build it' },
+  relay: { name: "Grand Central's towers", hint: 'Ask Claude to use a subagent' },
+  harbor: { name: 'Seaport and the Statue of Liberty', hint: 'Commit to build them' },
+  torch: { name: "Liberty's torch", hint: 'Push to light it' },
+  plaza: { name: 'Central Park', hint: 'Let a subagent finish to green it' },
+  empire: { name: 'Empire State Building', hint: 'Build every district to raise it' },
+}
+
+// A landmark stands in scaffolding this long after it goes up; the fireworks
+// for the finished city last this long.
+export const SCAFFOLD_MS = 6_000
+export const FIREWORKS_MS = 20_000
+
+// The filler blocks: one more for every so many tool calls, Midtown and
+// downtown first, spreading out from there (with a little jitter), until the
+// island is full.
+export const BLOCK_EVERY = 40
+
+export type Lot = { x: number; y: number; x0: number; x1: number }
+
+let LOTS: Lot[] | undefined
+
+export function lots(): Lot[] {
+  if (LOTS) return LOTS
+  const list: Lot[] = []
+  for (let y = -2; y < 63; y++) {
+    const [w0, e0] = edges(y)
+    const [w1, e1] = edges(y + 1)
+    const west = Math.max(w0, w1) + 0.15
+    const east = Math.min(e0, e1) - 0.15
+    for (let x = -1; x < 19; x += 2) {
+      if (isReserved(x + 1, y)) continue
+      const x0 = Math.max(x + 0.26, west)
+      const x1 = Math.min(x + 1.74, east)
+      if (x1 - x0 < 0.5) continue
+      list.push({ x, y, x0, x1 })
+    }
+  }
+  const score = (l: Lot) => Math.min(Math.hypot(l.x0 - 8, (l.y - 41) / 2.5), Math.hypot(l.x0 - 8, (l.y - 58) / 2.5)) + seeded(l.x0, l.y) * 3
+  list.sort((a, b) => score(a) - score(b))
+  LOTS = list
+  return list
+}
+
+// The population at which every lot has its block.
+export function fullPopulation(): number {
+  return lots().length * BLOCK_EVERY
+}
 
 // Along the walker's street to Fifth Avenue, down Fifth, along the street to
 // the destination: the grid way, crossing a bridge in or out of a borough.
@@ -388,4 +450,10 @@ export type Scene = {
   // A newer Agent City on main: the Empire State lights up and becomes the
   // update button. `blocked` says why it can't update cleanly, if so.
   update?: { available: boolean; behind: number; latest?: string; blocked?: string }
+  // The onboarding game: when each landmark went up (unbuilt ones are
+  // blueprint lots), how many tool calls the city has seen, and whether the
+  // hooks are installed (the rails into Grand Central).
+  built: Partial<Record<Landmark, number>>
+  population: number
+  connected: boolean
 }

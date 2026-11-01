@@ -143,7 +143,8 @@ test('SessionEnd sends the whole session to the train', () => {
     city.world.agents.map(a => a.status),
     ['leaving', 'leaving'],
   )
-  assert.equal(city.world.trains?.length, 1, 'one train for the session')
+  // Besides the one the first session arrived on.
+  assert.equal(city.world.trains?.filter(t => t.kind !== 'arrive').length, 1, 'one train for the session')
 })
 
 test('a borough packs up after an hour of quiet, and its repository moves straight back in', () => {
@@ -249,12 +250,12 @@ test('the city renders with a train at the platform and then on its way', () => 
   city.sendHome('S1', T0 + 1000)
   city.flush(T0 + 1000)
   const boarding = renderCity(city.world, T0 + 1500, { animateWalks: true })
-  assert.ok(boarding.includes('class="train"'))
+  assert.ok(boarding.includes('class="train boarding"'))
   assert.ok(boarding.includes('Boarding: home'))
   assert.ok(boarding.includes('class="agent leaving"'), 'the passenger walks to the station')
-  const leaveAt = city.world.trains![0]!.leaveAt
+  const leaveAt = city.world.trains!.find(t => t.kind !== 'arrive')!.leaveAt
   city.flush(leaveAt + 500)
   const rolling = renderCity(city.world, leaveAt + 500, { animateWalks: true })
-  assert.ok(rolling.includes('animateTransform'), 'the train pulls out')
+  assert.ok(rolling.includes('class="train leaving"'), 'the train pulls out')
   assert.ok(!rolling.includes('class="agent'), 'nobody is left on the platform')
 })

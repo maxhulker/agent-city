@@ -1,5 +1,5 @@
-import type { Agent, World } from '../types.ts'
-import { ACCENT, BURBS, ISLAND, LABELS, esc, p, pts } from './geo.ts'
+import type { Agent, Landmark, World } from '../types.ts'
+import { ACCENT, BLUEPRINTS, BURBS, ISLAND, LABELS, esc, p, pts } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
 
 // Invisible hover zones over every place on the map that means something, each
@@ -66,13 +66,26 @@ function whoLines(world: World, list: Agent[] | undefined): string {
 
 export function drawPlaces(world: World, sc: Scene): string {
   const zones: Zone[] = []
+  // A blueprint lot's zone says how to build it.
+  const unbuilt = (id: Landmark) => sc.built[id] === undefined
+  const planned = (id: Landmark, title: string) => `${title} (blueprint): ${BLUEPRINTS[id].hint.toLowerCase()}.`
 
   for (const [d, box, height] of DISTRICTS) {
-    zones.push({ box, height, title: LABELS[d], text: ABOUT[d], color: ACCENT[d], who: sc.byDistrict.get(d) ?? [] })
+    const blueprint = unbuilt(d)
+    zones.push({
+      box,
+      height: blueprint ? 4 : height,
+      title: blueprint ? `${LABELS[d]}: blueprint` : LABELS[d],
+      text: blueprint ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}` : ABOUT[d],
+      color: blueprint ? '#7dd3fc' : ACCENT[d],
+      who: sc.byDistrict.get(d) ?? [],
+    })
   }
   const up = sc.update
   zones.push(
-    up?.available
+    unbuilt('empire')
+      ? { box: [7, 42, 9, 43], height: 4, title: 'Empire State Building: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
+      : up?.available
       ? {
           box: [7, 42, 9, 43],
           height: 110,
@@ -92,9 +105,13 @@ export function drawPlaces(world: World, sc: Scene): string {
   zones.push({
     box: [1.4, 69.4, 2.8, 70.6],
     height: 34,
-    title: 'Statue of Liberty',
-    text: 'Hops when an agent commits, and takes off like a rocket on a push.',
-    color: '#5eada0',
+    title: unbuilt('harbor') ? 'Statue of Liberty: dark' : unbuilt('torch') ? 'Statue of Liberty: torch unlit' : 'Statue of Liberty',
+    text: unbuilt('harbor')
+      ? `${BLUEPRINTS.harbor.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
+      : unbuilt('torch')
+        ? `${BLUEPRINTS.torch.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
+        : 'Hops when an agent commits, and takes off like a rocket on a push.',
+    color: unbuilt('harbor') ? '#7dd3fc' : '#5eada0',
     extra: launch
       ? `Last ${launch.kind === 'push' ? 'push' : 'commit'}: ${launch.who}${launch.repo ? ` in ${launch.repo}` : ''}, ${ago(sc.now - launch.at)}`
       : 'No commits or pushes seen yet.',
