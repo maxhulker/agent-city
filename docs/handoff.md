@@ -103,6 +103,9 @@ Order: A, then B1 and B2 together (mostly world.ts bookkeeping plus drawing),
 then B3 once the task hooks are verified. The smoothness rebuild
 (`docs/frames.md`) can wait; none of this depends on it.
 
+A is done (commit d318388). Section C, the onboarding game where the city is
+built by working in it, is briefed in `docs/onboarding.md`.
+
 ## Lessons from the first session, on cost
 
 - One long session gets expensive: every action re-sends the whole history.
