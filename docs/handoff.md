@@ -17,27 +17,32 @@ app, wake after a restart), and the Empire State update button
 Run it with `npm start` (or the desktop shortcut) and connect sessions with
 `npm run connect`. State lives in `~/.agent-city/state.json`.
 
-## Shelved: the smoothness rebuild
+## Done: the smoothness rebuild (2026-11-01)
 
-The page redraws the whole ~200 KB city SVG on every frame (~300 ms per swap,
-~15 fps idle) and agents' walks get cut short at frame boundaries. The fix is
-designed and half built:
+The page no longer redraws the whole city SVG on every frame. The server
+streams `{map?, overlay, agents, meta}` as `docs/frames.md` specifies: the
+still map once (and again when a landmark goes up, a borough moves, the hooks
+connect or the block count grows), the overlay as keyed items the page
+replaces only when their hash changes, and the agents as sprites that carry
+their whole walk and are moved by the page on requestAnimationFrame. Measured
+in the app's browser against a sandboxed server: requestAnimationFrame at
+60/s (was 15/s), no map mutations between frames, and a walk sampled across
+two server frames carrying on to its destination. `docs/frames.md` ends with
+what was measured and the small things left (overlay items paint above the
+buildings in front of them; a young city re-sends its map as blocks appear;
+the zones item is re-sent when its "ago" text changes).
 
-- The contract is `docs/frames.md`: the server streams `{map?, overlay,
-  agents, meta}` instead of one SVG. The static map is sent once; the overlay
-  is keyed items replaced only when their hash changes; agents are sprites
-  with their full walk route, moved by the page on requestAnimationFrame.
-- `Agent.walk?: {from, at}` is already in `src/types.ts` for it.
-- The half-done edits are in a git stash on this machine:
-  `git stash list` → "smoothness rebuild WIP: map/overlay/sprite layers".
-  They touch src/city.ts, src/draw/*.ts, src/world.ts, src/server.ts and
-  public/index.html, and were interrupted mid-way twice (usage limits), so
-  treat the stash as reference, not as something to apply and run. It may be
-  cheaper to start the split again from the contract.
-- Measuring the result: load the page, then in the console count
-  requestAnimationFrame calls over 2 s (was 15/s), time `innerHTML` swaps
-  (was ~300 ms), and sample an agent's transform across a frame boundary (it
-  used to jump to its destination).
+The git stash "smoothness rebuild WIP: map/overlay/sprite layers" on this
+machine is now obsolete: everything it was for is on main, built afresh from
+the contract. It can be dropped.
+
+How to measure again, without touching the real instance: start a second
+server with `USERPROFILE` pointed at a scratch folder and `AGENT_CITY_PORT`
+set, post synthetic hook events to `/hook` with curl (no Origin header), open
+the page, and in the console count requestAnimationFrame calls over 2 s,
+watch the map `<svg>` with a MutationObserver, and sample an agent's
+`transform` every 100 ms while posting an event that moves it and another a
+second later.
 
 ## Next round: the brief
 
@@ -101,7 +106,7 @@ borough is never given up until all four are taken.
 
 Order: A, then B1 and B2 together (mostly world.ts bookkeeping plus drawing),
 then B3 once the task hooks are verified. The smoothness rebuild
-(`docs/frames.md`) can wait; none of this depends on it.
+(`docs/frames.md`) is done.
 
 A is done (commit d318388). Section C, the onboarding game where the city is
 built by working in it, is briefed in `docs/onboarding.md`; its act one is
@@ -132,3 +137,5 @@ welcome, `hooksInstalled()` in `src/install.ts`; tests in
   borough that has gone quiet.
 - The interactive-window fallback for an unanswered permission card (the card
   says it falls back after nine minutes) was never tested in a real terminal.
+- The conversation drawer keeps polling `/conversation` for a session that
+  has left (one 404 a second while it stays open on a departed session).
