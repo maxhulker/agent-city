@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import type { Task, TaskLevel, TaskModel } from './types.ts'
+import type { Task, TaskEffort, TaskLevel, TaskModel } from './types.ts'
 import { norm } from './world.ts'
 
 // Headless Claude Code sessions started from the page. Each reports to the
@@ -23,7 +23,10 @@ const LEVELS: Record<TaskLevel, string[]> = {
   edit: ['--permission-mode', 'acceptEdits', '--allowedTools', ...EDIT_TOOLS],
   run: ['--permission-mode', 'acceptEdits', '--allowedTools', ...EDIT_TOOLS, 'Bash', 'PowerShell'],
 }
-const MODELS: TaskModel[] = ['default', 'haiku', 'sonnet', 'opus']
+const ALIASES = ['default', 'fable', 'opus', 'sonnet', 'haiku']
+// A full model ID, as the API names it (an optional [1m] asks for the long context).
+const MODEL_ID = /^claude-[a-z0-9][a-z0-9.-]{2,60}(\[1m\])?$/
+const EFFORTS: TaskEffort[] = ['default', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export type TaskEnd = 'start' | 'done' | 'failed' | 'stopped'
 
@@ -62,14 +65,19 @@ export class Tasks {
   }
 
   // Starts claude -p in cwd; throws with a message for the page when it can't.
-  start(args: { cwd?: unknown; prompt?: unknown; level?: unknown; model?: unknown }, now: number): Task {
+  start(args: { cwd?: unknown; prompt?: unknown; level?: unknown; model?: unknown; effort?: unknown }, now: number): Task {
     const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
     if (!prompt) throw new Error('The prompt is empty')
     if (prompt.length > PROMPT_MAX) throw new Error(`The prompt is longer than ${PROMPT_MAX} characters`)
     const level = args.level as TaskLevel
     if (typeof level !== 'string' || !Object.hasOwn(LEVELS, level)) throw new Error('level must be read, edit or run')
-    const model = (args.model ?? 'default') as TaskModel
-    if (!MODELS.includes(model)) throw new Error('model must be default, haiku, sonnet or opus')
+    const model: TaskModel = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : 'default'
+    // Checked by shape, since it reaches a shell on Windows.
+    if (!ALIASES.includes(model) && !MODEL_ID.test(model)) {
+      throw new Error('model must be default, fable, opus, sonnet, haiku or a full model ID like claude-opus-5-5')
+    }
+    const effort = (typeof args.effort === 'string' && args.effort ? args.effort : 'default') as TaskEffort
+    if (!EFFORTS.includes(effort)) throw new Error('effort must be default, low, medium, high, xhigh or max')
     if (typeof args.cwd !== 'string' || !args.cwd.trim()) throw new Error('No folder given')
     const cwd = norm(resolve(args.cwd.trim()))
     let isDir = false
@@ -79,8 +87,15 @@ export class Tasks {
     if (!isDir) throw new Error(`${cwd} is not a folder`)
     if (this.running >= RUNNING_MAX) throw new Error(`${RUNNING_MAX} tasks are already running`)
 
-    const task: Task = { id: randomUUID(), cwd, prompt, level, model, status: 'running', startedAt: now }
-    const argv = ['-p', '--output-format', 'json', ...(model === 'default' ? [] : ['--model', model]), ...LEVELS[level]]
+    const task: Task = { id: randomUUID(), cwd, prompt, level, model, effort, status: 'running', startedAt: now }
+    const argv = [
+      '-p',
+      '--output-format',
+      'json',
+      ...(model === 'default' ? [] : ['--model', model]),
+      ...(effort === 'default' ? [] : ['--effort', effort]),
+      ...LEVELS[level],
+    ]
     // CLAUDECODE marks a shell inside a session; a server started from one shouldn't pass it on.
     const env = { ...process.env }
     delete env.CLAUDECODE
@@ -115,6 +130,7 @@ export class Tasks {
         if (typeof res.result === 'string') task.result = res.result
         if (typeof res.session_id === 'string') task.sessionId = res.session_id
         if (typeof res.total_cost_usd === 'number') task.costUsd = res.total_cost_usd
+        if (res.modelUsage && typeof res.modelUsage === 'object') task.usedModels = Object.keys(res.modelUsage)
         const isError = res.is_error === true || code !== 0
         task.status = isError ? 'failed' : 'done'
         if (isError) task.error = tail(err) || task.result || `claude exited with code ${code}`

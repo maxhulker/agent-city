@@ -68,7 +68,9 @@ export type Message = {
 }
 
 export type TaskLevel = 'read' | 'edit' | 'run'
-export type TaskModel = 'default' | 'haiku' | 'sonnet' | 'opus'
+// 'default', a family alias ('opus' = its latest) or a full model ID.
+export type TaskModel = string
+export type TaskEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 // A headless Claude Code session started from the page.
 export type Task = {
@@ -77,6 +79,9 @@ export type Task = {
   prompt: string
   level: TaskLevel
   model: TaskModel
+  effort?: TaskEffort
+  // The models that actually answered, from claude's own report.
+  usedModels?: string[]
   status: 'running' | 'done' | 'failed' | 'stopped'
   startedAt: number
   endedAt?: number

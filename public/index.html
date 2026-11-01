@@ -203,12 +203,24 @@
                 <option value="edit">Can edit files</option>
                 <option value="run">Can edit and run commands</option>
               </select></div>
-            <div><label for="nt-model">Model</label>
-              <select class="field" id="nt-model">
-                <option value="default">Default</option><option value="haiku">Haiku</option>
-                <option value="sonnet">Sonnet</option><option value="opus">Opus</option>
+            <div><label for="nt-effort">Effort</label>
+              <select class="field" id="nt-effort">
+                <option value="default">Default</option><option value="low">Low</option>
+                <option value="medium">Medium</option><option value="high">High</option>
+                <option value="xhigh">Extra high</option><option value="max">Max</option>
               </select></div>
           </div>
+          <div class="two">
+            <div><label for="nt-model">Model</label>
+              <select class="field" id="nt-model">
+                <option value="default">Default</option><option value="fable">Fable</option>
+                <option value="opus">Opus</option><option value="sonnet">Sonnet</option>
+                <option value="haiku">Haiku</option>
+              </select></div>
+            <div><label for="nt-version">Version</label>
+              <select class="field" id="nt-version"></select></div>
+          </div>
+          <input class="field" id="nt-id" placeholder="Full model ID, e.g. claude-opus-5-5" style="margin-top:6px" spellcheck="false" hidden>
           <div class="warn" id="nt-warn" hidden>Warning: this level may run any shell command in that folder.</div>
           <div style="margin-top:8px"><button class="btn primary" id="nt-start" type="button">Start</button></div>
           <div class="err" id="nt-err"></div>
@@ -550,6 +562,28 @@
   $('nt-head').addEventListener('click', () => setNt(!ntOpen))
   $('nt-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setNt(!ntOpen) } })
 
+  // Each model's versions: "Latest" follows the alias; a pinned ID stays put.
+  // "Other model ID…" takes any full ID, e.g. an older version or one with [1m].
+  const VERSIONS = {
+    default: [['default', 'Your default']],
+    fable: [['fable', 'Latest'], ['claude-fable-5-1', 'Fable 5.1']],
+    opus: [['opus', 'Latest'], ['claude-opus-5-5', 'Opus 5.5']],
+    sonnet: [['sonnet', 'Latest'], ['claude-sonnet-5-5', 'Sonnet 5.5']],
+    haiku: [['haiku', 'Latest'], ['claude-haiku-5-5', 'Haiku 5.5']],
+  }
+  function syncVersions() {
+    const family = $('nt-model').value
+    const list = [...(VERSIONS[family] || VERSIONS.default)]
+    if (family !== 'default') list.push(['__id', 'Other model ID…'])
+    $('nt-version').innerHTML = list.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')
+    $('nt-version').disabled = family === 'default'
+    syncId()
+  }
+  function syncId() { $('nt-id').hidden = $('nt-version').value !== '__id' }
+  $('nt-model').addEventListener('change', syncVersions)
+  $('nt-version').addEventListener('change', syncId)
+  syncVersions()
+
   function syncOther() { $('nt-other').hidden = $('nt-folder').value !== '__other' }
   function syncWarn() { $('nt-warn').hidden = $('nt-level').value !== 'run' }
   $('nt-folder').addEventListener('change', syncOther)
@@ -576,9 +610,11 @@
     const prompt = $('nt-prompt').value.trim()
     if (!cwd) { err.textContent = 'Pick a folder.'; return }
     if (!prompt) { err.textContent = 'Describe the task first.'; return }
+    const model = $('nt-version').value === '__id' ? $('nt-id').value.trim() : $('nt-version').value
+    if (!model) { err.textContent = 'Enter a model ID.'; return }
     err.textContent = ''
     btn.disabled = true
-    const r = await post('/task', { cwd, prompt, level: $('nt-level').value, model: $('nt-model').value })
+    const r = await post('/task', { cwd, prompt, level: $('nt-level').value, model, effort: $('nt-effort').value })
     btn.disabled = false
     if (r.error || r.ok === false) { err.textContent = r.error || 'The task was not started.'; return }
     if ($('nt-prompt').value.trim() === prompt) { $('nt-prompt').value = ''; growTa($('nt-prompt')) }
@@ -590,6 +626,14 @@
   function dur(ms) {
     const s = Math.max(0, Math.round(ms / 1000))
     return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`
+  }
+
+  // What was asked for, and what actually answered once it's known.
+  function modelLabel(t) {
+    const asked = !t.model || t.model === 'default' ? 'default model' : t.model
+    const effort = t.effort && t.effort !== 'default' ? ` · ${t.effort} effort` : ''
+    const used = (t.usedModels || []).filter(m => m !== t.model)
+    return `${asked}${effort}${used.length ? ` · ran on ${used.join(', ')}` : ''}`
   }
 
   function taskHtml(t) {
@@ -604,6 +648,7 @@
         <span class="dim small">${esc(time)}${t.costUsd != null ? ' · $' + Number(t.costUsd).toFixed(2) : ''}</span>
         <span style="margin-left:auto">${running ? `<button class="btn sm" data-task-stop="${esc(t.id)}">Stop</button>` : can ? `<button class="btn sm" data-task-toggle="${esc(t.id)}">${open ? 'Hide' : 'Result'}</button>` : ''}</span></div>
       <div class="tp" title="${esc(t.prompt)}">${esc(t.prompt)}</div>
+      <div class="dim small">${esc(modelLabel(t))}</div>
       ${open ? `<pre class="res${bad ? ' bad' : ''}">${esc(body)}</pre>` : ''}`
   }
 

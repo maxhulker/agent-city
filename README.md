@@ -40,7 +40,8 @@ that session.
   next does something; until then it shows as queued, and you can cancel it.
 - **Start a new task** from the New task form: pick a folder, describe the
   task, and choose what it may do (read only, edit files, or edit and run
-  commands) and a model. It runs as a headless Claude Code session, shows up in
+  commands), a model and version (the latest, a pinned one, or any model ID)
+  and an effort level. It runs as a headless Claude Code session, shows up in
   the city like any other, and its answer lands in the task list. Stop ends it
   and everything it started.
 
