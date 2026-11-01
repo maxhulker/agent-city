@@ -42,9 +42,10 @@ the rails once the hooks are laid, the city fabric, the landmark buildings in
 their "off" state, bridges, trees, the boroughs' houses and names,
 neighbourhood and water labels, the moon. Nothing in it animates. Its hash
 (`mapKey`) comes from which landmarks stand, which boroughs have houses (in
-use or packed up), whether the hooks are connected, and how many filler
-blocks the population has earned, so in a built city it changes only when a
-borough moves in or out. The last map is kept by its key, so a frame that
+use or packed up), whether the hooks are connected, how many filler blocks
+the population has earned, and the layout's revision (`World.layout.rev`,
+docs/city-builder.md: a placement changes the map), so in a built city it
+changes only when a borough moves in or out or the person builds. The last map is kept by its key, so a frame that
 doesn't change it costs no drawing. Ids in its `<defs>` are document-global,
 so the overlay can use them (`url(#halo)` etc.).
 

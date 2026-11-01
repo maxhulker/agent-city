@@ -1,7 +1,13 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
+import { BLOCK_EVERY, BURBS, PROFILE, SITES, edges, lots } from '../layout.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
-// its neighbours, where districts and boroughs are, and how agents walk.
+// its neighbours, where districts and boroughs are, and how agents walk. The
+// island, the sites, the boroughs and the lots are the Manhattan preset's,
+// kept in src/layout.ts (docs/city-builder.md) and re-exported here.
+
+export { BLOCK_EVERY, BURBS, BURB_ORDER, PROFILE, RESERVED, SITES, edges, isReserved, lots, seeded } from '../layout.ts'
+export type { Lot, Site } from '../layout.ts'
 
 export const LABELS: Record<District, string> = {
   hall: 'City Hall',
@@ -80,54 +86,7 @@ export function esc(text: string): string {
   return text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
 }
 
-export function seeded(i: number, j: number): number {
-  let h = (Math.round(i * 1000) * 374761393 + Math.round(j * 1000) * 668265263) | 0
-  h = Math.imul(h ^ (h >>> 13), 1274126177)
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
-}
-
 // ---- the island -----------------------------------------------------------
-
-// Shoreline as [gy, west, east], north to south.
-export const PROFILE: [number, number, number][] = [
-  [-2.6, 7.6, 8.4],
-  [-1.6, 6.3, 9.8],
-  [1, 5, 11],
-  [5, 4, 12],
-  [9, 3.2, 12.6],
-  [14, 2.3, 13.3],
-  [17, 2, 15],
-  [20, 1.5, 15.4],
-  [26, 1, 15.6],
-  [34, 0.5, 16],
-  [40, 0.2, 16.4],
-  [45, 0.3, 16.6],
-  [47, 0.6, 18],
-  [50, 1, 18.6],
-  [52, 1.3, 17.6],
-  [54, 1.8, 16.2],
-  [57, 2.5, 14.6],
-  [59, 3.5, 13.2],
-  [60.8, 4.8, 11],
-  [62, 6.2, 8.6],
-  [62.6, 7.2, 7.6],
-]
-
-export function edges(gy: number): [number, number] {
-  const first = PROFILE[0]!
-  const last = PROFILE[PROFILE.length - 1]!
-  if (gy <= first[0]) return [first[1], first[2]]
-  if (gy >= last[0]) return [last[1], last[2]]
-  for (let i = 1; i < PROFILE.length; i++) {
-    const b = PROFILE[i]!
-    if (gy <= b[0]) {
-      const a = PROFILE[i - 1]!
-      const t = (gy - a[0]) / (b[0] - a[0])
-      return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
-    }
-  }
-  return [last[1], last[2]]
-}
 
 export const ISLAND: [number, number][] = [
   ...PROFILE.map(([gy, w]) => [w, gy] as [number, number]),
@@ -196,14 +155,6 @@ export const GOVERNORS: [number, number][] = [
 
 // ---- districts ------------------------------------------------------------
 
-export type Site = {
-  // Where agents stand: on the street in front of the landmark.
-  spot: [number, number]
-  // Where its name goes, how high above the ground, and which way it reads
-  // from there (centred unless given).
-  label: [number, number, number, ('start' | 'end')?]
-}
-
 // Each district's own colour: its plaza, its landmark's lights, its name.
 export const ACCENT: Record<District, string> = {
   observatory: '#f472b6',
@@ -219,19 +170,6 @@ export const ACCENT: Record<District, string> = {
 // Midtown's five sit a block or two apart, so their names wait for a zoom.
 export const MIDTOWN = new Set<District>(['observatory', 'library', 'relay', 'workshop', 'foundry'])
 
-// Each spot is on a street with its landmark just north of it (behind, on
-// screen) and nothing tall in front, so the plaza stays in view.
-export const SITES: Record<District, Site> = {
-  observatory: { spot: [6, 38], label: [5.4, 37.2, 60] },
-  library: { spot: [8, 40], label: [6.9, 41.1, -2, 'start'] },
-  relay: { spot: [11, 40], label: [11.9, 40.4, -2] },
-  workshop: { spot: [5.4, 42], label: [4.9, 43.1, -2, 'end'] },
-  foundry: { spot: [2.4, 42], label: [1.3, 42.9, -2, 'end'] },
-  hall: { spot: [8.5, 56], label: [8.5, 56.9, -2] },
-  harbor: { spot: [12.4, 58], label: [12.6, 58.9, -2] },
-  plaza: { spot: [7, 28.6], label: [7, 31.3, -2] },
-}
-
 // The lit ground where a district's agents stand: [gx0, gy0, gx1, gy1].
 export function padOf(d: District): [number, number, number, number] {
   const [sx, sy] = SITES[d].spot
@@ -240,29 +178,6 @@ export function padOf(d: District): [number, number, number, number] {
   // or a park across the street, and their light spills over it.
   const deep = d === 'observatory' || d === 'library' || d === 'workshop'
   return [sx - 1.35, sy - 0.3, sx + 1.35, sy + (deep ? 0.85 : 0.42)]
-}
-
-// Lots the landmarks take, skipped when filling the grid.
-export const RESERVED: [number, number, number, number][] = [
-  [5, 22, 9, 35], // Central Park
-  [3, 37, 7, 38], // Times Square's towers
-  [5, 38, 7, 39], // Times Square's plaza
-  [7, 39, 9, 40], // Public Library
-  [7, 40, 9, 41], // Bryant Park
-  [9, 39, 13, 40], // Grand Central, Chrysler
-  [9, 38, 11, 39], // MetLife
-  [5, 41, 7, 42], // Garment District
-  [5, 42, 7, 43], // Herald Square
-  [7, 42, 9, 43], // Empire State
-  [1, 40, 5, 42], // Hudson Yards
-  [5, 55, 7, 56], // Woolworth
-  [7, 55, 10, 56], // City Hall
-  [11, 57, 15, 58], // Seaport
-  [3, 57, 6, 58], // One World Trade
-]
-
-export function isReserved(x: number, y: number): boolean {
-  return RESERVED.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1)
 }
 
 export function standAt(d: District, i: number): [number, number] {
@@ -276,15 +191,6 @@ export function standAt(d: District, i: number): [number, number] {
 }
 
 // ---- boroughs: one per other repository -----------------------------------
-
-export const BURBS: Record<Burb, { name: string; center: [number, number]; near: [number, number]; far: [number, number] }> = {
-  brooklyn: { name: 'Brooklyn', center: [24, 55.5], near: [14.4, 56], far: [19.8, 56.2] },
-  queens: { name: 'Queens', center: [24, 32.5], near: [16, 34.5], far: [19.2, 34.5] },
-  bronx: { name: 'The Bronx', center: [19.5, 8], near: [12.9, 11], far: [14.6, 11] },
-  jersey: { name: 'Jersey City', center: [-8.5, 40], near: [0.4, 39], far: [-4.8, 39] },
-}
-
-export const BURB_ORDER: Burb[] = ['brooklyn', 'queens', 'bronx', 'jersey']
 
 // Rows along the borough's front edge, facing the viewer, a body's width apart.
 export function burbAt(b: Burb, i: number): [number, number] {
@@ -327,37 +233,8 @@ export const BLUEPRINTS: Record<Landmark, { name: string; hint: string }> = {
 export const SCAFFOLD_MS = 6_000
 export const FIREWORKS_MS = 20_000
 
-// The filler blocks: one more for every so many tool calls, Midtown and
-// downtown first, spreading out from there (with a little jitter), until the
-// island is full.
-export const BLOCK_EVERY = 40
-
-export type Lot = { x: number; y: number; x0: number; x1: number }
-
-let LOTS: Lot[] | undefined
-
-export function lots(): Lot[] {
-  if (LOTS) return LOTS
-  const list: Lot[] = []
-  for (let y = -2; y < 63; y++) {
-    const [w0, e0] = edges(y)
-    const [w1, e1] = edges(y + 1)
-    const west = Math.max(w0, w1) + 0.15
-    const east = Math.min(e0, e1) - 0.15
-    for (let x = -1; x < 19; x += 2) {
-      if (isReserved(x + 1, y)) continue
-      const x0 = Math.max(x + 0.26, west)
-      const x1 = Math.min(x + 1.74, east)
-      if (x1 - x0 < 0.5) continue
-      list.push({ x, y, x0, x1 })
-    }
-  }
-  const score = (l: Lot) => Math.min(Math.hypot(l.x0 - 8, (l.y - 41) / 2.5), Math.hypot(l.x0 - 8, (l.y - 58) / 2.5)) + seeded(l.x0, l.y) * 3
-  list.sort((a, b) => score(a) - score(b))
-  LOTS = list
-  return list
-}
-
+// The filler blocks (the preset's lots, in src/layout.ts): one more for every
+// BLOCK_EVERY tool calls, Midtown and downtown first, until the island is full.
 // The population at which every lot has its block.
 export function fullPopulation(): number {
   return lots().length * BLOCK_EVERY
@@ -464,6 +341,8 @@ export type Scene = {
   built: Partial<Record<Landmark, number>>
   population: number
   connected: boolean
+  // The layout's revision (docs/city-builder.md): a placement changes the map.
+  rev: number
 }
 
 // ---- layers (docs/frames.md) ---------------------------------------------

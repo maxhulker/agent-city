@@ -62,6 +62,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     built: world.built ?? Object.fromEntries(LANDMARKS.map(id => [id, 0])),
     population: world.built ? (world.population ?? 0) : Infinity,
     connected: opts.connected ?? true,
+    rev: world.layout?.rev ?? 0,
   }
 
   const key = mapKey(sc)

@@ -1488,12 +1488,13 @@ function fireworks(): string {
 }
 
 // What the still map depends on: which landmarks stand, which boroughs have
-// houses, whether the rails are laid, and how many blocks the population has
-// earned. Its hash tells the page whether it already has this map.
+// houses, whether the rails are laid, how many blocks the population has
+// earned, and the layout's revision. Its hash tells the page whether it
+// already has this map.
 export function mapKey(sc: Scene): string {
   const built = Object.keys(sc.built).sort()
   const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].sort()
-  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population)]))
+  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population), sc.rev]))
 }
 
 // The still city, back to front: everything but the agents and the overlay.

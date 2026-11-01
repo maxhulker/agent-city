@@ -114,6 +114,16 @@ done (`World.built`, blueprints, the arriving train, the Blueprints card, the
 welcome, `hooksInstalled()` in `src/install.ts`; tests in
 `test/onboarding.test.ts`). Act two waits for section B.
 
+### D. The city builder
+
+The direction after C: the person lays the city out themselves, briefed in
+`docs/city-builder.md` with nine steps. Step one is in: `src/layout.ts`
+(the `Layout` types, the Manhattan preset, the island's constants moved
+from `geo.ts` and re-exported there), `World.layout` with the migration in
+the `City` constructor, the revision in the map's hash, and the golden hash
+of the preset's map in `test/golden.json` (`test/layout.test.ts`). Nothing
+is drawn from the layout yet; step two is next.
+
 ## Lessons from the first session, on cost
 
 - One long session gets expensive: every action re-sends the whole history.

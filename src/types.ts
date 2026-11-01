@@ -1,3 +1,5 @@
+import type { Layout } from './layout.ts'
+
 export type District =
   | 'hall'
   | 'library'
@@ -263,5 +265,8 @@ export type World = {
   built?: Partial<Record<Landmark, number>>
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
+  // What stands where (docs/city-builder.md). A city saved before layouts
+  // existed gets the Manhattan preset on load.
+  layout?: Layout
   flushedAt: number
 }

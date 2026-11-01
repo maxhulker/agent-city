@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, BURBS, BURB_ORDER, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
+import { clearBuilt, manhattanLayout, markBuilt } from './layout.ts'
 import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -39,7 +40,7 @@ const CD = /(?:^|&&|;|\|\|)\s*(?:cd|Set-Location|pushd)\s+(?:-(?:Literal)?Path\s
 const GIT_C = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/
 
 export function emptyWorld(): World {
-  return { home: '', homeRoot: '', repos: [], sessions: [], agents: [], conflicts: [], asks: [], built: {}, population: 0, flushedAt: 0 }
+  return { home: '', homeRoot: '', repos: [], sessions: [], agents: [], conflicts: [], asks: [], built: {}, population: 0, layout: manhattanLayout(), flushedAt: 0 }
 }
 
 // Tools that build each landmark the first time any session uses one.
@@ -264,6 +265,14 @@ export class City {
       if (used) this.buildAll(w.flushedAt)
     }
     w.population ??= 0
+    // A city saved before layouts existed is today's Manhattan, with the
+    // landmarks it has built standing and the rest still lots.
+    w.layout ??= manhattanLayout(w.built)
+  }
+
+  // The layout (docs/city-builder.md); the constructor makes sure there is one.
+  get layout() {
+    return this.world.layout!
   }
 
   // ---- the onboarding game -------------------------------------------------
@@ -275,6 +284,7 @@ export class City {
     w.built ??= {}
     if (w.built[id] !== undefined) return
     w.built[id] = now
+    markBuilt(this.layout, id, now)
     const name = BLUEPRINTS[id].name
     const text = id === 'torch' ? `${name} is lit` : id === 'plaza' ? `${name} is green` : `${name} opened`
     this.toasts.push(text)
@@ -293,6 +303,7 @@ export class City {
     const w = this.world
     w.built = {}
     w.population = 0
+    clearBuilt(this.layout)
     for (const a of w.agents) delete a.arriving
     this.toasts.push('The island is bare again: build it by working')
     this.say(undefined, 'the island is bare again', now)
@@ -303,7 +314,10 @@ export class City {
   buildAll(now: number) {
     const w = this.world
     w.built ??= {}
-    for (const id of LANDMARKS) w.built[id] ??= now - SCAFFOLD_MS
+    for (const id of LANDMARKS) {
+      w.built[id] ??= now - SCAFFOLD_MS
+      if (w.layout) markBuilt(w.layout, id, w.built[id])
+    }
     w.population = Math.max(w.population ?? 0, fullPopulation())
     this.isDirty = true
   }
