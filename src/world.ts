@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, BURBS, BURB_ORDER, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
-import { clearBuilt, manhattanLayout, markBuilt } from './layout.ts'
+import { FIXED, applyOp, clearBuilt, manhattanLayout, markBuilt, parseOp } from './layout.ts'
 import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -279,8 +279,22 @@ export class City {
 
   // Raises a landmark the first time its kind of work is done; the Empire
   // State follows the last district, and the city is complete.
-  private build(id: Landmark, a: Agent | undefined, now: number) {
+  private raise(id: Landmark, a: Agent | undefined, now: number) {
     const w = this.world
+    // In a borough, the first such work by its repository's agents raises
+    // the lots of that kind the person placed there (docs/city-builder.md).
+    if (a?.burb) {
+      for (const b of this.layout.buildings) {
+        if (b.burb !== a.burb || b.kind !== id || b.built !== undefined) continue
+        b.built = now
+        this.layout.rev += 1
+        const where = this.layout.boroughs.find(bo => bo.id === a.burb)?.name ?? a.burb
+        const text = `${BLUEPRINTS[id].name} opened in ${where}`
+        this.toasts.push(text)
+        this.say(a, text, now)
+        this.tick(a, text, now)
+      }
+    }
     w.built ??= {}
     if (w.built[id] !== undefined) return
     w.built[id] = now
@@ -294,7 +308,7 @@ export class City {
       this.toasts.push('The city is complete')
       this.tick(undefined, 'the city is complete', now)
     } else if (DISTRICT_LANDMARKS.every(d => w.built![d] !== undefined)) {
-      this.build('empire', a, now)
+      this.raise('empire', a, now)
     }
   }
 
@@ -320,6 +334,37 @@ export class City {
     }
     w.population = Math.max(w.population ?? 0, fullPopulation())
     this.isDirty = true
+  }
+
+  // The city builder (docs/city-builder.md): one placement from the page,
+  // checked by the layout's rules. In the city, placing a landmark builds it
+  // (the game's record and ceremony follow); in a borough it is a lot until
+  // that repository's first such work. The fixed kinds always stand, and the
+  // Statue stands once the Seaport does.
+  build(raw: unknown, now: number): { ok: true } | { error: string } {
+    const w = this.world
+    const op = parseOp(raw)
+    if (!op) return { error: 'Not a placement' }
+    if (op.op === 'place' && op.kind === 'empire' && DISTRICT_LANDMARKS.some(d => w.built?.[d] === undefined)) {
+      return { error: 'Build every district first' }
+    }
+    const r = applyOp(this.layout, op)
+    if ('error' in r) return r
+    w.layout = r.layout
+    if (op.op === 'place') {
+      const b = r.layout.buildings[r.layout.buildings.length - 1]!
+      if (!b.burb) {
+        if (b.kind === 'liberty') {
+          if (w.built?.harbor !== undefined) b.built = w.built.harbor
+        } else if (!FIXED.includes(b.kind)) {
+          // What is left is a landmark of the game's.
+          this.raise(b.kind as Landmark, undefined, now)
+          markBuilt(r.layout, b.kind as Landmark, now)
+        }
+      }
+    }
+    this.isDirty = true
+    return { ok: true }
   }
 
   // True while nothing is built and no session has ever been seen: the page
@@ -623,7 +668,7 @@ export class City {
         lead.activity = `Thinking: ${short(str(ev.prompt), 40)}`
         lead.updatedAt = now
         this.say(lead, 'got a new prompt', now)
-        this.build('hall', lead, now)
+        this.raise('hall', lead, now)
         break
       }
       case 'PreToolUse': {
@@ -670,11 +715,11 @@ export class City {
         // The game: the first of each kind of work raises its landmark, and
         // every tool call adds to the population.
         w.population = (w.population ?? 0) + 1
-        if (READS.test(tool)) this.build('library', a, now)
-        else if (EDITS.test(tool)) this.build('workshop', a, now)
-        else if (SHELLS.test(tool)) this.build('foundry', a, now)
-        else if (districtFor(tool) === 'observatory') this.build('observatory', a, now)
-        else if (SPAWNS.test(tool)) this.build('relay', a, now)
+        if (READS.test(tool)) this.raise('library', a, now)
+        else if (EDITS.test(tool)) this.raise('workshop', a, now)
+        else if (SHELLS.test(tool)) this.raise('foundry', a, now)
+        else if (districtFor(tool) === 'observatory') this.raise('observatory', a, now)
+        else if (SPAWNS.test(tool)) this.raise('relay', a, now)
         break
       }
       case 'PostToolUse':
@@ -722,8 +767,8 @@ export class City {
           this.tick(a, kind === 'push' ? `🚀 pushed${repo ? ` ${repo}` : ''}` : `committed${repo ? ` in ${repo}` : ''}`, now)
           if (kind === 'push') this.toasts.push(`🚀 ${a.name} pushed${repo ? ` ${repo}` : ''}`)
           // The first commit builds the Seaport and the Statue; the first push lights her torch.
-          this.build('harbor', a, now)
-          if (kind === 'push') this.build('torch', a, now)
+          this.raise('harbor', a, now)
+          if (kind === 'push') this.raise('torch', a, now)
         }
         break
       }
@@ -751,7 +796,7 @@ export class City {
           this.ride(from, to, a.color, 'report', now)
           a.restUntil = now + walk(from, to, placeAt(to, 0)).dur * 1000 + REST_LEAVE
           // The first subagent to finish and go to rest greens Central Park.
-          this.build('plaza', a, now)
+          this.raise('plaza', a, now)
         }
         break
       }

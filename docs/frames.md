@@ -13,6 +13,9 @@ type Frame = {
   // The static city. Sent on connect and whenever its hash changes; omitted
   // otherwise, and then the page keeps the one it has.
   map?: { hash: string; svg: string }
+  // What stands where (docs/city-builder.md), for the page's build cursor.
+  // Sent on connect and whenever its revision changes; omitted otherwise.
+  layout?: Layout
   // Everything dynamic except the agents, in paint order.
   overlay: OverlayItem[]
   // The agents; the page draws and moves them itself.

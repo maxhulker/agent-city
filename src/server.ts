@@ -96,7 +96,7 @@ function save() {
 
 // Each client remembers which map it has, so the map goes out only when it
 // changes (docs/frames.md).
-type Client = { res: ServerResponse; mapHash?: string }
+type Client = { res: ServerResponse; mapHash?: string; rev?: number }
 const clients = new Set<Client>()
 
 // Folders the page offers for a new task: Manhattan, the boroughs, and wherever sessions run.
@@ -217,10 +217,14 @@ function broadcast(only?: Client) {
   const frame = renderFrame(city.world, Date.now(), { update, connected })
   const rest = `"overlay":${JSON.stringify(frame.overlay)},"agents":${JSON.stringify(frame.agents)},"meta":${JSON.stringify(info)}}\n\n`
   const map = `"map":${JSON.stringify(frame.map)},`
+  // The layout likewise, for clients whose revision is behind.
+  const layout = `"layout":${JSON.stringify(frame.layout)},`
   for (const client of only ? [only] : clients) {
     const withMap = client.mapHash !== frame.map.hash
     if (withMap) client.mapHash = frame.map.hash
-    client.res.write(`data: {${withMap ? map : ''}${rest}`)
+    const withLayout = client.rev !== frame.layout.rev
+    if (withLayout) client.rev = frame.layout.rev
+    client.res.write(`data: {${withMap ? map : ''}${withLayout ? layout : ''}${rest}`)
   }
 }
 
@@ -388,10 +392,17 @@ const server = createServer(async (req, res) => {
     }
     if (
       req.method === 'POST' &&
-      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall')
+      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build')
     ) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
+      // The city builder: one placement, checked by the layout's rules.
+      if (url.pathname === '/build') {
+        const r = city.build(args, Date.now())
+        if ('error' in r) return reply(res, 400, JSON.stringify(r))
+        save()
+        return reply(res, 200, '{"ok":true}')
+      }
       // Send home: that session's agents take the train now. Last call: everyone idle does.
       if (url.pathname === '/sendhome') {
         return city.sendHome(args.session, Date.now()) ? reply(res, 200, '{"ok":true}') : reply(res, 400, JSON.stringify({ error: 'No such session' }))

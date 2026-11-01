@@ -4,6 +4,7 @@ import { AGENT_CSS, drawRides, drawSprites, drawTrains } from './draw/agents.ts'
 import { defs, drawMap, drawOverlay, mapKey } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import { manhattanLayout } from './layout.ts'
+import type { Layout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
 
 export { AGENT_COLORS, BLUEPRINTS, BURBS, BURB_ORDER, LABELS, LANDMARKS, districtFor, mainColor } from './draw/geo.ts'
@@ -16,6 +17,9 @@ export type { OverlayItem, Sprite } from './draw/geo.ts'
 export type Frame = {
   // The still city, with its hash: the server sends it only when it changes.
   map: { hash: string; svg: string }
+  // What stands where, for the page's build cursor: the server sends it only
+  // when its revision changes.
+  layout: Layout
   // Everything dynamic but the agents, in paint order.
   overlay: OverlayItem[]
   // The agents, which the page draws and moves itself.
@@ -48,6 +52,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
       .sort((a, b) => (a.left ?? 0) - (b.left ?? 0))
       .map(r => [r.burb, r]),
   )
+  const layout = world.layout ?? manhattanLayout(world.built)
   const sc: Scene = {
     now,
     byDistrict,
@@ -63,8 +68,8 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     built: world.built ?? Object.fromEntries(LANDMARKS.map(id => [id, 0])),
     population: world.built ? (world.population ?? 0) : Infinity,
     connected: opts.connected ?? true,
-    layout: world.layout ?? manhattanLayout(world.built),
-    rev: world.layout?.rev ?? 0,
+    layout,
+    rev: layout.rev,
   }
 
   const key = mapKey(sc)
@@ -89,5 +94,5 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     // Taxis last, so they drive over everyone.
     ...drawRides(world, sc),
   ]
-  return { map: lastMap, overlay, agents: drawSprites(world, sc) }
+  return { map: lastMap, layout, overlay, agents: drawSprites(world, sc) }
 }

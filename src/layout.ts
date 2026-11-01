@@ -402,3 +402,324 @@ export function manhattanLayout(built: Partial<Record<Landmark, number>> = {}): 
   for (const [kind, at] of Object.entries(built) as [Landmark, number][]) if (at !== undefined) markBuilt(layout, kind, at)
   return layout
 }
+
+// ---- placement: the rules -----------------------------------------------------
+
+// What the page may ask for (POST /build). Every op is checked here, and a
+// refused one changes nothing.
+export type Op =
+  | { op: 'place'; kind: Kind; x: number; y: number; face?: Face }
+  | { op: 'remove'; id: string }
+  | { op: 'road'; x: number; y: number; dir: 0 | 1; len?: number; kind?: RoadKind }
+  | { op: 'unroad'; x: number; y: number; dir: 0 | 1; len?: number }
+  | { op: 'zone'; x: number; y: number }
+  | { op: 'unzone'; x: number; y: number }
+  | { op: 'paint'; what: 'park' | 'none'; x: number; y: number; w?: number; h?: number }
+  | { op: 'borough'; name: string; root?: string; x: number; y: number; w: number; h: number }
+
+export type Applied = { layout: Layout } | { error: string }
+
+// The grid the city may spread over.
+const RANGE = { x0: -60, x1: 90, y0: -40, y1: 110 }
+const RUN_MAX = 64
+const BOROUGH_MIN = 3
+const BOROUGH_MAX = 24
+
+const KINDS = Object.keys(FOOTPRINT) as Kind[]
+const FACES: Face[] = ['n', 'e', 's', 'w']
+
+const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v)
+const inRange = (x: number, y: number) => x >= RANGE.x0 && x <= RANGE.x1 && y >= RANGE.y0 && y <= RANGE.y1
+
+// An op as it came in from the page: a well-formed one, or nothing.
+export function parseOp(raw: unknown): Op | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const xy = isInt(r.x) && isInt(r.y) && inRange(r.x, r.y)
+  switch (r.op) {
+    case 'place':
+      if (!xy || !KINDS.includes(r.kind as Kind)) return undefined
+      if (r.face !== undefined && !FACES.includes(r.face as Face)) return undefined
+      return { op: 'place', kind: r.kind as Kind, x: r.x as number, y: r.y as number, ...(r.face ? { face: r.face as Face } : {}) }
+    case 'remove':
+      return typeof r.id === 'string' && r.id.length <= 64 ? { op: 'remove', id: r.id } : undefined
+    case 'road':
+    case 'unroad': {
+      if (!xy || (r.dir !== 0 && r.dir !== 1)) return undefined
+      if (r.len !== undefined && !(isInt(r.len) && r.len >= 1 && r.len <= RUN_MAX)) return undefined
+      if (r.op === 'road' && r.kind !== undefined && r.kind !== 'street' && r.kind !== 'avenue') return undefined
+      const base = { x: r.x as number, y: r.y as number, dir: r.dir as 0 | 1, ...(r.len !== undefined ? { len: r.len as number } : {}) }
+      return r.op === 'road' ? { op: 'road', ...base, ...(r.kind ? { kind: r.kind as RoadKind } : {}) } : { op: 'unroad', ...base }
+    }
+    case 'zone':
+    case 'unzone':
+      return xy ? { op: r.op, x: r.x as number, y: r.y as number } : undefined
+    case 'paint': {
+      if (!xy || (r.what !== 'park' && r.what !== 'none')) return undefined
+      const ok = (v: unknown) => v === undefined || (isInt(v) && v >= 1 && v <= RUN_MAX)
+      if (!ok(r.w) || !ok(r.h)) return undefined
+      return { op: 'paint', what: r.what, x: r.x as number, y: r.y as number, ...(r.w !== undefined ? { w: r.w as number } : {}), ...(r.h !== undefined ? { h: r.h as number } : {}) }
+    }
+    case 'borough': {
+      if (!xy || !isInt(r.w) || !isInt(r.h)) return undefined
+      if (typeof r.name !== 'string' || !r.name.trim() || r.name.length > 40) return undefined
+      if (r.root !== undefined && (typeof r.root !== 'string' || r.root.length > 400)) return undefined
+      return { op: 'borough', name: r.name.trim(), ...(r.root ? { root: r.root } : {}), x: r.x as number, y: r.y as number, w: r.w, h: r.h }
+    }
+    default:
+      return undefined
+  }
+}
+
+// ---- what is where -----------------------------------------------------------
+
+type Rect = [number, number, number, number]
+
+const within = ([x0, y0, x1, y1]: Rect, x: number, y: number) => x >= x0 && x < x1 && y >= y0 && y < y1
+const overlaps = (a: Rect, b: Rect) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+
+export function boroughRect(bo: Borough): Rect {
+  return [bo.x, bo.y, bo.x + bo.w, bo.y + bo.h]
+}
+
+// The borough a cell lies in, if any.
+export function boroughAt(layout: Layout, x: number, y: number): Borough | undefined {
+  return layout.boroughs.find(bo => within(boroughRect(bo), x, y))
+}
+
+// Land, or a preset borough's ground: the hand-drawn boroughs stand on the
+// mainland the preset's backdrop draws, which `land` does not list.
+export function groundAt(layout: Layout, x: number, y: number): boolean {
+  return landAt(layout, x, y) || layout.boroughs.some(bo => bo.preset && within(boroughRect(bo), x, y))
+}
+
+// What takes a cell: a building, a zoned lot or a park.
+export function takenAt(layout: Layout, x: number, y: number): 'building' | 'lot' | 'park' | undefined {
+  if (layout.buildings.some(b => cellsOf(b).some(r => within(r, x, y)))) return 'building'
+  if (layout.zoned.some(([lx, ly]) => ly === y && (lx === x || lx + 1 === x))) return 'lot'
+  if (layout.park.some(([py, x0, x1]) => py === y && x >= x0 && x < x1)) return 'park'
+  return undefined
+}
+
+const sameRoad = (a: Road, x: number, y: number, dir: 0 | 1) => a[0] === x && a[1] === y && a[2] === dir
+
+export function hasRoad(layout: Layout, x: number, y: number, dir: 0 | 1): boolean {
+  return layout.roads.some(r => sameRoad(r, x, y, dir))
+}
+
+// A building's front edge as road segments: [x, y, dir] along the face.
+export function frontOf(b: Building): [number, number, 0 | 1][] {
+  const [x0, y0, x1, y1] = cellsOf(b)[0]!
+  const out: [number, number, 0 | 1][] = []
+  if (b.face === 's') for (let x = x0; x < x1; x++) out.push([x, y1, 1])
+  if (b.face === 'n') for (let x = x0; x < x1; x++) out.push([x, y0, 1])
+  if (b.face === 'e') for (let y = y0; y < y1; y++) out.push([x1, y, 0])
+  if (b.face === 'w') for (let y = y0; y < y1; y++) out.push([x0, y, 0])
+  return out
+}
+
+// Does a road run along the building's front? (The Statue needs none.)
+export function facesRoad(layout: Layout, b: Building): boolean {
+  if (b.kind === 'liberty') return true
+  return frontOf(b).some(([x, y, dir]) => hasRoad(layout, x, y, dir))
+}
+
+// Is a road segment a bridge: water on both sides?
+export function isBridge(layout: Layout, [x, y, dir]: Road | [number, number, 0 | 1]): boolean {
+  const beside: [number, number][] = dir === 0 ? [[x - 1, y], [x, y]] : [[x, y - 1], [x, y]]
+  return beside.every(([cx, cy]) => !groundAt(layout, cx, cy))
+}
+
+// Does a road segment cut through something (not along its edge)?
+function roadBlocked(layout: Layout, x: number, y: number, dir: 0 | 1): string | undefined {
+  const cuts = ([x0, y0, x1, y1]: Rect) => (dir === 0 ? x > x0 && x < x1 && y >= y0 && y < y1 : y > y0 && y < y1 && x >= x0 && x < x1)
+  if (layout.buildings.some(b => cellsOf(b).some(cuts))) return 'A building is in the way'
+  if (layout.zoned.some(([lx, ly]) => cuts([lx, ly, lx + 2, ly + 1]))) return 'A zoned lot is in the way'
+  return undefined
+}
+
+// A road beside a lot: along either street or either avenue.
+function lotHasRoad(layout: Layout, x: number, y: number): boolean {
+  return (
+    hasRoad(layout, x, y, 1) ||
+    hasRoad(layout, x + 1, y, 1) ||
+    hasRoad(layout, x, y + 1, 1) ||
+    hasRoad(layout, x + 1, y + 1, 1) ||
+    hasRoad(layout, x, y, 0) ||
+    hasRoad(layout, x + 2, y, 0)
+  )
+}
+
+// ---- the checks ---------------------------------------------------------------
+
+// Why a building could not be placed here, or nothing when it can. The
+// Seaport is a pier: on the shore, reaching into the water. The Statue
+// stands in the water. Everything else stands on land, on free cells, with
+// a road along its front. A building inside a borough belongs to it.
+export function canPlace(layout: Layout, kind: Kind, x: number, y: number, face: Face = 's'): string | undefined {
+  if (!FOOTPRINT[kind]) return 'Unknown kind'
+  const b: Building = { id: '', kind, x, y, face }
+  const cells: [number, number][] = []
+  for (const [x0, y0, x1, y1] of cellsOf(b)) for (let cx = x0; cx < x1; cx++) for (let cy = y0; cy < y1; cy++) cells.push([cx, cy])
+  if (!cells.every(([cx, cy]) => inRange(cx, cy))) return 'Off the map'
+  const ground = cells.filter(([cx, cy]) => groundAt(layout, cx, cy)).length
+  if (kind === 'liberty') {
+    if (ground) return 'The Statue stands in the water'
+  } else if (kind === 'harbor') {
+    if (!ground) return 'The Seaport needs a shore'
+    if (ground === cells.length) return 'The Seaport reaches into the water'
+  } else if (ground < cells.length) return 'Not on land'
+  if (cells.some(([cx, cy]) => takenAt(layout, cx, cy))) return 'Something is already there'
+  const burbs = new Set(cells.map(([cx, cy]) => boroughAt(layout, cx, cy)?.id))
+  if (burbs.size > 1) return 'A building stands in one borough, or in the city'
+  if (!facesRoad(layout, b)) return 'No road along its front'
+  return undefined
+}
+
+let nextId = 1
+
+function idFor(layout: Layout, base: string): string {
+  const taken = new Set([...layout.buildings.map(b => b.id), ...layout.boroughs.map(bo => bo.id)])
+  if (!taken.has(base)) return base
+  let id: string
+  do id = `${base}-${nextId++}`
+  while (taken.has(id))
+  return id
+}
+
+// Applies one op to a layout and gives back the new layout, revised, or why
+// it was refused. The layout it was given is never changed. The fixed kinds
+// stand at once; the game decides when the others do (`City.build`).
+export function applyOp(layout: Layout, op: Op): Applied {
+  const next = (patch: Partial<Layout>): Applied => ({ layout: { ...layout, ...patch, rev: layout.rev + 1 } })
+  switch (op.op) {
+    case 'place': {
+      const face = op.face ?? 's'
+      const why = canPlace(layout, op.kind, op.x, op.y, face)
+      if (why) return { error: why }
+      const b: Building = { id: idFor(layout, op.kind), kind: op.kind, x: op.x, y: op.y, face }
+      const bo = boroughAt(layout, op.x, op.y)
+      if (bo) b.burb = bo.id
+      if (FIXED.includes(op.kind)) b.built = 0
+      return next({ buildings: [...layout.buildings, b] })
+    }
+    case 'remove': {
+      const b = layout.buildings.find(one => one.id === op.id)
+      if (b) {
+        if (b.kind === 'station') return { error: 'The station is the way in: it stays' }
+        return next({ buildings: layout.buildings.filter(one => one !== b) })
+      }
+      const bo = layout.boroughs.find(one => one.id === op.id)
+      if (bo) {
+        // The bulldozer clears the whole block: what stood in it goes too.
+        const rect = boroughRect(bo)
+        return next({
+          boroughs: layout.boroughs.filter(one => one !== bo),
+          buildings: layout.buildings.filter(one => one.burb !== bo.id),
+          zoned: layout.zoned.filter(([x, y]) => !within(rect, x, y)),
+          park: layout.park.filter(([y, x0]) => !within(rect, x0, y)),
+        })
+      }
+      return { error: 'Nothing there to bulldoze' }
+    }
+    case 'road': {
+      const len = op.len ?? 1
+      const kind: RoadKind = op.kind ?? (op.dir === 0 ? 'avenue' : 'street')
+      const added: Road[] = []
+      for (let i = 0; i < len; i++) {
+        const x = op.dir === 0 ? op.x : op.x + i
+        const y = op.dir === 0 ? op.y + i : op.y
+        if (!inRange(x, y)) return { error: 'Off the map' }
+        const why = roadBlocked(layout, x, y, op.dir)
+        if (why) return { error: why }
+        if (!hasRoad(layout, x, y, op.dir)) added.push([x, y, op.dir, kind])
+      }
+      if (!added.length) return { error: 'There is a road here already' }
+      return next({ roads: [...layout.roads, ...added] })
+    }
+    case 'unroad': {
+      const len = op.len ?? 1
+      const gone = new Set<Road>()
+      for (let i = 0; i < len; i++) {
+        const x = op.dir === 0 ? op.x : op.x + i
+        const y = op.dir === 0 ? op.y + i : op.y
+        for (const r of layout.roads) if (sameRoad(r, x, y, op.dir)) gone.add(r)
+      }
+      if (!gone.size) return { error: 'No road here' }
+      return next({ roads: layout.roads.filter(r => !gone.has(r)) })
+    }
+    case 'zone': {
+      const cells: [number, number][] = [
+        [op.x, op.y],
+        [op.x + 1, op.y],
+      ]
+      if (layout.zoned.some(([x, y]) => x === op.x && y === op.y)) return { error: 'Zoned already' }
+      if (cells.some(([x, y]) => takenAt(layout, x, y))) return { error: 'Something is already there' }
+      if (!cells.some(([x, y]) => groundAt(layout, x, y))) return { error: 'Not on land' }
+      if (!lotHasRoad(layout, op.x, op.y)) return { error: 'No road beside it' }
+      const zoned: [number, number][] = [...layout.zoned, [op.x, op.y]]
+      if (!lotsOf({ ...layout, zoned }).some(l => l.x === op.x && l.y === op.y)) return { error: 'Too little land for a block' }
+      return next({ zoned })
+    }
+    case 'unzone': {
+      if (!layout.zoned.some(([x, y]) => x === op.x && y === op.y)) return { error: 'Not zoned' }
+      return next({ zoned: layout.zoned.filter(([x, y]) => !(x === op.x && y === op.y)) })
+    }
+    case 'paint': {
+      const w = op.w ?? 1
+      const h = op.h ?? 1
+      const park = layout.park.map(s => [...s] as Span)
+      let changed = false
+      for (let y = op.y; y < op.y + h; y++) {
+        for (let x = op.x; x < op.x + w; x++) {
+          const has = park.some(([py, x0, x1]) => py === y && x >= x0 && x < x1)
+          if (op.what === 'park') {
+            if (has) continue
+            if (!groundAt(layout, x, y)) return { error: 'Not on land' }
+            if (takenAt(layout, x, y)) return { error: 'Something is already there' }
+            park.push([y, x, x + 1])
+            changed = true
+          } else if (has) {
+            // Cut the cell out of its span.
+            for (let i = park.length - 1; i >= 0; i--) {
+              const [py, x0, x1] = park[i]!
+              if (py !== y || x < x0 || x >= x1) continue
+              park.splice(i, 1)
+              if (x > x0) park.push([y, x0, x])
+              if (x + 1 < x1) park.push([y, x + 1, x1])
+            }
+            changed = true
+          }
+        }
+      }
+      if (!changed) return { error: op.what === 'park' ? 'A park already' : 'No park here' }
+      return next({ park: mergeSpans(park) })
+    }
+    case 'borough': {
+      if (op.w < BOROUGH_MIN || op.h < BOROUGH_MIN) return { error: `A borough is at least ${BOROUGH_MIN} cells each way` }
+      if (op.w > BOROUGH_MAX || op.h > BOROUGH_MAX) return { error: `A borough is at most ${BOROUGH_MAX} cells each way` }
+      const rect: Rect = [op.x, op.y, op.x + op.w, op.y + op.h]
+      if (!inRange(rect[0], rect[1]) || !inRange(rect[2], rect[3])) return { error: 'Off the map' }
+      if (layout.boroughs.some(bo => overlaps(rect, boroughRect(bo)))) return { error: 'It overlaps another borough' }
+      if (layout.buildings.some(b => !b.burb && cellsOf(b).some(r => overlaps(rect, r)))) return { error: "It overlaps the city's buildings" }
+      let ground = 0
+      for (let y = rect[1]; y < rect[3]; y++) for (let x = rect[0]; x < rect[2]; x++) if (groundAt(layout, x, y)) ground++
+      if (!ground) return { error: 'Not on land' }
+      const slug = op.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'borough'
+      const bo: Borough = { id: idFor(layout, slug), name: op.name, x: op.x, y: op.y, w: op.w, h: op.h, ...(op.root ? { root: op.root } : {}) }
+      return next({ boroughs: [...layout.boroughs, bo] })
+    }
+  }
+}
+
+// Spans sorted by row and start, with touching ones joined.
+function mergeSpans(spans: Span[]): Span[] {
+  const sorted = spans.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  const out: Span[] = []
+  for (const s of sorted) {
+    const last = out[out.length - 1]
+    if (last && last[0] === s[0] && last[2] >= s[1]) last[2] = Math.max(last[2], s[2])
+    else out.push([...s] as Span)
+  }
+  return out
+}
