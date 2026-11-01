@@ -146,6 +146,36 @@ export type Task = {
   turns?: TaskTurn[]
 }
 
+// A Claude Code session that lives in the app: one long-running claude process
+// in streaming mode (stream-json in and out, permissions through the app), so
+// a message reaches it at any time, idle or busy.
+export type AppSession = {
+  // Ours; stable across restarts of the claude process.
+  id: string
+  // Claude Code's session id, once its first message arrives (changes on a fork).
+  sessionId?: string
+  cwd: string
+  // What the page shows: the first prompt, cut, or the folder.
+  title: string
+  level: TaskLevel
+  model: TaskModel
+  effort?: TaskEffort
+  // starting → working ⇄ idle; asleep = no process (it wakes on the next
+  // message by resuming); ended = stopped by you; failed = it couldn't run.
+  status: 'starting' | 'working' | 'idle' | 'asleep' | 'ended' | 'failed'
+  startedAt: number
+  lastAt: number
+  costUsd?: number
+  usedModels?: string[]
+  // Claude's reply as it streams, until the turn's message is complete.
+  live?: string
+  // Messages sent while it was busy, waiting for the next turn.
+  queued?: number
+  error?: string
+  // The session it was forked from by "Continue in the app".
+  forkedFrom?: string
+}
+
 export type TaskTurn = {
   prompt: string
   at: number
@@ -191,5 +221,7 @@ export type World = {
   rides?: Ride[]
   // Tasks started from the page, newest last (the last 20).
   tasks?: Task[]
+  // Sessions that live in the app, newest last.
+  appSessions?: AppSession[]
   flushedAt: number
 }

@@ -26,6 +26,11 @@ moves into Brooklyn, Queens, the Bronx or Jersey City, and agents cross the
 bridges to reach it. Use **Make Manhattan** in the sidebar to pick home
 yourself, and **Pick automatically** to hand it back.
 
+When a newer version is on GitHub's `main`, the Empire State Building lights up
+gold and shoots fireworks: click it to update. Agent City pulls the new version
+(a clean fast-forward only) and restarts itself; app sessions wake up with their
+memory on your next message.
+
 Scroll to zoom, drag to pan, double-click to zoom in, and press `0` or **Fit**
 to see the whole island. Hover over a district, borough or landmark to see what
 it stands for and who's there. Click an agent or a session card to highlight

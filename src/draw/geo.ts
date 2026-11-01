@@ -379,4 +379,7 @@ export type Scene = {
   repoOf: Map<Burb, Repo>
   // Agents' size on the map, before the page's zoom.
   k: number
+  // A newer Agent City on main: the Empire State lights up and becomes the
+  // update button. `blocked` says why it can't update cleanly, if so.
+  update?: { available: boolean; behind: number; latest?: string; blocked?: string }
 }

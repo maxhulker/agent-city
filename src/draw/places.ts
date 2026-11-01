@@ -16,6 +16,8 @@ type Zone = {
   color?: string
   who?: Agent[]
   extra?: string
+  // Clicking it updates the app (the Empire State, when an update waits).
+  isUpdate?: boolean
 }
 
 const ABOUT: Record<keyof typeof LABELS, string> = {
@@ -68,8 +70,19 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const [d, box, height] of DISTRICTS) {
     zones.push({ box, height, title: LABELS[d], text: ABOUT[d], color: ACCENT[d], who: sc.byDistrict.get(d) ?? [] })
   }
+  const up = sc.update
   zones.push(
-    { box: [7, 42, 9, 43], height: 110, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district.' },
+    up?.available
+      ? {
+          box: [7, 42, 9, 43],
+          height: 110,
+          title: 'An update is ready: click the Empire State',
+          text: `${up.behind} new on main${up.latest ? `: "${up.latest}"` : ''}. Clicking updates Agent City and restarts it; your app sessions pick up where they left off.`,
+          color: '#fbbf24',
+          extra: up.blocked ? `It can't update cleanly yet: ${up.blocked}.` : undefined,
+          isUpdate: true,
+        }
+      : { box: [7, 42, 9, 43], height: 110, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
     { box: [3, 57, 6, 58], height: 120, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' },
     { box: [5, 55, 7, 56], height: 64, title: 'Woolworth Building', text: 'Scenery, beside City Hall.' },
   )
@@ -109,7 +122,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const z of zones) {
     const who = z.who ? whoLines(world, z.who) : ''
     const more = [z.extra, who].filter(Boolean).join('\n')
-    s += `<polygon class="zone" points="${pts(outline(z.box, z.height))}" style="--accent:${z.color ?? '#e2e8f0'}" data-tip-title="${esc(z.title)}" data-tip-text="${esc(z.text)}"${more ? ` data-tip-more="${esc(more)}"` : ''}/>`
+    s += `<polygon class="zone${z.isUpdate ? ' update' : ''}" points="${pts(outline(z.box, z.height))}" style="--accent:${z.color ?? '#e2e8f0'}" data-tip-title="${esc(z.title)}" data-tip-text="${esc(z.text)}"${more ? ` data-tip-more="${esc(more)}"` : ''}${z.isUpdate ? ' data-update="1"' : ''}/>`
   }
   s += `</g>`
   return s
@@ -118,4 +131,5 @@ export function drawPlaces(world: World, sc: Scene): string {
 // Invisible but hoverable; a soft outline in the place's colour while hovered.
 export const PLACES_CSS =
   `.zone{fill:#fff;fill-opacity:0;stroke:none}` +
-  `.zone:not(.ground):hover{fill-opacity:.06;stroke:var(--accent);stroke-opacity:.8;stroke-width:calc(1.2px*var(--zt,1));stroke-dasharray:calc(4px*var(--zt,1)) calc(3px*var(--zt,1))}`
+  `.zone:not(.ground):hover{fill-opacity:.06;stroke:var(--accent);stroke-opacity:.8;stroke-width:calc(1.2px*var(--zt,1));stroke-dasharray:calc(4px*var(--zt,1)) calc(3px*var(--zt,1))}` +
+  `.zone.update{cursor:pointer}.zone.update:hover{fill-opacity:.12}`

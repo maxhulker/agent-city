@@ -312,6 +312,43 @@
   #float .flist .pcard { box-shadow: 0 8px 24px #000c; }
   #float.shut .flist { display: none; }
   @media (max-width: 700px) { body.panel-open #float { bottom: 150px; max-height: 42%; } }
+
+  /* ---- sessions in the app ---- */
+  .opt-tag { font-size: 10px; color: #64748b; margin-left: 4px; }
+  #earlier .fold { margin-top: 18px; }
+  #earlier.shut #tasks { display: none; }
+  .appcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; cursor: pointer; }
+  .appcard:hover { border-color: #334155; }
+  .appcard.selected { border-color: var(--accent); }
+  .appcard .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .appcard .acts { margin-top: 6px; }
+  .appcard .note { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .appcard .note.bad { color: var(--red); }
+  .chip.starting, .chip.working { background: #1e3a8a; color: #bfdbfe; }
+  .chip.idle { background: #14532d; color: #bbf7d0; }
+  .chip.asleep { background: #312e81; color: #c7d2fe; }
+  .chip.ended { background: var(--line); color: var(--dim); }
+  .chip.sending { background: var(--line); color: var(--dim); }
+  .inapp { font-size: 11px; color: #fde68a; margin: 2px 0 0 26px; }
+  .cv-cont { border: 1px solid #b45309; background: #1c1508; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+  .cv-cont .btn { font-weight: 600; }
+  #cv-state:empty { display: none; }
+  #cv-state { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); margin: 0 0 6px; min-height: 22px; }
+  #cv-state.busy { color: #bfdbfe; }
+  #cv-state.wait { color: #bbf7d0; }
+  #cv-state.bad { color: var(--red); }
+  #cv-state .btn { margin-left: auto; }
+  #cv-state .qn { color: #fde68a; }
+  #cv-tail { display: flex; flex-direction: column; gap: 14px; }
+  #cv-tail > div { display: flex; flex-direction: column; gap: 14px; }
+  #cv-tail > div:empty, #cv-tail:empty { display: none; }
+  #cv-pend .pcard { margin: 0; }
+  .cv-g.pend .cv-u { opacity: .75; border-style: dashed; }
+  .cv-g.pend .cv-t { display: flex; gap: 6px; align-items: center; }
+  .cv-g.live .cv-who { color: #bfdbfe; }
+  .caret { display: inline-block; width: 7px; height: 1.05em; background: var(--accent); vertical-align: -2px; margin-left: 2px; border-radius: 1px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .cv-start { font-size: 12px; color: var(--dim); font-style: italic; display: flex; align-items: center; gap: 6px; }
 </style>
 </head>
 <body>
@@ -339,13 +376,18 @@
         <select class="field" id="cv-agent" title="Whose conversation" aria-label="Whose conversation" hidden></select>
       </div>
       <div class="cv-body">
-        <div id="cv-talk"><div id="cv-log"></div><button class="pill amber" id="cv-pill" type="button" hidden>New messages ↓</button></div>
+        <div id="cv-talk"><div id="cv-log"><div id="cv-tail"><div id="cv-out"></div><div id="cv-live"></div><div id="cv-q"></div><div id="cv-pend"></div></div></div><button class="pill amber" id="cv-pill" type="button" hidden>New messages ↓</button></div>
         <div id="cv-changes" hidden>
           <div class="ch-bar"><span class="path" id="ch-root"></span><button class="btn sm" id="ch-refresh" type="button">Refresh</button></div>
           <div id="ch-body"></div>
         </div>
       </div>
       <div class="cv-reply">
+        <div class="cv-cont" id="cv-cont" hidden>
+          <button class="btn primary" id="cv-continue" type="button">Continue in the app</button>
+          <div class="small dim">Continues with its full history as a copy, so you can close the original window; the original stays untouched.</div>
+        </div>
+        <div id="cv-state"></div>
         <div id="cv-turns"></div>
         <div class="msgs" id="cv-msgs"></div>
         <div class="compose"><textarea id="cv-in" rows="1" placeholder="Reply…" aria-label="Reply"></textarea><button class="btn primary" id="cv-send" type="button">Send</button></div>
@@ -357,19 +399,19 @@
   </div>
   <aside id="side">
     <section id="newtask">
-      <h2 class="fold" id="nt-head" role="button" tabindex="0"><span class="chev">&#9662;</span>New task<span class="tcount" id="nt-count"></span></h2>
+      <h2 class="fold" id="nt-head" role="button" tabindex="0"><span class="chev">&#9662;</span>New session<span class="tcount" id="nt-count"></span></h2>
       <div id="nt-body">
         <div id="newform">
           <label for="nt-folder">Folder</label>
           <select class="field" id="nt-folder"><option value="__other">Other folder...</option></select>
           <input class="field" id="nt-other" placeholder="Full path to a folder" style="margin-top:6px" spellcheck="false">
-          <label for="nt-prompt">What should it do?</label>
-          <textarea class="field" id="nt-prompt" rows="3" placeholder="Describe the task..."></textarea>
+          <label for="nt-prompt">What should it do? <span class="opt-tag">optional</span></label>
+          <textarea class="field" id="nt-prompt" rows="3" placeholder="Describe the work, or leave empty and say it in the conversation…"></textarea>
           <div class="two">
             <div><label for="nt-level">Permissions</label>
               <select class="field" id="nt-level">
                 <option value="read">Read only</option>
-                <option value="ask">Ask me in the app</option>
+                <option value="ask" selected>Ask me in the app</option>
                 <option value="edit">Can edit files</option>
                 <option value="run">Can edit and run commands</option>
               </select></div>
@@ -392,15 +434,21 @@
           </div>
           <input class="field" id="nt-id" placeholder="Full model ID, e.g. claude-opus-5-5" style="margin-top:6px" spellcheck="false" hidden>
           <div class="warn" id="nt-warn" hidden>Warning: this level may run any shell command in that folder.</div>
+          <div class="hint" id="nt-lhint">Recommended: Claude reads freely and asks you here before it edits or runs anything.</div>
           <div style="margin-top:8px"><button class="btn primary" id="nt-start" type="button">Start</button></div>
           <div class="err" id="nt-err"></div>
         </div>
-        <div id="tasks"></div>
       </div>
     </section>
     <div id="needs"><h2 id="needs-h" hidden>Needs you</h2><div id="needs-pending"></div><div id="needs-rest"></div></div>
-    <h2>Sessions</h2>
+    <h2>Sessions in the app</h2>
+    <div id="apps"></div>
+    <h2>Sessions in other windows</h2>
     <div id="sessions"></div>
+    <section id="earlier" hidden>
+      <h2 class="fold" id="et-head" role="button" tabindex="0"><span class="chev">&#9662;</span>Earlier tasks<span class="tcount" id="et-count"></span></h2>
+      <div id="tasks"></div>
+    </section>
     <h2>Boroughs</h2>
     <div id="boroughs"></div>
     <h2>Recent</h2>
@@ -543,6 +591,7 @@
       $('map').innerHTML = svg
       const el = svgEl()
       if (el) { readBase(el); applyView() }
+      drawUpdate(meta.update)
       draw(meta)
       applySel(false)
     }
@@ -562,22 +611,40 @@
     return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`
   }
 
+  // App sessions are keyed 'app:<id>' in the page (selection, drawer), since their
+  // Claude session id comes later and changes on a fork; the map and the observed
+  // cards still use the Claude session id, so both resolve through these.
+  const APP = 'app:'
+  const appsOf = m => m?.appSessions || []
+  const appOf = (m, key) => key && key.startsWith(APP) ? appsOf(m).find(a => a.id === key.slice(APP.length)) : undefined
+  const appBySid = (m, sid) => sid ? appsOf(m).find(a => a.sessionId === sid) : undefined
+  const keyFor = (m, sid) => { const a = !String(sid || '').startsWith(APP) && appBySid(m, sid); return a ? APP + a.id : sid }
+  const claudeSid = key => key && key.startsWith(APP) ? (appOf(lastMeta, key)?.sessionId || cv.lastApp?.sessionId || '') : key
+
   function applySel(scroll) {
     for (const g of document.querySelectorAll('#map .sel')) g.classList.remove('sel')
-    for (const c of document.querySelectorAll('[data-session-card].selected')) c.classList.remove('selected')
+    for (const c of document.querySelectorAll('[data-session-card].selected, .appcard.selected')) c.classList.remove('selected')
     if (!selected) return
-    const id = CSS.escape(selected)
-    for (const g of document.querySelectorAll(`#map [data-session="${id}"]`)) g.classList.add('sel')
-    const card = document.querySelector(`.card[data-session-card="${id}"]`)
-    if (card) {
-      card.classList.add('selected')
-      if (scroll) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const app = appOf(lastMeta, selected)
+    const sid = selected.startsWith(APP) ? app?.sessionId || '' : selected
+    let card = null
+    if (sid) {
+      const id = CSS.escape(sid)
+      for (const g of document.querySelectorAll(`#map [data-session="${id}"]`)) g.classList.add('sel')
+      card = document.querySelector(`.card[data-session-card="${id}"]`)
+      card?.classList.add('selected')
     }
+    if (selected.startsWith(APP)) {
+      card = document.querySelector(`.appcard[data-app="${CSS.escape(selected.slice(APP.length))}"]`)
+      card?.classList.add('selected')
+    }
+    if (card && scroll) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 
   // Selecting a session opens its conversation; selecting it again closes both,
   // unless the panel was closed on its own, then it just reopens.
   function select(id, scroll) {
+    id = keyFor(lastMeta, id)
     if (id && id === selected && !cv.open) { openPanel(id); applySel(scroll); return }
     selected = id && id !== selected ? id : ''
     try { localStorage.setItem('agent-city-selected', selected) } catch {}
@@ -667,7 +734,7 @@
       '<div class="compose"><textarea class="msg-in" rows="1" placeholder="Message this session…" aria-label="Message this session"></textarea><button class="btn" type="button" data-send="1">Send</button></div>' +
       '<div class="hint">Delivered at its next step; an idle session gets it when it next does something.</div>' +
       '<div class="err cerr"></div><div class="msgs"></div>'
-    return { el, head: el.querySelector('.shead'), msgs: el.querySelector('.msgs'), err: el.querySelector('.cerr'), ta: el.querySelector('textarea'), h: '', mh: '' }
+    return { el, head: el.querySelector('.shead'), msgs: el.querySelector('.msgs'), err: el.querySelector('.cerr'), ta: el.querySelector('textarea'), hint: el.querySelector('.hint'), h: '', mh: '', inApp: false }
   }
 
   function growTa(ta) {
@@ -689,8 +756,13 @@
     for (const s of m.sessions) {
       let c = cards.get(s.id)
       if (!c) { c = makeCard(s.id); cards.set(s.id, c) }
-      const h = headHtml(s)
+      const inApp = !!appBySid(m, s.id)
+      const h = headHtml(s) + (inApp ? '<div class="inapp">Lives in the app: messages reach it any time.</div>' : '')
       if (h !== c.h) { c.head.innerHTML = h; c.h = h }
+      if (inApp !== c.inApp) {
+        c.inApp = inApp
+        c.hint.textContent = inApp ? 'Sent straight to it; if it is busy, it gets it after this turn.' : 'Delivered at its next step; an idle session gets it when it next does something.'
+      }
       const mh = msgsHtml(s)
       if (mh !== c.mh) { c.msgs.innerHTML = mh; c.mh = mh }
       c.el.classList.toggle('selected', s.id === selected)
@@ -709,7 +781,10 @@
     const text = c.ta.value.trim()
     if (!text) return
     c.err.textContent = ''
-    const r = await post('/message', { session: sid, text })
+    const app = appBySid(lastMeta, sid)
+    if (app) noteOutbox(app, text)
+    const r = app ? await post('/app/send', { id: app.id, text }) : await post('/message', { session: sid, text })
+    if (app) ackOutbox(app.id, text, r)
     if (r.error || r.ok === false) { c.err.textContent = r.error || 'Not sent.'; return }
     if (c.ta.value.trim() === text) { c.ta.value = ''; growTa(c.ta) }
   }
@@ -759,7 +834,18 @@
   syncVersions()
 
   function syncOther() { $('nt-other').hidden = $('nt-folder').value !== '__other' }
-  function syncWarn() { $('nt-warn').hidden = $('nt-level').value !== 'run' }
+  const LEVEL_HINT = {
+    read: 'Claude can read and search, nothing more.',
+    ask: 'Recommended: Claude reads freely and asks you here before it edits or runs anything.',
+    edit: 'Claude may edit files in that folder without asking; it asks before running commands.',
+    run: '',
+  }
+  function syncWarn() {
+    const lv = $('nt-level').value
+    $('nt-warn').hidden = lv !== 'run'
+    $('nt-lhint').textContent = LEVEL_HINT[lv] || ''
+    $('nt-lhint').hidden = !LEVEL_HINT[lv]
+  }
   $('nt-folder').addEventListener('change', syncOther)
   $('nt-level').addEventListener('change', syncWarn)
   syncOther(); syncWarn()
@@ -783,16 +869,155 @@
     const cwd = ($('nt-folder').value === '__other' ? $('nt-other').value : $('nt-folder').value).trim()
     const prompt = $('nt-prompt').value.trim()
     if (!cwd) { err.textContent = 'Pick a folder.'; return }
-    if (!prompt) { err.textContent = 'Describe the task first.'; return }
     const model = $('nt-version').value === '__id' ? $('nt-id').value.trim() : $('nt-version').value
     if (!model) { err.textContent = 'Enter a model ID.'; return }
     err.textContent = ''
     btn.disabled = true
-    const r = await post('/task', { cwd, prompt, level: $('nt-level').value, model, effort: $('nt-effort').value })
+    const r = await post('/app/start', { cwd, prompt, level: $('nt-level').value, model, effort: $('nt-effort').value })
     btn.disabled = false
-    if (r.error || r.ok === false) { err.textContent = r.error || 'The task was not started.'; return }
+    if (r.error || r.ok === false || !r.id) { err.textContent = r.error || 'The session was not started.'; return }
     if ($('nt-prompt').value.trim() === prompt) { $('nt-prompt').value = ''; growTa($('nt-prompt')) }
+    if (prompt) firstPrompts.set(r.id, prompt)
+    if (prompt) outbox.set(r.id, [{ text: prompt, at: Date.now(), base: 0, sent: true, after: false }])
+    openSession(APP + r.id)
   })
+
+  // ---- earlier tasks (the old headless tasks), folded away by default ----
+  let etOpen = false
+  try { etOpen = localStorage.getItem('agent-city-tasks') === '1' } catch {}
+  function setEt(open) {
+    etOpen = open
+    $('earlier').classList.toggle('shut', !open)
+    $('et-head').classList.toggle('shut', !open)
+    try { localStorage.setItem('agent-city-tasks', open ? '1' : '0') } catch {}
+  }
+  setEt(etOpen)
+  $('et-head').addEventListener('click', () => setEt(!etOpen))
+  $('et-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEt(!etOpen) } })
+
+  // ---- sessions in the app ----------------------------------------------
+  const firstPrompts = new Map() // app id -> the prompt it was started with here
+  // What the person sent that the conversation doesn't show yet: app id -> [{ text, at, base, sent, after }]
+  // base = how many user entries already had this text; after = sent mid-turn (shown below the live reply).
+  const outbox = new Map()
+  const appEls = new Map()
+  let confirmEnd = { id: '', until: 0 }
+  const recentInterrupt = new Map() // app id -> when the person interrupted it
+  const APP_LABEL = { starting: 'starting', working: 'working', idle: 'idle', asleep: 'asleep', ended: 'ended', failed: 'failed' }
+  const appBusy = a => a && (a.status === 'working' || a.status === 'starting')
+  const appDone = a => a && (a.status === 'ended' || a.status === 'failed')
+  const appColor = (m, a) => sessOf(m, a?.sessionId)?.color || '#fbbf24'
+  const normText = s => String(s ?? '').replace(/\s+/g, ' ').trim()
+
+  function appChip(a) {
+    return `<span class="chip ${esc(a.status)}" title="${a.status === 'asleep' ? 'Wakes on your next message' : ''}">${appBusy(a) ? '<span class="spin"></span>' : ''}${esc(APP_LABEL[a.status] || a.status)}</span>`
+  }
+
+  function appMeta(a) {
+    const cost = a.costUsd != null ? ` · $${Number(a.costUsd).toFixed(2)}` : ''
+    return `${modelLabel(a)}${cost}`
+  }
+
+  // Minutes, not seconds: the card only redraws when something real changed.
+  const coarseAgo = at => Date.now() - at < 60_000 ? 'just now' : ago(at)
+
+  function appCardHtml(a) {
+    const ending = confirmEnd.id === a.id && Date.now() < confirmEnd.until
+    const note = a.status === 'failed' ? `<div class="note bad">${esc(a.error || 'It could not run.')}</div>`
+      : a.status === 'asleep' ? '<div class="note">Asleep: wakes on your next message</div>'
+        : a.status === 'starting' ? '<div class="note">Starting…</div>'
+          : a.queued ? `<div class="note">${a.queued} message${a.queued === 1 ? '' : 's'} queued</div>` : ''
+    return `<div class="row"><span class="dot" style="background:${esc(appColor(lastMeta, a))}"></span><span class="name" title="${esc(a.title)}">${esc(a.title || baseName(a.cwd))}</span>${appChip(a)}</div>
+      <div class="path" style="margin-left:17px">${esc(a.cwd)}</div>
+      <div class="small dim" style="margin-left:17px">${esc(appMeta(a))} · ${esc(coarseAgo(a.lastAt || a.startedAt))}</div>
+      ${note ? `<div style="margin-left:17px">${note}</div>` : ''}
+      <div class="acts" style="margin-left:17px"><button class="btn sm" type="button" data-app-open="${esc(a.id)}">Open</button>
+        ${a.status === 'working' ? `<button class="btn sm" type="button" data-app-int="${esc(a.id)}">Interrupt</button>` : ''}
+        ${!appDone(a) ? `<button class="btn sm${ending ? ' danger' : ''}" type="button" data-app-end="${esc(a.id)}">${ending ? 'Really end?' : 'End'}</button>` : ''}</div>`
+  }
+
+  function drawApps(m) {
+    const list = appsOf(m).slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+    const box = $('apps')
+    const ids = new Set(list.map(a => a.id))
+    for (const [id, c] of appEls) if (!ids.has(id)) { c.el.remove(); appEls.delete(id) }
+    const nwork = list.filter(appBusy).length
+    $('nt-count').textContent = nwork ? `${nwork} working` : ''
+    let prev = null
+    for (const a of list) {
+      let c = appEls.get(a.id)
+      if (!c) { c = { el: document.createElement('div'), h: '' }; c.el.className = 'appcard'; c.el.dataset.app = a.id; appEls.set(a.id, c) }
+      const h = appCardHtml(a)
+      if (h !== c.h) { c.el.innerHTML = h; c.h = h }
+      c.el.classList.toggle('selected', selected === APP + a.id)
+      place(box, c.el, prev ? prev.nextSibling : box.firstChild)
+      prev = c.el
+    }
+    if (!list.length) { if (!$('apps-empty')) box.insertAdjacentHTML('beforeend', '<div class="empty" id="apps-empty">None yet. Start one above, or continue a session from another window.</div>') }
+    else $('apps-empty')?.remove()
+  }
+
+  async function appInterrupt(id) {
+    recentInterrupt.set(id, Date.now())
+    const r = await post('/app/interrupt', { id })
+    if (r.error || r.ok === false) toast(r.error || 'Could not interrupt it.')
+  }
+
+  async function appEnd(id) {
+    if (confirmEnd.id !== id || Date.now() > confirmEnd.until) {
+      confirmEnd = { id, until: Date.now() + 4000 }
+      if (lastMeta) { drawApps(lastMeta); if (cv.open) drawPanel(lastMeta) }
+      setTimeout(() => { if (confirmEnd.id === id && Date.now() >= confirmEnd.until && lastMeta) { drawApps(lastMeta); if (cv.open) drawPanel(lastMeta) } }, 4100)
+      return
+    }
+    confirmEnd = { id: '', until: 0 }
+    const r = await post('/app/stop', { id })
+    if (r.error || r.ok === false) toast(r.error || 'Could not end it.')
+  }
+
+  // Continue a session from another window (or an ended one) in the app, as a copy with its history.
+  async function continueInApp(cwd, sid, btn) {
+    if (!cwd || !sid) return
+    if (btn) btn.disabled = true
+    CV.err.textContent = ''
+    const r = await post('/app/start', { cwd, resume: sid, level: 'ask', model: 'default', effort: 'default' })
+    if (btn) btn.disabled = false
+    if (r.error || r.ok === false || !r.id) { CV.err.textContent = r.error || 'Could not continue it in the app.'; return }
+    openSession(APP + r.id)
+  }
+
+  // ---- outbox: what was sent to an app session, until its conversation shows it
+  const userTexts = new Map() // claude sid -> normalized user entry texts, from the last fetch
+  function countUser(a, text) {
+    const t = normText(text)
+    return (userTexts.get(a?.sessionId) || []).filter(u => u === t || u.includes(t)).length
+  }
+  function noteOutbox(a, text) {
+    const list = outbox.get(a.id) || []
+    list.push({ text, at: Date.now(), base: countUser(a, text), sent: false, after: a.status === 'working' })
+    outbox.set(a.id, list)
+    if (cv.open && cv.sid === APP + a.id) {
+      for (const c of CV.log.querySelectorAll(':scope > .cv-status')) c.remove()
+      if (lastMeta) drawTail(lastMeta, a)
+    }
+  }
+  function ackOutbox(id, text, r) {
+    const list = outbox.get(id) || []
+    const it = list.find(x => x.text === text && !x.sent)
+    if (!it) return
+    if (r.error || r.ok === false) list.splice(list.indexOf(it), 1); else it.sent = true
+    const a = appOf(lastMeta, APP + id)
+    if (cv.open && cv.sid === APP + id && lastMeta) drawTail(lastMeta, a || cv.lastApp)
+  }
+  // Drops what the conversation now shows; a session that ended keeps nothing waiting.
+  function pruneOutbox(a) {
+    const list = outbox.get(a.id)
+    if (!list) return []
+    const left = list.filter(x => !(countUser(a, x.text) > x.base) && !(appDone(a) && x.sent) && Date.now() - x.at < 15 * 60_000)
+    if (a.status !== 'working') for (const x of left) x.after = false
+    if (left.length) outbox.set(a.id, left); else outbox.delete(a.id)
+    return left
+  }
 
   const openTasks = new Set()
   const taskEls = new Map()
@@ -830,7 +1055,8 @@
     drawPlaces(m.places || [])
     const tasks = m.tasks || []
     const nrun = tasks.filter(t => t.status === 'running').length
-    $('nt-count').textContent = nrun ? `${nrun} running` : ''
+    $('et-count').textContent = nrun ? `${nrun} running` : tasks.length ? String(tasks.length) : ''
+    $('earlier').hidden = !tasks.length
     const box = $('tasks')
     const ids = new Set(tasks.map(t => t.id))
     for (const [id, c] of taskEls) if (!ids.has(id)) { c.el.remove(); taskEls.delete(id) }
@@ -852,6 +1078,29 @@
   }
 
   // ---- sidebar + overlays ------------------------------------------------
+  // The update button is the Empire State itself: when main has something newer
+  // it glows and shoots fireworks, and clicking it updates the app.
+  let updating = false
+  let lastUpdate = null
+  function drawUpdate(u) { lastUpdate = u }
+  map.addEventListener('click', async e => {
+    if (!e.target.closest || !e.target.closest('[data-update]')) return
+    e.stopPropagation()
+    e.preventDefault()
+    if (updating) return
+    const u = lastUpdate || {}
+    const what = u.latest ? `\n\nNewest on main: ${u.latest}` : ''
+    if (!confirm(`Update Agent City to the latest version on main (${u.behind || 'some'} new)?${what}\n\nIt restarts, and your app sessions pick up where they left off.`)) return
+    updating = true
+    toast('Updating Agent City…')
+    const r = await post('/update', {})
+    if (r.error || r.ok === false) {
+      updating = false
+      toast(r.error || 'The update did not go through.')
+    }
+    // On success the server restarts, and the page reloads when it's back.
+  }, true)
+
   function draw(m) {
     const conflicts = m.conflicts || [], asks = m.asks || []
 
@@ -878,6 +1127,7 @@
     $('needs-h').hidden = !needs && !(m.pending || []).length
 
     lastMeta = m
+    drawApps(m)
     drawSessions(m)
     drawTasks(m)
     drawPending(m)
@@ -911,6 +1161,8 @@
     const b = e.target.closest('button')
     if (!b) {
       if (e.target.closest('.compose, .msgs, .res, .cerr')) return
+      const ac = e.target.closest('.appcard[data-app]')
+      if (ac) { openSession(APP + ac.dataset.app); return }
       const tk = e.target.closest('[data-task-session]')
       if (tk) { if (selected !== tk.dataset.taskSession || !cv.open) select(tk.dataset.taskSession, true); return }
       const card = e.target.closest('[data-session-card]')
@@ -922,7 +1174,16 @@
       }
       return
     }
-    if (b.dataset.send) {
+    if (b.dataset.appOpen) {
+      openSession(APP + b.dataset.appOpen)
+    } else if (b.dataset.appInt) {
+      appInterrupt(b.dataset.appInt)
+    } else if (b.dataset.appEnd) {
+      appEnd(b.dataset.appEnd)
+    } else if (b.dataset.appResume) {
+      const a = appOf(lastMeta, APP + b.dataset.appResume) || cv.lastApp
+      if (a?.sessionId) continueInApp(a.cwd, a.sessionId, b)
+    } else if (b.dataset.send) {
       const el = b.closest('[data-session-card]'), c = el && cards.get(el.dataset.sessionCard)
       if (c) sendMessage(c, el.dataset.sessionCard)
     } else if (b.dataset.msgCancel) {
@@ -951,7 +1212,11 @@
   let needsRest = ''
   const sessOf = (m, sid) => (m?.sessions || []).find(s => s.id === sid)
   const leadOf = s => s?.agents?.find(a => a.isMain)
-  const sessName = (m, sid) => { const s = sessOf(m, sid); return leadOf(s)?.name ?? s?.name ?? 'A session' }
+  const sessName = (m, sid) => {
+    const s = sessOf(m, sid)
+    const a = appBySid(m, sid) || appOf(m, sid) || appsOf(m).find(x => x.id === sid)
+    return leadOf(s)?.name ?? (a ? a.title || baseName(a.cwd) : null) ?? s?.name ?? 'A session'
+  }
   const agentSession = (m, aid) => (m?.sessions || []).find(s => s.agents.some(a => a.id === aid))?.id || ''
   // A task runs again for each follow-up turn, so its status says whether a turn is under way.
   const taskBusy = t => t.status === 'running'
@@ -1055,25 +1320,45 @@
   }
 
   // ---- conversation drawer -----------------------------------------------
+  // cv.sid is the page's key: a Claude session id, or 'app:<id>' for a session that lives in the app.
   const cv = { open: false, sid: '', agent: '', tab: 'talk', key: '', count: 0, seq: 0, busy: false, drafts: new Map(),
-    headH: null, agentsKey: null, turnsH: null, msgsH: null, lastS: null, mode: '', changesSid: '' }
+    headH: null, agentsKey: null, turnsH: null, msgsH: null, stateH: null, lastS: null, lastApp: null, convSid: null, mode: '', changesSid: '',
+    outH: null, qH: null, liveH: null, held: '', heldKey: '', heldAt: 0 }
   const CV = { panel: $('convo'), title: $('cv-title'), log: $('cv-log'), pill: $('cv-pill'), talk: $('cv-talk'), ch: $('cv-changes'),
     chBody: $('ch-body'), agent: $('cv-agent'), ta: $('cv-in'), send: $('cv-send'), hint: $('cv-hint'), err: $('cv-err'),
-    turns: $('cv-turns'), msgs: $('cv-msgs') }
+    turns: $('cv-turns'), msgs: $('cv-msgs'), tail: $('cv-tail'), out: $('cv-out'), live: $('cv-live'), q: $('cv-q'), pend: $('cv-pend'),
+    state: $('cv-state'), cont: $('cv-cont'), contBtn: $('cv-continue') }
+  const isAppKey = k => String(k || '').startsWith(APP)
 
   function growCv() {
     CV.ta.style.height = 'auto'
     CV.ta.style.height = Math.min(CV.ta.scrollHeight + 2, 160) + 'px'
   }
 
+  // Replaces the conversation's entries with one status line (or nothing); the tail stays.
+  function setLogStatus(text) {
+    for (const c of [...CV.log.children]) if (c !== CV.tail) c.remove()
+    if (text) {
+      const el = document.createElement('div')
+      el.className = 'cv-status'
+      el.textContent = text
+      CV.log.insertBefore(el, CV.tail)
+    }
+  }
+
+  const atBottom = () => CV.log.scrollHeight - CV.log.scrollTop - CV.log.clientHeight < 48
+
   function openPanel(sid) {
     if (!sid) return
+    sid = keyFor(lastMeta, sid)
     if (sid !== cv.sid) {
       if (cv.sid) cv.drafts.set(cv.sid, CV.ta.value)
       // null, not '': an empty value for the new session must still replace the old one's.
-      Object.assign(cv, { sid, agent: '', key: '', count: 0, busy: false, headH: null, agentsKey: null, turnsH: null, msgsH: null, lastS: null, mode: '', changesSid: '' })
+      Object.assign(cv, { sid, agent: '', key: '', count: 0, busy: false, headH: null, agentsKey: null, turnsH: null, msgsH: null, stateH: null,
+        lastS: null, lastApp: null, convSid: null, mode: '', changesSid: '', outH: null, qH: null, liveH: null, held: '', heldKey: '', heldAt: 0 })
       cv.seq++
-      CV.log.innerHTML = '<div class="cv-status">Loading the conversation…</div>'
+      setLogStatus(isAppKey(sid) ? '' : 'Loading the conversation…')
+      CV.out.innerHTML = ''; CV.q.innerHTML = ''; CV.live.innerHTML = ''
       CV.pill.hidden = true
       CV.ta.value = cv.drafts.get(sid) || ''
       growCv()
@@ -1085,7 +1370,7 @@
     CV.panel.hidden = false
     document.body.classList.add('panel-open')
     try { localStorage.setItem('agent-city-panel', '1') } catch {}
-    if (lastMeta) drawPanel(lastMeta)
+    if (lastMeta) { drawPanel(lastMeta); drawPending(lastMeta) }
     showTab(cv.tab)
   }
 
@@ -1097,9 +1382,10 @@
     try { localStorage.setItem('agent-city-panel', '0') } catch {}
   }
 
-  // From a notification or a needs-you card: select the session and show its conversation.
+  // From a notification, a needs-you card or a new session: select it and show its conversation.
   function openSession(sid) {
     if (!sid) return
+    sid = keyFor(lastMeta, sid)
     if (selected !== sid) {
       selected = sid
       try { localStorage.setItem('agent-city-selected', selected) } catch {}
@@ -1118,20 +1404,8 @@
     else if (cv.changesSid !== cv.sid) loadChanges()
   }
 
-  function drawPanel(m) {
-    const live = sessOf(m, cv.sid)
-    if (live) cv.lastS = live
-    const s = cv.lastS
-    const lead = leadOf(live)
-    const head = s
-      ? `<div class="row">${dotOrBullet(s)}<span class="name">${esc(leadOf(s)?.name ?? s.name)}</span>
-          ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
-        <div class="path">${esc(s.cwd)}</div>
-        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}`
-      : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
-    if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
-
-    // Subagents: the live ones, and any whose transcript the server has kept.
+  // Subagents: the live ones, and any whose transcript the server has kept.
+  function drawAgentPicker(s) {
     const subs = new Map()
     for (const a of s?.agents || []) if (!a.isMain) subs.set(a.id, a.name)
     for (const id of Object.keys(s?.agentTranscripts || {})) if (!subs.has(id)) subs.set(id, `Subagent ${id.slice(0, 6)}`)
@@ -1144,7 +1418,23 @@
       CV.agent.value = cv.agent
       CV.agent.hidden = !subs.size
     }
+  }
 
+  function drawPanel(m) {
+    if (isAppKey(cv.sid)) { drawAppPanel(m); return }
+    CV.tail.hidden = true
+    const live = sessOf(m, cv.sid)
+    if (live) cv.lastS = live
+    const s = cv.lastS
+    const lead = leadOf(live)
+    const head = s
+      ? `<div class="row">${dotOrBullet(s)}<span class="name">${esc(leadOf(s)?.name ?? s.name)}</span>
+          ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
+        <div class="path">${esc(s.cwd)}</div>
+        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}`
+      : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
+    if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
+    drawAgentPicker(s)
     drawReply(m, live)
   }
 
@@ -1155,13 +1445,17 @@
     if (mode !== cv.mode) {
       cv.mode = mode
       CV.send.textContent = mode === 'continue' ? 'Reply' : 'Send'
+      CV.send.disabled = false
       CV.ta.placeholder = mode === 'continue' ? 'Reply to continue this task…' : 'Message this session…'
     }
+    // Any session from another window (or an old task) can move into the app, as a copy.
+    CV.cont.hidden = !(cv.lastS?.cwd)
     CV.hint.textContent = mode === 'continue'
       ? `Enter sends a new turn of the task in ${baseName(task.cwd)}; Shift+Enter for a new line.`
       : busy ? 'It is working on a turn: your message reaches it at its next step.'
-        : live ? 'Queued until its next step; an idle session gets it when it next does something.'
-          : 'This session has ended; a message waits until it comes back.'
+        : live ? 'This session lives in another window, so messages wait until it next does something. Continue it in the app to chat any time.'
+          : 'This session has ended; a message waits until it comes back. Continue it in the app to pick it up again.'
+    if (cv.stateH !== '') { CV.state.innerHTML = ''; CV.state.className = ''; cv.stateH = '' }
 
     let th = ''
     if (task) {
@@ -1180,13 +1474,152 @@
     if (mh !== cv.msgsH) { CV.msgs.innerHTML = mh; cv.msgsH = mh }
   }
 
+  // ---- the drawer for a session that lives in the app
+  function drawAppPanel(m) {
+    const found = appOf(m, cv.sid)
+    if (found) cv.lastApp = found
+    const a = cv.lastApp
+    const s = a?.sessionId ? sessOf(m, a.sessionId) : null
+    if (s) cv.lastS = s
+    CV.tail.hidden = !!cv.agent
+    CV.cont.hidden = true
+
+    const ending = a && confirmEnd.id === a.id && Date.now() < confirmEnd.until
+    const head = a
+      ? `<div class="row"><span class="dot" style="background:${esc(appColor(m, a))}"></span><span class="name" title="${esc(a.title)}">${esc(a.title || baseName(a.cwd))}</span>${appChip(a)}
+          ${!appDone(a) ? `<button class="btn sm${ending ? ' danger' : ''}" type="button" data-app-end="${esc(a.id)}" style="margin-left:auto">${ending ? 'Really end?' : 'End session'}</button>` : ''}</div>
+        <div class="path">${esc(a.cwd)}</div>
+        <div class="small dim">${esc(appMeta(a))}</div>
+        ${a.forkedFrom ? `<div class="small dim">Continued from session ${esc(String(a.forkedFrom).slice(0, 8))} with its full history, as a copy: the original is untouched.</div>` : ''}`
+      : `<div class="row"><span class="dot" style="background:#fbbf24"></span><span class="name">New session</span><span class="chip starting"><span class="spin"></span>starting</span></div>`
+    if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
+    drawAgentPicker(s || cv.lastS)
+
+    // Its Claude session id arrives once it starts (and changes on a fork): read that conversation.
+    const sid = a?.sessionId || ''
+    if (sid !== cv.convSid) {
+      cv.convSid = sid
+      cv.key = ''; cv.count = 0; cv.seq++; cv.busy = false
+      setLogStatus(sid ? 'Loading the conversation…' : '')
+      if (sid && cv.tab === 'talk') loadConvo(true)
+      if (cv.tab === 'changes' && sid) loadChanges()
+    }
+    drawTail(m, a)
+    drawAppReply(m, a)
+  }
+
+  function bubbleHtml(x, a) {
+    const chip = !x.sent ? '<span class="chip sending">sending…</span>'
+      : x.after && a?.status === 'working' ? '<span class="chip queued">queued: after this turn</span>'
+        : a?.status === 'asleep' ? '<span class="chip queued">waking it…</span>'
+          : a?.status === 'starting' ? '<span class="chip queued">starting…</span>'
+          : '<span class="chip">sent</span>'
+    return `<div class="cv-g u pend"><div class="cv-u">${esc(x.text)}</div><div class="cv-t">${chip}<span>${esc(clock(x.at))}</span></div></div>`
+  }
+
+  // Below the last entry: what was sent but isn't in the conversation yet, then
+  // Claude's reply as it streams (with a caret), then what was sent mid-turn.
+  function drawTail(m, a) {
+    const bottom = atBottom()
+    // Just started here, before a frame has it: what we know is enough to show.
+    if (!a && isAppKey(cv.sid)) a = { id: cv.sid.slice(APP.length), status: 'starting', cwd: '', title: '' }
+    const list = a ? pruneOutbox(a) : []
+    let before = list.filter(x => !x.after), after = list.filter(x => x.after)
+    let outH = before.map(x => bubbleHtml(x, a)).join('')
+    // Started elsewhere (or before a reload): its first prompt is all there is until it starts.
+    if (a && !a.sessionId && !list.length && !a.forkedFrom) {
+      const first = firstPrompts.get(a.id) || (a.title && a.title !== baseName(a.cwd) ? a.title : '')
+      if (first) outH = `<div class="cv-g u pend"><div class="cv-u">${esc(first)}</div></div>`
+    }
+    if (a && (a.status === 'starting' || (!a.sessionId && !appDone(a)))) {
+      outH += `<div class="cv-start"><span class="spin"></span>${a.forkedFrom ? 'Starting… bringing over its history.' : 'Starting…'}</div>`
+    }
+    if (outH !== cv.outH) { CV.out.innerHTML = outH; cv.outH = outH }
+
+    // The streaming reply; once it ends, it stays (without the caret) until the conversation catches up.
+    let text = a?.live || '', streaming = !!text && a.status === 'working'
+    if (text) { cv.held = text; cv.heldKey = cv.key; cv.heldAt = Date.now() }
+    else if (cv.held) {
+      if (cv.key === cv.heldKey && Date.now() - cv.heldAt < 6000) text = cv.held
+      else cv.held = ''
+    }
+    let liveH = ''
+    if (text) {
+      const s = cv.lastS
+      const who = leadOf(s)?.name ?? 'Claude'
+      const CARET = String.fromCharCode(0xE000)
+      const body = md(streaming ? text + CARET : text).replace(CARET, '<span class="caret"></span>')
+      liveH = `<div class="cv-g a live"><div class="cv-who">${s ? dotOrBullet(s, true) : '<span class="dot" style="background:#fbbf24"></span>'}<span>${esc(who)}</span><span>· ${streaming ? 'writing…' : 'just now'}</span></div><div class="md">${body}</div></div>`
+    }
+    if (liveH !== cv.liveH) { CV.live.innerHTML = liveH; cv.liveH = liveH }
+
+    const qH = after.map(x => bubbleHtml(x, a)).join('')
+    if (qH !== cv.qH) { CV.q.innerHTML = qH; cv.qH = qH }
+    if (bottom) CV.log.scrollTop = CV.log.scrollHeight
+  }
+
+  function appStateLine(m, a) {
+    if (!a) return ['busy', '<span class="spin"></span>Starting…']
+    const asks = (m.pending || []).some(p => pendingIsApp(p, a))
+    const q = a.queued ? ` <span class="qn">· ${a.queued} message${a.queued === 1 ? '' : 's'} queued</span>` : ''
+    const intr = `<button class="btn sm" type="button" data-app-int="${esc(a.id)}">Interrupt</button>`
+    if (a.status === 'starting') return ['busy', `<span class="spin"></span>Starting…${q}`]
+    if (a.status === 'working') return asks
+      ? ['busy', `<span class="spin"></span>Claude needs your answer below${q}${intr}`]
+      : ['busy', `<span class="spin"></span>Claude is working…${q}${intr}`]
+    if (a.status === 'idle') return ['wait', 'Waiting for you']
+    if (a.status === 'asleep') return ['', 'Asleep: your next message wakes it']
+    const again = a.sessionId ? `<button class="btn sm" type="button" data-app-resume="${esc(a.id)}">Continue in a new session</button>` : ''
+    if (a.status === 'failed') return ['bad', `Failed${a.error ? ': ' + esc(oneLine(a.error).slice(0, 200)) : ''}${again}`]
+    return ['', `Ended${again}`]
+  }
+
+  function drawAppReply(m, a) {
+    if (cv.mode !== 'app') {
+      cv.mode = 'app'
+      CV.send.textContent = 'Send'
+      CV.ta.placeholder = 'Message Claude…'
+    }
+    const [cls, html] = appStateLine(m, a)
+    const sh = cls + '|' + html
+    if (sh !== cv.stateH) { CV.state.innerHTML = html; CV.state.className = cls; cv.stateH = sh }
+    if (cv.turnsH !== '') { CV.turns.innerHTML = ''; cv.turnsH = '' }
+    if (cv.msgsH !== '') { CV.msgs.innerHTML = ''; cv.msgsH = '' }
+    const done = appDone(a)
+    CV.send.disabled = !!done
+    CV.hint.textContent = done ? 'This session has ended. Continue it in a new session to keep going.'
+      : !a || a.status === 'starting' ? 'You can write now: it gets your message as soon as it is up. Enter sends; Shift+Enter for a new line.'
+        : a.status === 'working' ? 'Claude is busy: your message waits for the end of this turn. Enter sends; Shift+Enter for a new line.'
+          : a.status === 'asleep' ? 'Sending wakes it with its history, which takes a few seconds. Enter sends; Shift+Enter for a new line.'
+            : 'Enter sends; Shift+Enter for a new line.'
+  }
+
   async function cvSend() {
     const text = CV.ta.value.trim()
     if (!text || !cv.sid || CV.send.disabled) return
     const sid = cv.sid
+    CV.err.textContent = ''
+    if (isAppKey(sid)) {
+      const a = appOf(lastMeta, sid) || cv.lastApp
+      const id = sid.slice(APP.length)
+      if (appDone(a)) { CV.err.textContent = 'This session has ended.'; return }
+      // Shown at once as a pending bubble; the box is free for the next one.
+      noteOutbox(a || { id, status: 'starting' }, text)
+      CV.ta.value = ''; growCv()
+      cv.drafts.delete(sid)
+      CV.log.scrollTop = CV.log.scrollHeight
+      const r = await post('/app/send', { id, text })
+      ackOutbox(id, text, r)
+      if (r.error || r.ok === false) {
+        if (cv.sid === sid) {
+          CV.err.textContent = r.error || 'Not sent.'
+          if (!CV.ta.value.trim()) { CV.ta.value = text; growCv() }
+        }
+      }
+      return
+    }
     const task = taskFor(lastMeta, sid)
     const cont = task && !taskBusy(task)
-    CV.err.textContent = ''
     CV.send.disabled = true
     const r = cont ? await post('/task/continue', { id: task.id, prompt: text }) : await post('/message', { session: sid, text })
     CV.send.disabled = false
@@ -1195,6 +1628,11 @@
     cv.drafts.delete(sid)
     if (cont) setTimeout(() => { if (cv.sid === sid) loadConvo(true) }, 700)
   }
+
+  CV.contBtn.addEventListener('click', () => {
+    const s = cv.lastS
+    if (s && !isAppKey(cv.sid)) continueInApp(s.cwd, s.id, CV.contBtn)
+  })
 
   CV.ta.addEventListener('input', growCv)
   CV.ta.addEventListener('keydown', e => {
@@ -1206,7 +1644,8 @@
   CV.agent.addEventListener('change', () => {
     cv.agent = CV.agent.value
     cv.key = ''; cv.count = 0; cv.seq++
-    CV.log.innerHTML = '<div class="cv-status">Loading the conversation…</div>'
+    setLogStatus('Loading the conversation…')
+    CV.tail.hidden = !isAppKey(cv.sid) || !!cv.agent
     CV.pill.hidden = true
     loadConvo(true)
   })
@@ -1218,18 +1657,24 @@
   // -- conversation: fetched every 2 s while open, redrawn only when it changed
   async function loadConvo(force) {
     if (!cv.open || (cv.busy && !force)) return
+    // An app session has no conversation to read until its Claude session starts.
+    const csid = claudeSid(cv.sid)
+    if (!csid) return
     cv.busy = true
     const seq = ++cv.seq, sid = cv.sid, agent = cv.agent
     let j
     try {
-      const r = await fetch(`/conversation?session=${encodeURIComponent(sid)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`, { cache: 'no-store' })
+      const r = await fetch(`/conversation?session=${encodeURIComponent(csid)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`, { cache: 'no-store' })
       j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
     } catch (e) {
       j = { error: String(e?.message || e) }
     }
     if (seq === cv.seq) cv.busy = false
     if (seq !== cv.seq || sid !== cv.sid || agent !== cv.agent) return
+    if (!agent && Array.isArray(j.entries)) userTexts.set(csid, j.entries.filter(e => e.kind === 'user').map(e => normText(e.text)))
     renderConvo(j)
+    // The reply that streamed in is now in the conversation, and sent messages may be too.
+    if (isAppKey(sid) && lastMeta) drawTail(lastMeta, appOf(lastMeta, sid) || cv.lastApp)
   }
   setInterval(() => { if (cv.open && cv.tab === 'talk' && !document.hidden) loadConvo(false) }, 2000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden && cv.open && cv.tab === 'talk') loadConvo(true) })
@@ -1283,8 +1728,10 @@
 
   function renderConvo(j) {
     const log = CV.log
+    const app = isAppKey(cv.sid)
     if (j.error && !Array.isArray(j.entries)) {
-      if (!log.querySelector('.cv-g')) log.innerHTML = `<div class="cv-status">${esc(j.error === 'No such session' ? 'This session is gone from the city, so its conversation can’t be read.' : 'Couldn’t read the conversation: ' + j.error)}</div>`
+      // A just-started app session isn't in the city for a moment: its tail says what's happening.
+      if (![...log.children].some(c => c.classList.contains('cv-g'))) setLogStatus(app ? '' : j.error === 'No such session' ? 'This session is gone from the city, so its conversation can’t be read.' : 'Couldn’t read the conversation: ' + j.error)
       return
     }
     const entries = Array.isArray(j.entries) ? j.entries : []
@@ -1293,12 +1740,17 @@
     if (key === cv.key) return
     const first = !cv.key
     cv.key = key
-    if (!entries.length) { log.innerHTML = '<div class="cv-status">Nothing in this conversation yet.</div>'; cv.count = 0; return }
+    if (!entries.length) {
+      const a = app && (appOf(lastMeta, cv.sid) || cv.lastApp)
+      setLogStatus(!app ? 'Nothing in this conversation yet.' : outbox.get(cv.sid.slice(APP.length))?.length || appBusy(a) ? '' : 'Nothing here yet. Write below to begin.')
+      cv.count = 0
+      return
+    }
     const wasBottom = first || log.scrollHeight - log.scrollTop - log.clientHeight < 48
     const s = cv.lastS
     const htmls = convoGroups(entries).map(g => groupHtml(g, s))
-    for (const c of [...log.children]) if (!c.classList.contains('cv-g')) c.remove()
-    const kids = [...log.children]
+    for (const c of [...log.children]) if (!c.classList.contains('cv-g') && c !== CV.tail) c.remove()
+    const kids = [...log.children].filter(c => c !== CV.tail)
     htmls.forEach((h, i) => {
       const el = kids[i]
       if (el && el._h === h) return
@@ -1308,7 +1760,7 @@
       ne._h = h
       // Keep what the person expanded.
       if (el) for (const d of el.querySelectorAll('details[open]')) ne.querySelector(`details[data-k="${d.dataset.k}"]`)?.setAttribute('open', '')
-      if (el) el.replaceWith(ne); else log.append(ne)
+      if (el) el.replaceWith(ne); else log.insertBefore(ne, CV.tail)
     })
     for (const el of kids.slice(htmls.length)) el.remove()
     if (wasBottom) { log.scrollTop = log.scrollHeight; CV.pill.hidden = true }
@@ -1326,12 +1778,13 @@
 
   // -- changes tab
   async function loadChanges() {
-    const sid = cv.sid
+    const sid = cv.sid, csid = claudeSid(sid)
     cv.changesSid = sid
+    if (!csid) { CV.chBody.innerHTML = '<div class="cv-status">No changes yet: the session is still starting.</div>'; cv.changesSid = ''; return }
     CV.chBody.innerHTML = '<div class="cv-status">Reading the changes…</div>'
     let j
     try {
-      const r = await fetch(`/changes?session=${encodeURIComponent(sid)}`, { cache: 'no-store' })
+      const r = await fetch(`/changes?session=${encodeURIComponent(csid)}`, { cache: 'no-store' })
       j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
     } catch (e) {
       j = { error: String(e?.message || e) }
@@ -1404,7 +1857,14 @@
   const pviews = [
     { box: $('needs-pending'), prefix: 'side', els: new Map() },
     { box: $('float-list'), prefix: 'float', els: new Map() },
+    // In the drawer of the app session it belongs to, below the conversation.
+    { box: $('cv-pend'), prefix: 'inline', els: new Map(), inline: true },
   ]
+  const pendingIsApp = (p, a) => !!a && (p.session === a.sessionId || p.session === a.id || p.session === APP + a.id)
+  function inlineWants(m, p) {
+    if (!cv.open || !isAppKey(cv.sid) || cv.agent) return false
+    return pendingIsApp(p, appOf(m, cv.sid) || cv.lastApp)
+  }
   let floatShut = false, floatIds = new Set()
 
   function whoHtml(m, p) {
@@ -1444,7 +1904,7 @@
         <div class="denybox" hidden><input class="field dr" placeholder="${esc(ph)}"><button class="btn sm danger" type="button" data-pact="deny">${esc(sendLabel)}</button><button class="btn sm" type="button" data-pact="deny-cancel">Cancel</button></div></div>
       <div class="psent">Sent. Waiting for the session to pick it up…</div>
       <div class="err perr"></div>
-      <div class="cd" data-exp="${Number(p.expiresAt) || 0}"></div>`
+      <div class="cd" data-exp="${String(p.id).startsWith(APP) ? 0 : Number(p.expiresAt) || 0}"></div>`
     tickCountdown(el.querySelector('.cd'))
     return el
   }
@@ -1454,9 +1914,12 @@
     const ids = new Set(list.map(p => p.id))
     for (const id of decided.keys()) if (!ids.has(id)) decided.delete(id)
     for (const v of pviews) {
-      for (const [id, el] of v.els) if (!ids.has(id)) { el.remove(); v.els.delete(id) }
+      const items = v.inline ? list.filter(p => inlineWants(m, p)) : list
+      const vids = new Set(items.map(p => p.id))
+      for (const [id, el] of v.els) if (!vids.has(id)) { el.remove(); v.els.delete(id) }
+      const bottom = v.inline && atBottom()
       let prev = null
-      for (const p of list) {
+      for (const p of items) {
         let el = v.els.get(p.id)
         if (!el) { el = buildPending(p, v.prefix); v.els.set(p.id, el) }
         const w = whoHtml(m, p)
@@ -1465,6 +1928,7 @@
         place(v.box, el, prev ? prev.nextSibling : v.box.firstChild)
         prev = el
       }
+      if (bottom && items.length) CV.log.scrollTop = CV.log.scrollHeight
     }
     // A new one opens the stack over the map even if it was hidden.
     if (list.some(p => !floatIds.has(p.id))) floatShut = false
@@ -1633,15 +2097,43 @@
       conflicts: new Set((m.conflicts || []).map(c => c.id)),
       leads: new Map(m.sessions.map(s => [s.id, leadOf(s)?.status || ''])),
       tasks: new Map((m.tasks || []).map(t => [t.id, taskBusy(t)])),
+      apps: new Map(appsOf(m).map(a => [a.id, a.status])),
     }
+  }
+
+  // The last reply each app session streamed, for its 'finished' note.
+  const lastLive = new Map()
+  const firstLine = t => (String(t || '').split('\n').map(x => x.trim()).find(Boolean) || '').replace(/^[#>*\-\s]+/, '').replace(/\*\*|__|`/g, '').slice(0, 160)
+
+  // Its last reply from the conversation, when none streamed past the page.
+  async function lastReply(sid) {
+    try {
+      const j = await (await fetch(`/conversation?session=${encodeURIComponent(sid)}`, { cache: 'no-store' })).json()
+      const e = (j.entries || []).filter(x => x.kind === 'assistant').pop()
+      return e?.text || ''
+    } catch { return '' }
   }
 
   // Compares each frame with the last; nothing fires for what was there at load.
   function watch(m) {
+    for (const a of appsOf(m)) if (a.live) lastLive.set(a.id, a.live)
     const now = snapshot(m), was = seen
     seen = now
     if (!was) return
     const evs = [], ended = new Set()
+    for (const a of appsOf(m)) {
+      if (a.sessionId) ended.add(a.sessionId) // its lead's own idle doesn't notify twice
+      if (was.apps.get(a.id) !== 'working' || a.status === 'working') continue
+      const title = a.title || baseName(a.cwd)
+      const live = lastLive.get(a.id)
+      lastLive.delete(a.id)
+      if (Date.now() - (recentInterrupt.get(a.id) || 0) < 15000) continue
+      if (a.status === 'failed') { evs.push({ title: `Claude failed · ${title}`, body: oneLine(a.error || '').slice(0, 160), sid: APP + a.id, tag: `app-${a.id}` }); continue }
+      if (a.status !== 'idle') continue
+      const ev = { title: `Claude finished · ${title}`, body: firstLine(live), sid: APP + a.id, tag: `app-${a.id}` }
+      if (ev.body || !a.sessionId) evs.push(ev)
+      else lastReply(a.sessionId).then(t => { ev.body = firstLine(t); if (notifyOn) chime(); fire(ev) })
+    }
     for (const p of m.pending || []) {
       if (was.pending.has(p.id)) continue
       const what = p.kind === 'plan' ? 'has a plan for you to approve' : p.kind === 'question' ? 'has a question' : `wants to use ${p.tool}`

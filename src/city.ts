@@ -10,7 +10,7 @@ export { AGENT_COLORS, BURBS, BURB_ORDER, LABELS, districtFor, mainColor } from 
 // Draws the world as one animated isometric SVG of Manhattan at night. Pure:
 // no I/O, so the server renders it on each change. The page zooms and pans it.
 
-export function renderCity(world: World, now: number, opts: { animateWalks: boolean }): string {
+export function renderCity(world: World, now: number, opts: { animateWalks: boolean; update?: Scene['update'] }): string {
   const visible = world.agents.filter(a => a.status !== 'done' || now - a.updatedAt < 90_000)
   const byDistrict = new Map<District, Agent[]>()
   const byBurb = new Map<Burb, Agent[]>()
@@ -31,6 +31,7 @@ export function renderCity(world: World, now: number, opts: { animateWalks: bool
     isWaiting: world.asks.length > 0,
     repoOf,
     k: 1.4,
+    ...(opts.update ? { update: opts.update } : {}),
   }
 
   const vb = frame([...repoOf.keys()])

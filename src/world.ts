@@ -702,6 +702,10 @@ export class City {
     this.followWork(now)
     for (const s of w.sessions) if (!s.bullet) s.bullet = this.bulletFor()
     w.rides = (w.rides ?? []).filter(r => now - r.at < 8_000).slice(-12)
+    // An ask outlives nothing: not its agent, and a permission notice not half an hour.
+    w.asks = w.asks.filter(
+      q => w.agents.some(a => a.id === q.agentId && a.status !== 'done') && !(q.id.startsWith('perm:') && now - q.at > 30 * 60_000),
+    )
     const live = new Set(w.sessions.map(s => s.id))
     // Sessions quiet for six hours have closed without saying so.
     w.sessions = w.sessions.filter(s => now - s.updatedAt < 6 * 3600_000)

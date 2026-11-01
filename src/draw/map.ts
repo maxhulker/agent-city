@@ -777,8 +777,15 @@ function landmarks(items: Item[], sc: Scene): string {
       const working = list.filter(a => a.status === 'working').length
       if (d !== 'plaza' && working > most) [busy, most] = [d, working]
     }
-    const crown = busy ? ACCENT[busy] : '#f8fafc'
-    let e = box(7.4, 42.2, 0.8, 0.6, 34, 's')
+    // An update waiting turns the crown gold, whatever is busy.
+    const crown = sc.update?.available ? '#fbbf24' : busy ? ACCENT[busy] : '#f8fafc'
+    let e = ''
+    if (sc.update?.available) {
+      // A gold halo breathing around the tower.
+      const [hx, hy] = p(7.8, 42.5, 50)
+      e += `<ellipse cx="${n(hx)}" cy="${n(hy)}" rx="34" ry="60" fill="url(#halo)"><animate attributeName="opacity" values=".55;1;.55" dur="2s" repeatCount="indefinite"/></ellipse>`
+    }
+    e += box(7.4, 42.2, 0.8, 0.6, 34, 's')
     e += box(7.52, 42.3, 0.56, 0.4, 30, 's', 34)
     e += box(7.62, 42.38, 0.36, 0.24, 14, 's', 64)
     e += slab(7.67, 42.42, 0.26, 0.16, 5, [crown, mix(crown, '#000000', 0.3), '#fff'], 78)
@@ -1116,6 +1123,38 @@ const HOODS: [string, number, number][] = [
   ['FINANCIAL DISTRICT', 8.5, 60.5],
 ]
 
+// Fireworks over the Empire State while an update waits: rockets climb from the
+// spire and burst into rings of sparks, staggered so the sky is never quiet.
+function fireworks(): string {
+  const [sx, sy] = p(7.8, 42.5, 98)
+  const colors = ['#fbbf24', '#f472b6', '#5eead4', '#a78bfa', '#f8fafc']
+  let g = '<g class="fireworks">'
+  for (let b = 0; b < 5; b++) {
+    const dur = 2.6 + (b % 3) * 0.3
+    const begin = b * 0.55
+    const bx = sx + (b - 2) * 16 + (b % 2 ? 6 : -4)
+    const by = sy - 46 - (b % 3) * 14
+    const color = colors[b % colors.length]!
+    const t = (a: string) => `dur="${n(dur)}s" begin="${n(begin)}s" repeatCount="indefinite" ${a}`
+    // The rocket: a spark climbing from the spire, gone as it bursts.
+    g += `<circle r="1.3" fill="#fde68a" opacity="0"><animate attributeName="cx" values="${n(sx)};${n(bx)};${n(bx)}" keyTimes="0;.3;1" ${t('')}/>`
+    g += `<animate attributeName="cy" values="${n(sy)};${n(by)};${n(by)}" keyTimes="0;.3;1" ${t('')}/>`
+    g += `<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.28;.3;1" ${t('')}/></circle>`
+    // The burst: a ring of sparks flying out and fading as they fall a little.
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2
+      const r = 16 + (b % 2) * 5
+      const ex = bx + Math.cos(ang) * r
+      const ey = by + Math.sin(ang) * r * 0.85 + 5
+      g += `<circle cx="${n(bx)}" cy="${n(by)}" r="1.4" fill="${color}" opacity="0">`
+      g += `<animate attributeName="cx" values="${n(bx)};${n(bx)};${n(ex)}" keyTimes="0;.3;1" ${t('calcMode="spline" keySplines="0 0 1 1;.2 .7 .4 1"')}/>`
+      g += `<animate attributeName="cy" values="${n(by)};${n(by)};${n(ey)}" keyTimes="0;.3;1" ${t('calcMode="spline" keySplines="0 0 1 1;.2 .7 .4 1"')}/>`
+      g += `<animate attributeName="opacity" values="0;0;1;0" keyTimes="0;.3;.45;1" ${t('')}/></circle>`
+    }
+  }
+  return g + '</g>'
+}
+
 // Everything but the agents, back to front.
 export function drawMap(world: World, sc: Scene): string {
   const { active, hasConflict, repoOf, now } = sc
@@ -1192,6 +1231,7 @@ export function drawMap(world: World, sc: Scene): string {
   s += `<ellipse class="sky" cx="${n(p(8, 58)[0])}" cy="${n(p(8, 58)[1] - 40)}" rx="130" ry="60" fill="url(#sky)"/>`
   s += statue(world.launch, now)
   s += moon(vb.x + vb.w * 0.3, vb.y + 34)
+  if (sc.update?.available) s += fireworks()
 
   // Names on the map: neighbourhoods once zoomed in, rivers, the boroughs not
   // in use, and the districts in their own colours.

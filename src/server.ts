@@ -8,8 +8,10 @@ import { fileURLToPath } from 'node:url'
 import { BURBS, LABELS, renderCity } from './city.ts'
 import { Approvals } from './approvals.ts'
 import { changesIn } from './changes.ts'
+import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { readConversation } from './transcripts.ts'
+import { Updates } from './updates.ts'
 import type { Decision, Task, World } from './types.ts'
 import { base, City, forgetRoots } from './world.ts'
 import type { HookEvent } from './world.ts'
@@ -52,6 +54,20 @@ city.world.tasks = tasks.list
 
 // Permission prompts, questions and plans waiting on the page; any change redraws.
 const approvals = new Approvals(() => {
+  city.isDirty = true
+})
+
+// Sessions that live in the app: one streaming claude process each.
+const appSessions = new AppSessions(city.world.appSessions, (_s, what) => {
+  city.world.appSessions = appSessions.list()
+  city.isDirty = true
+  // Worth keeping straight away when a turn ends or a session starts or ends.
+  if (what === 'result' || what === 'start' || what === 'ended' || what === 'failed') save()
+})
+city.world.appSessions = appSessions.list()
+
+// New versions on GitHub's main: the page's Update button.
+const updates = new Updates(join(dirname(fileURLToPath(import.meta.url)), '..'), () => {
   city.isDirty = true
 })
 
@@ -122,12 +138,17 @@ function meta(world: World) {
     toasts: city.toasts.splice(0),
     tasks: tasks.list.slice().reverse().map(taskView),
     places: places(world),
-    pending: approvals.list(),
+    pending: [...approvals.list(), ...appSessions.pending()],
+    appSessions: appSessions.list(),
+    update: updates.state,
   }
 }
 
 function send(client: Client, world: World, animateWalks: boolean, info: ReturnType<typeof meta>) {
-  const svg = renderCity(world, Date.now(), { animateWalks })
+  const u = updates.state
+  const blocked = u.dirty ? 'this copy has local changes' : u.ahead > 0 ? "this copy has commits that aren't on main yet" : undefined
+  const update = { available: u.available, behind: u.behind, ...(u.latest ? { latest: u.latest } : {}), ...(blocked ? { blocked } : {}) }
+  const svg = renderCity(world, Date.now(), { animateWalks, update })
   client.res.write(`data: ${JSON.stringify({ svg, meta: info })}\n\n`)
 }
 
@@ -198,6 +219,8 @@ const server = createServer(async (req, res) => {
       approvals.seen(ev)
       if (ev.hook_event_name === 'PermissionRequest') {
         city.apply(ev, Date.now())
+        // An app session asks the app directly; the hook stands aside, so no duplicate card.
+        if (appSessions.owns(ev.session_id)) return reply(res, 200, '{}')
         // Held open until the page decides, the session goes away, or it expires
         // (then {} lets the session ask in its own window).
         const ac = new AbortController()
@@ -210,7 +233,7 @@ const server = createServer(async (req, res) => {
       // Usually {}: the hook decides nothing. With messages waiting, it carries them to the lead.
       return reply(res, 200, JSON.stringify(city.apply(ev, Date.now())))
     }
-    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname === '/decide')) {
+    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname.startsWith('/app/') || url.pathname === '/decide')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 256 * 1024)) || '{}') as Record<string, unknown>
       const fail = (error: string) => reply(res, 400, JSON.stringify({ error }))
@@ -239,7 +262,26 @@ const server = createServer(async (req, res) => {
             Object.entries(args.answers as Record<string, unknown>).map(([q, a]) => [q, String(a).slice(0, 2000)]),
           )
         }
-        return approvals.decide(String(args.id), decision) ? reply(res, 200, '{"ok":true}') : fail('That request is no longer waiting')
+        const id = String(args.id)
+        const done = id.startsWith('app:') ? appSessions.decide(id, decision) : approvals.decide(id, decision)
+        return done ? reply(res, 200, '{"ok":true}') : fail('That request is no longer waiting')
+      }
+      if (url.pathname.startsWith('/app/')) {
+        try {
+          const now = Date.now()
+          if (url.pathname === '/app/start') {
+            const s = appSessions.start(args as Parameters<AppSessions['start']>[0], now)
+            return reply(res, 200, JSON.stringify({ ok: true, id: s.id }))
+          }
+          if (url.pathname === '/app/send') appSessions.send(String(args.id), String(args.text ?? ''), now)
+          else if (url.pathname === '/app/interrupt') {
+            if (!appSessions.interrupt(String(args.id))) return fail('It is not working on anything')
+          } else if (url.pathname === '/app/stop') appSessions.stop(String(args.id))
+          else return reply(res, 404, '{}')
+          return reply(res, 200, '{"ok":true}')
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err))
+        }
       }
       if (url.pathname === '/task/continue') {
         try {
@@ -257,6 +299,24 @@ const server = createServer(async (req, res) => {
         return reply(res, 200, '{"ok":true}')
       }
       return reply(res, 404, '{}')
+    }
+    // Update to main: check, or pull and restart. The page reloads itself on the new server.
+    if (req.method === 'POST' && (url.pathname === '/update' || url.pathname === '/update/check')) {
+      if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
+      if (url.pathname === '/update/check') return reply(res, 200, JSON.stringify(await updates.check()))
+      try {
+        await updates.apply()
+      } catch (err) {
+        return reply(res, 400, JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
+      }
+      reply(res, 200, '{"ok":true}')
+      // Let the reply go out, put everything away, then hand over to the new version.
+      setTimeout(() => {
+        shutdown()
+        updates.relaunch()
+        process.exit(0)
+      }, 300)
+      return
     }
     if (req.method === 'POST' && (url.pathname === '/resolve' || url.pathname === '/home')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
@@ -324,10 +384,19 @@ server.listen(PORT, HOST, () => {
   if (!existsSync(STATE_FILE)) console.log('Waiting for the first Claude Code session to post an event.')
 })
 
+function shutdown() {
+  tasks.stopAll()
+  // App sessions go to sleep; the next message wakes them with their history.
+  appSessions.shutdown()
+  city.world.appSessions = appSessions.list()
+  save()
+}
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    tasks.stopAll()
-    save()
+    shutdown()
     process.exit(0)
   })
 }
+
+updates.watch()
