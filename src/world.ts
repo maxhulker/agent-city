@@ -794,7 +794,7 @@ export class City {
         if (!a.isMain) {
           const to = placeOf(this.lead(s, now))
           this.ride(from, to, a.color, 'report', now)
-          a.restUntil = now + walk(from, to, placeAt(to, 0)).dur * 1000 + REST_LEAVE
+          a.restUntil = now + walk(from, to, placeAt(to, 0, this.layout), this.layout).dur * 1000 + REST_LEAVE
           // The first subagent to finish and go to rest greens Central Park.
           this.raise('plaza', a, now)
         }
@@ -874,7 +874,7 @@ export class City {
     let leaveAt = now
     for (const a of going) {
       // The train waits for the longest walk.
-      const dur = walk(placeOf(a), STATION, placeAt(STATION, 0)).dur * 1000 + 400
+      const dur = walk(placeOf(a), STATION, placeAt(STATION, 0, this.layout), this.layout).dur * 1000 + 400
       leaveAt = Math.max(leaveAt, Math.min(now + BOARDING_MS, now + dur))
     }
     const first = going[0]!

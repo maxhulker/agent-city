@@ -1,7 +1,7 @@
 import type { Agent, District, Session, World } from '../types.ts'
-import { TRAIN_MS, burbAt, esc, hash, keyed, n, p, placeAt, shiftFor, standAt, walk } from './geo.ts'
+import { LABELS, TRAIN_MS, burbAt, esc, hash, keyed, n, p, placeAt, standAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
-import { trackOf } from '../layout.ts'
+import { siteFor, spotFor, trackOf } from '../layout.ts'
 
 // The agents: who they are, where they stand, what they are doing. They go
 // to the page as sprites (docs/frames.md): the figure, the spot, and the walk
@@ -54,7 +54,7 @@ function inkOn(color: string): string {
   return lum > 0.6 ? INK : '#fff'
 }
 
-function figure(a: Agent, label: boolean, lift: number, k: number, session?: Session): string {
+function figure(a: Agent, label: boolean, lift: number, k: number, session?: Session, note = ''): string {
   const s = (a.isMain ? 1.3 : 1) * k
   const isWorking = a.status === 'working'
   let body = `<ellipse class="ring" cx="0" cy="0" rx="${n(9 * s)}" ry="${n(4.5 * s)}" fill="none" stroke="#fde047" stroke-width="${n(1.6 * k)}"/>`
@@ -95,7 +95,7 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
     const e = n(w / 2 - 3)
     body += `<g transform="translate(0,${n(top - 12)})"><g class="bubble"><g class="tx"><path d="M-${e} -16H${e}Q${h} -16 ${h} -13V-7Q${h} -4 ${e} -4H3L0 0L-3 -4H-${e}Q-${h} -4 -${h} -7V-13Q-${h} -16 -${e} -16z" fill="#f8fafc" stroke="${INK}" stroke-width=".7"/><text x="0" y="-7.6" text-anchor="middle" font-size="8" font-weight="600" fill="#0f172a">${text}</text></g></g></g>`
   }
-  const tip = `<title>${esc(`${a.name} (${a.kind}) · ${a.status}${a.activity ? ' · ' + a.activity : ''}`)}</title>`
+  const tip = `<title>${esc(`${a.name} (${a.kind}) · ${a.status}${a.activity ? ' · ' + a.activity : ''}${note ? ' · ' + note : ''}`)}</title>`
   // The page wraps this in its own <g class="fig">, which scales with the zoom.
   return tip + body
 }
@@ -122,7 +122,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
   const sessions = new Map(world.sessions.map(x => [x.id, x]))
   const out: Sprite[] = []
   const placed: { a: Agent; at: [number, number]; i: number }[] = []
-  for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i, shiftFor(sc.layout, d)), i }))
+  for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i, spotFor(sc.layout, d)), i }))
   for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: burbAt(b, i), i }))
   placed.sort((x, y) => x.at[0] + x.at[1] - (y.at[0] + y.at[1]))
   const round = (v: number) => Math.round(v * 10) / 10
@@ -133,7 +133,9 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
     const dup = !!a.burb && a.name.toLowerCase() === repoOf.get(a.burb)?.name.toLowerCase()
     const label = !dup || alert
     const lift = (i % 2) * 9
-    let fig = figure(a, label, lift, k, sessions.get(a.session))
+    // Nothing of its kind placed yet: it waits on the station's forecourt, and says so.
+    const forecourt = !a.burb && a.at !== 'relay' && !siteFor(sc.layout, a.at) ? `waiting at Grand Central: no ${LABELS[a.at]} yet` : ''
+    let fig = figure(a, label, lift, k, sessions.get(a.session), forecourt)
     if (a.arriving && a.arriving > sc.now) {
       // Still aboard: it steps onto the platform once its train is in.
       fig = `<g opacity="0"><animate attributeName="opacity" values="0;1" begin="${n((a.arriving - sc.now) / 1000)}s" dur=".4s" fill="freeze"/>${fig}</g>`

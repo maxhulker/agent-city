@@ -1,5 +1,5 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
-import { BLOCK_EVERY, BURBS, PROFILE, SITES, deltaOf, edges, lots, siteFor } from '../layout.ts'
+import { BLOCK_EVERY, BURBS, PROFILE, SITES, deltaOf, edges, lots, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
@@ -194,8 +194,9 @@ export function padOf(d: District, [dx, dy]: [number, number] = [0, 0]): [number
   return [sx - 1.35, sy - 0.3, sx + 1.35, sy + (deep ? 0.85 : 0.42)]
 }
 
-export function standAt(d: District, i: number, shift: [number, number] = [0, 0]): [number, number] {
-  const [sx, sy] = spotOf(d, shift)
+// Where the i-th agent of a district stands, around its spot (the door of
+// its building, or the station's forecourt while nothing of the kind is placed).
+export function standAt(d: District, i: number, [sx, sy]: [number, number] = SITES[d].spot): [number, number] {
   if (d === 'plaza') {
     // On the Great Lawn, in loose rows.
     return [sx - 1.1 + (i % 3) * 1.1, sy - 1.6 + Math.floor(i / 3) * 1.1 + (i % 2) * 0.3]
@@ -215,7 +216,7 @@ export function burbAt(b: Burb, i: number): [number, number] {
 }
 
 export function placeAt(place: Place, i: number, layout?: Layout): [number, number] {
-  return place.burb ? burbAt(place.burb, i) : standAt(place.at, i, shiftFor(layout, place.at))
+  return place.burb ? burbAt(place.burb, i) : standAt(place.at, i, layout ? spotFor(layout, place.at) : undefined)
 }
 
 // How long the train home takes to pull out of Grand Central and be gone, and
@@ -261,31 +262,33 @@ export function blocksFor(population: number, all = lots().length): number {
   return Math.min(all, Math.floor(all * Math.sqrt(Math.max(0, population) / fullPopulation())))
 }
 
-// Along the walker's street to Fifth Avenue, down Fifth, along the street to
-// the destination: the grid way, crossing a bridge in or out of a borough.
+// From one place's door to another's along the roads the person laid
+// (`route` in src/layout.ts), over a bridge in or out of a borough, and off
+// the road to where the walker stands. Where no road joins the two, the walker
+// goes straight: the game layer never blocks the work.
 export function walk(from: Place, to: Place, end: [number, number], layout?: Layout): { path: string; dur: number; pts: Pt[] } {
-  const trunk = 9
   const via: [number, number][] = [placeAt(from, 0, layout)]
+  let a = via[0]!
   if (from.burb) {
     const b = BURBS[from.burb]
-    via.push(b.far, b.near, [trunk, b.near[1]])
-  } else {
-    via.push([trunk, via[0]![1]])
+    via.push(b.far, b.near)
+    a = b.near
   }
-  if (to.burb) {
-    const b = BURBS[to.burb]
-    via.push([trunk, b.near[1]], b.near, b.far)
-  } else {
-    via.push([trunk, end[1]])
-  }
+  const target: [number, number] = to.burb ? BURBS[to.burb].near : layout ? spotFor(layout, to.at) : SITES[to.at].spot
+  const road = layout && route(layout, a, target)
+  if (road) via.push(...road.slice(1))
+  else via.push(target)
+  if (to.burb) via.push(BURBS[to.burb].far)
   via.push(end)
+  // No point twice in a row (the stand point is often the door itself).
+  for (let i = via.length - 1; i > 0; i--) if (via[i]![0] === via[i - 1]![0] && via[i]![1] === via[i - 1]![1]) via.splice(i, 1)
   let dist = 0
   for (let i = 1; i < via.length; i++) {
     dist += Math.abs(via[i]![0] - via[i - 1]![0]) + Math.abs(via[i]![1] - via[i - 1]![1])
   }
-  const route = via.map(([gx, gy]) => p(gx, gy).map(v => Math.round(v * 10) / 10) as Pt)
-  const path = 'M' + route.map(([x, y]) => `${x},${y}`).join(' L')
-  return { path, dur: Math.min(4.5, 1 + dist * 0.05), pts: route }
+  const screen = via.map(([gx, gy]) => p(gx, gy).map(v => Math.round(v * 10) / 10) as Pt)
+  const path = 'M' + screen.map(([x, y]) => `${x},${y}`).join(' L')
+  return { path, dur: Math.min(4.5, 1 + dist * 0.05), pts: screen }
 }
 
 

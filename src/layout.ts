@@ -736,3 +736,154 @@ function mergeSpans(spans: Span[]): Span[] {
   }
   return out
 }
+
+// ---- doors and routes ------------------------------------------------------------
+
+export type Pt2 = [number, number]
+
+// Where a building's agents stand: on the road along its front. A kind with a
+// preset site keeps that spot (where its hand-drawn door is) while it faces
+// south; otherwise the midpoint of the face it turns to the road.
+export function doorOf(b: Building): Pt2 {
+  const [x0, y0, x1, y1] = cellsOf(b)[0]!
+  const siteKind = b.kind === 'station' ? 'relay' : b.kind
+  if (b.face === 's' && siteKind in SITES) {
+    const [sx, sy] = SITES[siteKind as District].spot
+    const [dx, dy] = deltaOf(b)
+    return [sx + dx, sy + dy]
+  }
+  if (b.face === 'n') return [(x0 + x1) / 2, y0]
+  if (b.face === 'e') return [x1, (y0 + y1) / 2]
+  if (b.face === 'w') return [x0, (y0 + y1) / 2]
+  return [(x0 + x1) / 2, y1]
+}
+
+// Where a district's agents stand: its building's door, or the station's
+// forecourt while nothing of the kind is placed (the preset's spot when there
+// is no station either).
+export function spotFor(layout: Layout, d: District): Pt2 {
+  const b = siteFor(layout, d) ?? cityBuildings(layout, 'station')[0]
+  return b ? doorOf(b) : SITES[d].spot
+}
+
+// The nearest point on a road to pt, within reach, and the segment's ends.
+function onRoad(layout: Layout, [px, py]: Pt2): { at: Pt2; ends: [Pt2, Pt2] } | undefined {
+  let best: { at: Pt2; ends: [Pt2, Pt2] } | undefined
+  let bestD = 0.75
+  for (const [x, y, dir] of layout.roads) {
+    const qx = dir === 0 ? x : Math.min(x + 1, Math.max(x, px))
+    const qy = dir === 0 ? Math.min(y + 1, Math.max(y, py)) : y
+    const d = Math.abs(qx - px) + Math.abs(qy - py)
+    if (d < bestD) {
+      bestD = d
+      best = { at: [qx, qy], ends: dir === 0 ? [[x, y], [x, y + 1]] : [[x, y], [x + 1, y]] }
+    }
+  }
+  return best
+}
+
+const pk = (x: number, y: number) => `${x},${y}`
+
+// The road graph: grid points joined by the segments between them. Kept per
+// layout object, which every change replaces.
+const GRAPHS = new WeakMap<Layout, Map<string, Pt2[]>>()
+
+function adjacency(layout: Layout): Map<string, Pt2[]> {
+  let adj = GRAPHS.get(layout)
+  if (adj) return adj
+  adj = new Map()
+  const link = (a: Pt2, b: Pt2) => {
+    const ka = pk(a[0], a[1])
+    if (!adj!.has(ka)) adj!.set(ka, [])
+    adj!.get(ka)!.push(b)
+  }
+  for (const [x, y, dir] of layout.roads) {
+    const b: Pt2 = dir === 0 ? [x, y + 1] : [x + 1, y]
+    link([x, y], b)
+    link(b, [x, y])
+  }
+  GRAPHS.set(layout, adj)
+  return adj
+}
+
+// Among ways of the same length the one with fewer corners wins, so a route
+// reads like streets, not a staircase.
+const TURN = 0.3
+
+type Step = { x: number; y: number; h: number; cost: number; prev?: Step }
+
+// The shortest way along the roads from one point to another, as the points
+// where it turns: from the start to the road, along it, and off it to the
+// end. Nothing when either end is off the roads or no road joins them.
+export function route(layout: Layout, from: Pt2, to: Pt2): Pt2[] | undefined {
+  const a = onRoad(layout, from)
+  const b = onRoad(layout, to)
+  if (!a || !b) return undefined
+  const adj = adjacency(layout)
+  const goal = new Map(b.ends.map(([x, y]) => [pk(x, y), Math.abs(x - b.at[0]) + Math.abs(y - b.at[1])]))
+  // A small binary heap of steps by cost.
+  const heap: Step[] = []
+  const push = (s: Step) => {
+    heap.push(s)
+    let i = heap.length - 1
+    while (i > 0) {
+      const j = (i - 1) >> 1
+      if (heap[j]!.cost <= heap[i]!.cost) break
+      ;[heap[i], heap[j]] = [heap[j]!, heap[i]!]
+      i = j
+    }
+  }
+  const pop = (): Step => {
+    const top = heap[0]!
+    const last = heap.pop()!
+    if (heap.length) {
+      heap[0] = last
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        const r = l + 1
+        let m = i
+        if (l < heap.length && heap[l]!.cost < heap[m]!.cost) m = l
+        if (r < heap.length && heap[r]!.cost < heap[m]!.cost) m = r
+        if (m === i) break
+        ;[heap[i], heap[m]] = [heap[m]!, heap[i]!]
+        i = m
+      }
+    }
+    return top
+  }
+  for (const [x, y] of a.ends) push({ x, y, h: -1, cost: Math.abs(x - a.at[0]) + Math.abs(y - a.at[1]) })
+  const seen = new Set<string>()
+  let found: Step | undefined
+  let foundCost = Infinity
+  while (heap.length) {
+    const s = pop()
+    if (s.cost >= foundCost) break
+    const k = `${s.x},${s.y},${s.h}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    const g = goal.get(pk(s.x, s.y))
+    if (g !== undefined && s.cost + g < foundCost) {
+      found = s
+      foundCost = s.cost + g
+    }
+    for (const [nx, ny] of adj.get(pk(s.x, s.y)) ?? []) {
+      const h = nx === s.x ? 0 : 1
+      push({ x: nx, y: ny, h, cost: s.cost + 1 + (s.h >= 0 && h !== s.h ? TURN : 0), prev: s })
+    }
+  }
+  if (!found) return undefined
+  const nodes: Pt2[] = []
+  for (let s: Step | undefined = found; s; s = s.prev) nodes.unshift([s.x, s.y])
+  // Only the corners, and no point twice.
+  const pts: Pt2[] = [from, a.at, ...nodes, b.at, to]
+  const out: Pt2[] = []
+  for (const p of pts) {
+    const last = out[out.length - 1]
+    if (last && last[0] === p[0] && last[1] === p[1]) continue
+    const prev = out[out.length - 2]
+    if (last && prev && ((prev[0] === last[0] && last[0] === p[0]) || (prev[1] === last[1] && last[1] === p[1]))) out[out.length - 1] = p
+    else out.push(p)
+  }
+  return out
+}
