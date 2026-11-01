@@ -1,0 +1,13 @@
+{
+  "name": "agent-city",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Watch every Claude Code session on this machine at work in an isometric Manhattan",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "connect": "node src/install.ts",
+    "disconnect": "node src/install.ts --uninstall"
+  }
+}

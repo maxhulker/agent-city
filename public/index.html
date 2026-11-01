@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent City</title>
+<style>
+  :root {
+    --bg: #070d1c;
+    --panel: #0f172a;
+    --line: #1e293b;
+    --text: #e2e8f0;
+    --dim: #94a3b8;
+    --accent: #fbbf24;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; letter-spacing: .12em; margin: 0 8px 0 0; }
+  .views { display: flex; gap: 4px; flex-wrap: wrap; }
+  .views button, .btn {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .views button[aria-pressed="true"] { background: var(--accent); color: #111827; border-color: var(--accent); font-weight: 600; }
+  .btn:hover, .views button:hover { border-color: var(--dim); }
+  #link { margin-left: auto; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+  #link i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; }
+  #link.on i { background: #4ade80; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+  #map { overflow: auto; display: flex; align-items: flex-start; justify-content: center; }
+  #map svg { width: 100%; height: auto; display: block; }
+  aside { border-left: 1px solid var(--line); overflow-y: auto; padding: 12px 16px 24px; }
+  h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 18px 0 8px; }
+  h2:first-child { margin-top: 4px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .card.alert { border-color: #7f1d1d; background: #1f0f14; }
+  .card.ask { border-color: #713f12; background: #1c1508; }
+  .row { display: flex; align-items: baseline; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; transform: translateY(1px); }
+  .name { font-weight: 600; }
+  .dim { color: var(--dim); }
+  .small { font-size: 12px; }
+  .path { font-size: 11px; color: var(--dim); word-break: break-all; }
+  .agents { margin: 6px 0 0 17px; padding: 0; list-style: none; }
+  .agents li { margin: 3px 0; }
+  .status { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--line); color: var(--dim); }
+  .status.working { background: #14532d; color: #bbf7d0; }
+  .status.waiting { background: #713f12; color: #fde68a; }
+  .status.failed { background: #7f1d1d; color: #fecaca; }
+  .log { list-style: none; padding: 0; margin: 0; }
+  .log li { padding: 3px 0; border-bottom: 1px solid var(--line); }
+  .empty { color: var(--dim); font-style: italic; }
+  #toasts { position: fixed; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+  .toast { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 8px 14px; box-shadow: 0 8px 24px #0008; animation: fade 5s forwards; }
+  @keyframes fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>AGENT CITY</h1>
+  <div class="views" role="group" aria-label="Zoom">
+    <button data-view="island">Whole island</button>
+    <button data-view="uptown">Uptown</button>
+    <button data-view="midtown">Midtown</button>
+    <button data-view="downtown">Downtown</button>
+  </div>
+  <span id="link"><i></i><span>Connecting…</span></span>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <div id="needs"></div>
+    <h2>Sessions</h2>
+    <div id="sessions"></div>
+    <h2>Boroughs</h2>
+    <div id="boroughs"></div>
+    <h2>Recent</h2>
+    <ul class="log" id="log"></ul>
+  </aside>
+</main>
+<div id="toasts"></div>
+<script>
+  const $ = id => document.getElementById(id)
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+  let view = 'island'
+  try { view = localStorage.getItem('agent-city-view') || 'island' } catch {}
+  let source
+
+  function connect() {
+    source?.close()
+    for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === view))
+    source = new EventSource(`/stream?view=${view}`)
+    source.onopen = () => { $('link').className = 'on'; $('link').lastChild.textContent = 'Live' }
+    source.onerror = () => { $('link').className = ''; $('link').lastChild.textContent = 'Reconnecting…' }
+    source.onmessage = e => {
+      const { svg, meta } = JSON.parse(e.data)
+      $('map').innerHTML = svg
+      draw(meta)
+    }
+  }
+
+  async function post(path, args) {
+    await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
+  }
+
+  function ago(at) {
+    const s = Math.max(0, Math.round((Date.now() - at) / 1000))
+    return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`
+  }
+
+  function draw(m) {
+    let needs = ''
+    for (const c of m.conflicts) {
+      needs += `<div class="card alert"><div class="name">⚠ Merge conflict · ${esc(c.agentName)}</div>
+        <div class="small dim">${esc(c.files.length ? c.files.join(', ') : c.command)}</div>
+        <div style="margin-top:6px"><button class="btn" data-resolve="${esc(c.id)}">Mark resolved</button></div></div>`
+    }
+    for (const q of m.asks) {
+      needs += `<div class="card ask"><div class="name">? ${esc(q.who)}</div><div class="small dim">${esc(q.label)}</div></div>`
+    }
+    $('needs').innerHTML = needs ? `<h2>Needs you</h2>${needs}` : ''
+
+    $('sessions').innerHTML = m.sessions.length ? m.sessions.map(s => {
+      const lead = s.agents.find(a => a.isMain)
+      const subs = s.agents.filter(a => !a.isMain)
+      return `<div class="card">
+        <div class="row"><span class="dot" style="background:${esc(s.color)}"></span>
+          <span class="name">${esc(lead?.name ?? s.name)}</span>
+          ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : ''}</div>
+        <div class="path" style="margin-left:17px">${esc(s.cwd)}</div>
+        ${lead ? `<div class="small dim" style="margin-left:17px">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}
+        ${subs.length ? `<ul class="agents">${subs.map(a => `<li><div class="row"><span class="dot" style="background:${esc(a.color)}"></span>
+          <span>${esc(a.name)}</span><span class="status ${esc(a.status)}">${esc(a.status)}</span></div>
+          <div class="small dim" style="margin-left:17px">${esc(a.where)} · ${esc(a.activity)}</div></li>`).join('')}</ul>` : ''}
+      </div>`
+    }).join('') : '<div class="empty">No sessions yet. Start Claude Code anywhere on this machine.</div>'
+
+    $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">Manhattan</span>
+        <span class="dim">${esc(m.home || 'the first repository seen')}</span></div></div>` +
+      m.repos.map(r => `<div class="card"><div class="row"><span class="name">${esc(r.borough)}</span>
+        <span class="dim">${esc(r.name)}</span>
+        <button class="btn" style="margin-left:auto" data-home="${esc(r.root)}">Make Manhattan</button></div>
+        <div class="path">${esc(r.root)}</div></div>`).join('')
+
+    $('log').innerHTML = m.log.length ? m.log.map(l => `<li><span class="row"><span class="dot" style="background:${esc(l.color)}"></span>
+      <span><b>${esc(l.who)}</b> ${esc(l.text)} <span class="dim small">${ago(l.at)}</span></span></span></li>`).join('')
+      : '<li class="empty">Quiet so far.</li>'
+
+    for (const t of m.toasts) {
+      const el = document.createElement('div')
+      el.className = 'toast'
+      el.textContent = t
+      $('toasts').append(el)
+      setTimeout(() => el.remove(), 5200)
+    }
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button')
+    if (!b) return
+    if (b.dataset.view) {
+      view = b.dataset.view
+      try { localStorage.setItem('agent-city-view', view) } catch {}
+      connect()
+    } else if (b.dataset.resolve) {
+      post('/resolve', { id: b.dataset.resolve })
+    } else if (b.dataset.home) {
+      post('/home', { root: b.dataset.home })
+    }
+  })
+
+  connect()
+</script>
+</body>
+</html>
