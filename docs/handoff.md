@@ -104,7 +104,10 @@ then B3 once the task hooks are verified. The smoothness rebuild
 (`docs/frames.md`) can wait; none of this depends on it.
 
 A is done (commit d318388). Section C, the onboarding game where the city is
-built by working in it, is briefed in `docs/onboarding.md`.
+built by working in it, is briefed in `docs/onboarding.md`; its act one is
+done (`World.built`, blueprints, the arriving train, the Blueprints card, the
+welcome, `hooksInstalled()` in `src/install.ts`; tests in
+`test/onboarding.test.ts`). Act two waits for section B.
 
 ## Lessons from the first session, on cost
 

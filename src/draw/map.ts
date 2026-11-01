@@ -1,5 +1,5 @@
 import type { Burb, District, Landmark, Launch, Repo, World } from '../types.ts'
-import { ACCENT, BLOCK_EVERY, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, TRACK_Y, edges, esc, frame, lots, n, p, padOf, poly, pts, r, seeded } from './geo.ts'
+import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, TRACK_Y, blocksFor, edges, esc, frame, lots, n, p, padOf, poly, pts, r, seeded } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
 
 // The city itself: water, land, streets, buildings, landmarks, bridges, traffic
@@ -45,10 +45,10 @@ const STYLE =
   `.glow,.sky{pointer-events:none}.city.z4 .haze{opacity:.18}` +
   // Blueprint captions keep their size on screen; the hint waits for a zoom.
   `.bp .tx{transform:scale(var(--zt,1))}` +
-  `.bpn{font-size:8px;font-weight:700;letter-spacing:.14em;fill:#7dd3fc;paint-order:stroke;stroke:#0b1224;stroke-width:2.6px;stroke-linejoin:round}` +
+  `.bpn{font-size:7.5px;font-weight:700;letter-spacing:.1em;fill:#7dd3fc;paint-order:stroke;stroke:#0b1224;stroke-width:2.6px;stroke-linejoin:round}` +
   `.bph{font-size:7px;font-weight:500;fill:#bae6fd;paint-order:stroke;stroke:#0b1224;stroke-width:2.2px;stroke-linejoin:round;opacity:.9}` +
   `.city:not(.z2) .bph{display:none}` +
-  `.rails{fill:none;stroke:#8b949e;stroke-width:.5px}.ties{fill:none;stroke:#5b4a36;stroke-width:1.6px;stroke-dasharray:.6 1.1}`
+  `.rails{fill:none;stroke:#b6bec9;stroke-width:.7px}.ties{fill:none;stroke:#7a6648;stroke-width:2.2px;stroke-dasharray:.7 1.1}`
 
 export function defs(): string {
   let d = '<defs>'
@@ -358,9 +358,7 @@ function building(items: Item[], x0: number, y0: number, w: number, d: number, h
 // the island is full), Midtown and downtown first.
 function fabric(items: Item[], population: number) {
   const keep = keeps()
-  const all = lots()
-  const take = Math.min(all.length, Math.floor(population / BLOCK_EVERY))
-  for (const { x, y, x0, x1 } of all.slice(0, take)) {
+  for (const { x, y, x0, x1 } of lots().slice(0, blocksFor(population))) {
     const q = seeded(x, y)
     const y0 = y + 0.18
     const d = 0.64
@@ -395,7 +393,16 @@ function rails(): string {
 // A blueprint lot: the landmark's footprint in dashed cyan on the ground,
 // its name and, zoomed in, the hint that says how to build it. The ground part
 // is returned; the caption is pushed as an item so it lies over the ground.
-function blueprint(items: Item[], id: Landmark, [x0, y0, x1, y1]: [number, number, number, number], name: string): string {
+function blueprint(
+  items: Item[],
+  id: Landmark,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  name: string,
+  // Where the caption goes when the lot's centre would collide with a
+  // neighbour's, and whether it waits for a zoom (Midtown is tight).
+  at?: [number, number, ('start' | 'end')?],
+  minor = false,
+): string {
   const m = 0.08
   let hatch = ''
   for (let t = 0.4; t < x1 - x0 + (y1 - y0); t += 0.4) {
@@ -408,12 +415,14 @@ function blueprint(items: Item[], id: Landmark, [x0, y0, x1, y1]: [number, numbe
   const ground =
     `<rect x="${n(x0 + m)}" y="${n(y0 + m)}" width="${n(x1 - x0 - 2 * m)}" height="${n(y1 - y0 - 2 * m)}" rx=".1" fill="#38bdf8" fill-opacity=".07" stroke="#7dd3fc" stroke-opacity=".8" stroke-width=".06" stroke-dasharray=".3 .18"/>` +
     `<path d="${hatch}" stroke="#7dd3fc" stroke-opacity=".16" stroke-width=".03"/>`
-  const [cx, cy] = p((x0 + x1) / 2, (y0 + y1) / 2)
+  const [cx, cy] = at ? p(at[0], at[1]) : p((x0 + x1) / 2, (y0 + y1) / 2)
+  const anchor = at?.[2] ?? 'middle'
   const caption =
-    `<g class="bp" transform="translate(${n(cx)},${n(cy)})"><g class="tx">` +
-    `<text class="bpn" y="-3" text-anchor="middle">${esc(name.toUpperCase())}</text>` +
-    `<text class="bph" y="7" text-anchor="middle">${esc(BLUEPRINTS[id].hint)}</text></g></g>`
-  items.push({ depth: x1 + y1 + 0.5, svg: caption })
+    `<g class="bp${minor ? ' minor' : ''}" transform="translate(${n(cx)},${n(cy)})"><g class="tx">` +
+    `<text class="bpn" y="-3" text-anchor="${anchor}">${esc(name.toUpperCase())}</text>` +
+    `<text class="bph" y="7" text-anchor="${anchor}">${esc(BLUEPRINTS[id].hint)}</text></g></g>`
+  // Over every building, like the district labels.
+  items.push({ depth: 1e6, svg: caption })
   return ground
 }
 
@@ -588,8 +597,8 @@ function landmarks(items: Item[], sc: Scene): string {
   // stands in scaffolding for a few seconds.
   const built = (id: Landmark) => sc.built[id] !== undefined
   const rising = (id: Landmark) => built(id) && sc.now - sc.built[id]! < SCAFFOLD_MS
-  const lot = (id: Landmark, box: [number, number, number, number], name: string) => {
-    ground += blueprint(items, id, box, name)
+  const lot = (id: Landmark, box: [number, number, number, number], name: string, at?: [number, number, ('start' | 'end')?], minor = false) => {
+    ground += blueprint(items, id, box, name, at, minor)
   }
 
   // Central Park: the Reservoir, the Great Lawn (the plaza's pad), the Lake.
@@ -675,7 +684,7 @@ function landmarks(items: Item[], sc: Scene): string {
   // The Public Library: a wide Beaux-Arts front with columns, its lions and
   // lamps, and Bryant Park across the street.
   if (!built('library')) {
-    lot('library', [7, 39, 9, 40], LABELS.library)
+    lot('library', [7, 39, 9, 40], LABELS.library, [6.9, 41.1, 'start'])
   } else {
     const live = on('library')
     const c = ACCENT.library
@@ -736,7 +745,7 @@ function landmarks(items: Item[], sc: Scene): string {
     const towers = built('relay')
     let g = ''
     if (!towers) {
-      lot('relay', [9, 38, 11, 39], 'Towers')
+      lot('relay', [9, 38, 11, 39], 'Towers', [10, 38.5], true)
     } else {
       g += box(9.75, 38.25, 1.35, 0.55, 56, 'k')
       // The MetLife sign along the top.
@@ -782,7 +791,7 @@ function landmarks(items: Item[], sc: Scene): string {
   // The Garment District: a loft with its water towers, the giant needle and
   // button in Herald Square, and scaffolding while someone is editing.
   if (!built('workshop')) {
-    lot('workshop', [5, 41, 7, 42], LABELS.workshop)
+    lot('workshop', [5, 41, 7, 42], LABELS.workshop, [4.9, 43.1, 'end'])
   } else {
     const live = on('workshop')
     const c = ACCENT.workshop
@@ -841,7 +850,7 @@ function landmarks(items: Item[], sc: Scene): string {
   // The Empire State Building, its crown lit in the colour of whichever
   // district is busiest, as the real one changes colour for the occasion.
   if (!built('empire')) {
-    lot('empire', [7, 42, 9, 43], 'Empire State')
+    lot('empire', [7, 42, 9, 43], 'Empire State', [8, 42.5], true)
   } else {
     let busy: District | undefined
     let most = 0
@@ -870,7 +879,7 @@ function landmarks(items: Item[], sc: Scene): string {
   // jutting out, the copper Vessel, and a stack that smokes while the shell
   // is busy.
   if (!built('foundry')) {
-    lot('foundry', [1, 40, 5, 42], LABELS.foundry)
+    lot('foundry', [1, 40, 5, 42], LABELS.foundry, [1.3, 42.9, 'end'])
   } else {
     const live = on('foundry')
     const c = ACCENT.foundry
@@ -1365,8 +1374,8 @@ export function drawMap(world: World, sc: Scene): string {
     s += `<text class="hood big" x="${n(x)}" y="${n(y)}" text-anchor="middle">${name}</text>`
   }
   for (const d of DISTRICTS) {
-    // A blueprint lot carries its own caption.
-    if (sc.built[d] === undefined) continue
+    // A blueprint lot carries its own caption; Grand Central's terminal always stands.
+    if (sc.built[d] === undefined && d !== 'relay') continue
     const [gx, gy, z, anchor] = SITES[d].label
     const [x, y] = p(gx, gy, z)
     const on = active.has(d)

@@ -56,6 +56,20 @@ function isOurs(h: Handler): boolean {
   return h.type === 'command' && typeof h.command === 'string' && /\bcurl\b/.test(h.command) && /\/\/(127\.0\.0\.1|localhost):\d+\/hook\b/.test(h.command)
 }
 
+// True when the settings file carries Agent City's hooks for this port. The
+// server shows it on the welcome card, and lays the rails into Grand Central.
+export function hooksInstalled(settingsPath = path): boolean {
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Settings
+    const port = new RegExp(`//(127\\.0\\.0\\.1|localhost):${PORT}/hook\\b`)
+    return (settings.hooks?.SessionStart ?? []).some(g =>
+      (g.hooks ?? []).some(h => isOurs(h) && port.test(h.type === 'http' ? (h.url ?? '') : (h.command ?? ''))),
+    )
+  } catch {
+    return false
+  }
+}
+
 // Our hooks only: every other hook in the file stays as it is.
 function strip(settings: Settings) {
   const hooks = settings.hooks ?? {}

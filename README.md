@@ -69,6 +69,25 @@ The idea: you never need the terminal or the Claude window.
 Both work only from the page itself (the server refuses other origins), and
 only with the HTTP hooks or the `--quiet` hooks from this version on.
 
+## Building the city
+
+A new city starts as bare land: streets, the rivers, Grand Central, and a
+blueprint lot for every landmark ("PUBLIC LIBRARY · read a file to build it").
+Each one goes up, in scaffolding first, the first time any session does that
+kind of work: City Hall on your first prompt, the Library on the first read,
+the Garment District on the first edit, Hudson Yards on the first shell
+command, Times Square on the first web tool, Grand Central's towers on the
+first subagent, the Seaport and the Statue of Liberty on the first commit (her
+torch lights on the first push), Central Park when the first subagent finishes,
+and the Empire State Building once every district stands, with fireworks. The
+filler blocks fill in with the population, which counts every tool call. The
+**Blueprints** card in the sidebar keeps the list with its hints. Nothing
+waits for the scenery: agents, cards and approvals work from the first event.
+
+A city that existed before this version counts as built. **Rebuild the city**
+(on the Blueprints card) starts the game over for whoever wants to play it;
+**Build it all now** (on the welcome card) skips it.
+
 ## The last train home
 
 Grand Central is the exit as well as the entrance. Everyone who leaves the

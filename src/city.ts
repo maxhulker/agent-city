@@ -5,7 +5,7 @@ import { defs, drawMap } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import type { Agent, Burb, District, World } from './types.ts'
 
-export { AGENT_COLORS, BURBS, BURB_ORDER, LABELS, districtFor, mainColor } from './draw/geo.ts'
+export { AGENT_COLORS, BLUEPRINTS, BURBS, BURB_ORDER, LABELS, LANDMARKS, districtFor, mainColor } from './draw/geo.ts'
 
 // Draws the world as one animated isometric SVG of Manhattan at night. Pure:
 // no I/O, so the server renders it on each change. The page zooms and pans it.

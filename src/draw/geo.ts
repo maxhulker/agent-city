@@ -363,6 +363,14 @@ export function fullPopulation(): number {
   return lots().length * BLOCK_EVERY
 }
 
+// How many blocks a population has earned: quick at first (a morning's work
+// shows), then one or two a day for weeks, until the island is full.
+export function blocksFor(population: number): number {
+  const all = lots().length
+  if (!Number.isFinite(population)) return all
+  return Math.min(all, Math.floor(all * Math.sqrt(Math.max(0, population) / fullPopulation())))
+}
+
 // Along the walker's street to Fifth Avenue, down Fifth, along the street to
 // the destination: the grid way, crossing a bridge in or out of a borough.
 export function walk(from: Place, to: Place, end: [number, number]): { path: string; dur: number } {

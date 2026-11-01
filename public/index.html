@@ -67,6 +67,28 @@
   #title .sub { color: var(--dim); font-size: 12px; }
   #counts { color: var(--accent); font-size: 12px; }
   #pills { position: absolute; top: 12px; right: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  /* The welcome, on an empty island, until the first session is seen. */
+  #welcome { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 4; width: min(420px, calc(100% - 28px));
+    background: #0f172aee; border: 1px solid #7dd3fc55; border-radius: 12px; padding: 14px 18px; box-shadow: 0 12px 36px #000c; backdrop-filter: blur(4px); }
+  #welcome b { display: block; letter-spacing: .16em; font-size: 13px; color: #7dd3fc; margin-bottom: 6px; }
+  #welcome p { margin: 5px 0; font-size: 13px; line-height: 1.45; }
+  #welcome code { background: #1e293b; border-radius: 5px; padding: 1px 6px; font-size: 12px; }
+  #welcome .wstate { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 12px; }
+  #welcome .wstate i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; flex: none; }
+  #welcome .wstate.on i { background: #4ade80; }
+  #welcome .wskip { margin-top: 8px; font-size: 12px; color: var(--dim); }
+  #welcome .lnkbtn { background: none; border: 0; padding: 0; color: #7dd3fc; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; }
+  /* The Blueprints card: one line per landmark. */
+  .bp-line { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+  .bp-line:last-child { border-bottom: 0; }
+  .bp-line .st { flex: none; width: 14px; text-align: center; color: #7dd3fc; }
+  .bp-line.built .st { color: #4ade80; }
+  .bp-line.building .st { color: var(--accent); animation: blink 1s steps(1) infinite; }
+  .bp-line.built .nm { color: var(--dim); }
+  .bp-line .nm { flex: 1; min-width: 0; }
+  .bp-line .hn { color: var(--dim); font-size: 11px; text-align: right; }
+  .bp-line.built .hn { display: none; }
+  .bp-done { display: flex; align-items: center; gap: 10px; font-size: 12px; }
   .pill { pointer-events: auto; cursor: pointer; border: 1px solid; border-radius: 999px; padding: 4px 12px; font: inherit; font-weight: 600; box-shadow: 0 4px 14px #0008; }
   .pill.red { background: #3b1016; color: #fecaca; border-color: #b91c1c; }
   .pill.amber { background: #3a2a07; color: #fde68a; border-color: #b45309; }
@@ -369,6 +391,14 @@
       <div id="title"><b>AGENT CITY</b><div class="sub" id="sub">Manhattan</div><div id="counts"></div></div>
       <div id="pills"></div>
     </div>
+    <div id="welcome" hidden>
+      <b>WELCOME TO AGENT CITY</b>
+      <p>Every Claude Code session on this machine, drawn as agents at work in an isometric Manhattan.</p>
+      <p>The island is bare land: it builds itself as you work. Each blueprint lot says what raises it, and the Blueprints card keeps the list.</p>
+      <p id="w-next">Next step: run <code>npm run connect</code> in the agent-city folder, then start a Claude Code session.</p>
+      <div class="wstate" id="w-state"><i></i><span>Checking for the hooks…</span></div>
+      <div class="wskip">Rather have the whole city now? <button class="lnkbtn" type="button" data-buildall="1">Build it all now</button></div>
+    </div>
     <div id="ticker"><div id="track"></div></div>
     <section id="convo" hidden aria-label="Conversation">
       <div class="cv-head"><div class="cv-title" id="cv-title"></div><button class="btn cv-x" id="cv-close" type="button" title="Close (Esc)" aria-label="Close">×</button></div>
@@ -451,6 +481,8 @@
       <h2 class="fold" id="et-head" role="button" tabindex="0"><span class="chev">&#9662;</span>Earlier tasks<span class="tcount" id="et-count"></span></h2>
       <div id="tasks"></div>
     </section>
+    <h2>Blueprints</h2>
+    <div class="card" id="blueprints"></div>
     <h2>Boroughs</h2>
     <div id="boroughs"></div>
     <h2>Recent</h2>
@@ -1115,7 +1147,9 @@
 
     $('sub').textContent = `Manhattan · ${m.home || 'the first repository seen'}`
     const c = m.counts
-    $('counts').textContent = c ? `${c.sessions} session${c.sessions === 1 ? '' : 's'} · ${c.working} working · ${c.subagents} subagent${c.subagents === 1 ? '' : 's'}` : ''
+    const pop = m.game ? ` · population ${(m.game.population || 0).toLocaleString()}` : ''
+    $('counts').textContent = c ? `${c.sessions} session${c.sessions === 1 ? '' : 's'} · ${c.working} working · ${c.subagents} subagent${c.subagents === 1 ? '' : 's'}${pop}` : ''
+    drawGame(m.game)
     $('pills').innerHTML =
       (conflicts.length ? `<button class="pill red" data-needs="1">⚠ ${conflicts.length} merge conflict${conflicts.length === 1 ? '' : 's'} at the Seaport</button>` : '') +
       (asks.length ? `<button class="pill amber" data-needs="1">? ${asks.length} waiting at City Hall</button>` : '')
@@ -1166,6 +1200,30 @@
     }
   }
 
+  // ---- the onboarding game: welcome and blueprints ---------------------------
+  let gameHtml = ''
+  function drawGame(g) {
+    if (!g) return
+    const w = $('welcome')
+    w.hidden = !g.welcome
+    if (g.welcome) {
+      const st = $('w-state')
+      st.className = 'wstate' + (g.connected ? ' on' : '')
+      st.lastElementChild.textContent = g.connected
+        ? 'Connected: the rails are laid. Start a Claude Code session and your lead arrives by train.'
+        : 'Not connected yet: no Agent City hooks in ~/.claude/settings.json.'
+      $('w-next').hidden = g.connected
+    }
+    const MARK = { blueprint: '◻', building: '▲', built: '✓' }
+    const html = g.complete
+      ? `<div class="bp-done"><span>✓ The city is complete.</span><button class="btn sm" type="button" data-rebuild="1" style="margin-left:auto" title="Back to bare land: every landmark goes up again as you work">Rebuild the city</button></div>`
+      : g.landmarks.map(l => `<div class="bp-line ${esc(l.state)}" title="${esc(l.state === 'built' ? `Built ${ago(l.at)}` : l.state === 'building' ? 'Under construction' : l.hint)}">
+          <span class="st">${MARK[l.state] || ''}</span><span class="nm">${esc(l.name)}</span><span class="hn">${esc(l.state === 'building' ? 'under construction' : l.hint)}</span></div>`).join('') +
+        `<div class="row" style="margin-top:8px"><span class="small dim">${g.landmarks.filter(l => l.state !== 'blueprint').length} of ${g.landmarks.length} built</span>
+          <button class="btn sm" type="button" data-rebuild="1" style="margin-left:auto" title="Back to bare land">Rebuild</button></div>`
+    if (html !== gameHtml) { $('blueprints').innerHTML = html; gameHtml = html }
+  }
+
   document.addEventListener('click', e => {
     const b = e.target.closest('button')
     if (!b) {
@@ -1212,6 +1270,12 @@
       $('needs').scrollIntoView?.({ block: 'start', behavior: 'smooth' })
     } else if (b.dataset.homeAuto) {
       post('/home', { auto: true })
+    } else if (b.dataset.buildall) {
+      post('/buildall', {}).then(r => { if (r.error) toast(r.error) })
+    } else if (b.dataset.rebuild) {
+      if (confirm('Rebuild the city? The island goes back to bare land and blueprints, and every landmark goes up again the first time a session does that kind of work. Sessions and agents are untouched.')) {
+        post('/rebuild', {}).then(r => { if (r.error) toast(r.error) })
+      }
     } else if (b.dataset.resolve) {
       post('/resolve', { id: b.dataset.resolve })
     } else if (b.dataset.home) {

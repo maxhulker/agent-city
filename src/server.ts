@@ -5,15 +5,16 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BURBS, LABELS, renderCity } from './city.ts'
+import { BLUEPRINTS, BURBS, LABELS, LANDMARKS, renderCity } from './city.ts'
 import { Approvals } from './approvals.ts'
 import { changesIn } from './changes.ts'
+import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { readConversation } from './transcripts.ts'
 import { Updates } from './updates.ts'
 import type { Agent, Decision, District, Task, World } from './types.ts'
-import { base, City, forgetRoots } from './world.ts'
+import { base, City, forgetRoots, SCAFFOLD_MS } from './world.ts'
 import type { HookEvent, TickerItem } from './world.ts'
 
 // Agent City: a local server Claude Code sessions post their hook events to,
@@ -70,6 +71,17 @@ city.world.appSessions = appSessions.list()
 const updates = new Updates(join(dirname(fileURLToPath(import.meta.url)), '..'), () => {
   city.isDirty = true
 })
+
+// Whether Claude Code's settings carry our hooks: the welcome card says so,
+// and the rails into Grand Central are laid when they do.
+let connected = hooksInstalled()
+setInterval(() => {
+  const now = hooksInstalled()
+  if (now !== connected) {
+    connected = now
+    city.isDirty = true
+  }
+}, 5_000)
 
 function save() {
   try {
@@ -133,6 +145,22 @@ function tickerNow(world: World, now: number): TickerItem[] {
   return [...live.sort((a, b) => b.at - a.at), ...recent]
 }
 
+// The onboarding game, for the Blueprints card, the welcome and the header.
+function game(world: World, now: number) {
+  const built = world.built ?? {}
+  return {
+    population: world.population ?? 0,
+    complete: built.empire !== undefined,
+    welcome: city.isNew,
+    connected,
+    landmarks: LANDMARKS.map(id => {
+      const at = built[id]
+      const state = at === undefined ? 'blueprint' : now - at < SCAFFOLD_MS ? 'building' : 'built'
+      return { id, ...BLUEPRINTS[id], state, ...(at === undefined ? {} : { at }) }
+    }),
+  }
+}
+
 function meta(world: World) {
   return {
     home: world.home,
@@ -173,6 +201,7 @@ function meta(world: World) {
     pending: [...approvals.list(), ...appSessions.pending()],
     appSessions: appSessions.list(),
     update: updates.state,
+    game: game(world, Date.now()),
   }
 }
 
@@ -180,7 +209,7 @@ function send(client: Client, world: World, animateWalks: boolean, info: ReturnT
   const u = updates.state
   const blocked = u.dirty ? 'this copy has local changes' : u.ahead > 0 ? "this copy has commits that aren't on main yet" : undefined
   const update = { available: u.available, behind: u.behind, ...(u.latest ? { latest: u.latest } : {}), ...(blocked ? { blocked } : {}) }
-  const svg = renderCity(world, Date.now(), { animateWalks, update })
+  const svg = renderCity(world, Date.now(), { animateWalks, update, connected })
   client.res.write(`data: ${JSON.stringify({ svg, meta: info })}\n\n`)
 }
 
@@ -351,7 +380,10 @@ const server = createServer(async (req, res) => {
       }, 300)
       return
     }
-    if (req.method === 'POST' && (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall')) {
+    if (
+      req.method === 'POST' &&
+      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall')
+    ) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
       // Send home: that session's agents take the train now. Last call: everyone idle does.
@@ -359,6 +391,13 @@ const server = createServer(async (req, res) => {
         return city.sendHome(args.session, Date.now()) ? reply(res, 200, '{"ok":true}') : reply(res, 400, JSON.stringify({ error: 'No such session' }))
       }
       if (url.pathname === '/lastcall') return reply(res, 200, JSON.stringify({ ok: true, left: city.lastCall(Date.now()) }))
+      // The onboarding game: back to bare land, or everything built at once.
+      if (url.pathname === '/rebuild' || url.pathname === '/buildall') {
+        if (url.pathname === '/rebuild') city.rebuild(Date.now())
+        else city.buildAll(Date.now())
+        save()
+        return reply(res, 200, '{"ok":true}')
+      }
       if (url.pathname === '/resolve') city.resolve(args.id)
       else if (args.auto) city.autoHome()
       else if (args.root) city.makeHome(args.root, Date.now(), true)
