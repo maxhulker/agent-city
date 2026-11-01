@@ -20,6 +20,9 @@ type Zone = {
   extra?: string
   // Clicking it updates the app (the Empire State, when an update waits).
   isUpdate?: boolean
+  // The building or borough it stands for, for the page's selection card.
+  building?: string
+  borough?: string
 }
 
 const ABOUT: Record<keyof typeof LABELS, string> = {
@@ -84,9 +87,11 @@ export function drawPlaces(world: World, sc: Scene): string {
     const box: [number, number, number, number] = [x0 + dx, y0 + dy, x1 + dx, y1 + dy]
     const lot = b.built === undefined
     const kind = b.kind
+    const tag = { building: b.id }
     if (kind in ABOUT) {
       const d = kind as District
       zones.push({
+        ...tag,
         box,
         height: lot ? 4 : height,
         title: lot ? `${LABELS[d]}: blueprint` : d === 'relay' ? BLUEPRINTS.relay.name : LABELS[d],
@@ -96,13 +101,14 @@ export function drawPlaces(world: World, sc: Scene): string {
         ...(d === 'relay' ? {} : { who: sc.byDistrict.get(d) ?? [] }),
       })
     } else if (kind === 'station') {
-      zones.push({ box, height, title: LABELS.relay, text: ABOUT.relay, color: ACCENT.relay, who: sc.byDistrict.get('relay') ?? [] })
+      zones.push({ ...tag, box, height, title: LABELS.relay, text: ABOUT.relay, color: ACCENT.relay, who: sc.byDistrict.get('relay') ?? [] })
     } else if (kind === 'empire') {
       zones.push(
         lot
-          ? { box, height: 4, title: 'Empire State Building: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
+          ? { ...tag, box, height: 4, title: 'Empire State Building: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
           : up?.available
             ? {
+                ...tag,
                 box,
                 height,
                 title: 'An update is ready: click the Empire State',
@@ -111,16 +117,17 @@ export function drawPlaces(world: World, sc: Scene): string {
                 extra: up.blocked ? `It can't update cleanly yet: ${up.blocked}.` : undefined,
                 isUpdate: true,
               }
-            : { box, height, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
+            : { ...tag, box, height, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
       )
     } else if (kind === 'wtc') {
-      zones.push({ box, height, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' })
+      zones.push({ ...tag, box, height, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' })
     } else if (kind === 'woolworth') {
-      zones.push({ box, height, title: 'Woolworth Building', text: 'Scenery, beside City Hall.' })
+      zones.push({ ...tag, box, height, title: 'Woolworth Building', text: 'Scenery, beside City Hall.' })
     } else if (kind === 'liberty') {
       // The Statue of Liberty, and the last commit or push it marked.
       const unlit = sc.built.torch === undefined
       zones.push({
+        ...tag,
         box,
         height,
         title: lot ? 'Statue of Liberty: dark' : unlit ? 'Statue of Liberty: torch unlit' : 'Statue of Liberty',
@@ -141,6 +148,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const [b, repo] of sc.repoOf) {
     const [cx, cy] = BURBS[b].center
     zones.push({
+      borough: b,
       box: [cx - 3, cy - 3, cx + 3, cy + 4.6],
       height: 26,
       title: `${BURBS[b].name}: ${repo.name}`,
@@ -153,6 +161,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const [b, repo] of sc.vacantOf) {
     const [cx, cy] = BURBS[b].center
     zones.push({
+      borough: b,
       box: [cx - 3, cy - 3, cx + 3, cy + 4.6],
       height: 26,
       title: `${BURBS[b].name}: empty`,
@@ -171,7 +180,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const z of zones) {
     const who = z.who ? whoLines(world, z.who) : ''
     const more = [z.extra, who].filter(Boolean).join('\n')
-    s += `<polygon class="zone${z.isUpdate ? ' update' : ''}" points="${pts(outline(z.box, z.height))}" style="--accent:${z.color ?? '#e2e8f0'}" data-tip-title="${esc(z.title)}" data-tip-text="${esc(z.text)}"${more ? ` data-tip-more="${esc(more)}"` : ''}${z.isUpdate ? ' data-update="1"' : ''}/>`
+    s += `<polygon class="zone${z.isUpdate ? ' update' : ''}" points="${pts(outline(z.box, z.height))}" style="--accent:${z.color ?? '#e2e8f0'}" data-tip-title="${esc(z.title)}" data-tip-text="${esc(z.text)}"${more ? ` data-tip-more="${esc(more)}"` : ''}${z.isUpdate ? ' data-update="1"' : ''}${z.building ? ` data-building="${esc(z.building)}"` : ''}${z.borough ? ` data-borough="${esc(z.borough)}"` : ''}/>`
   }
   s += `</g>`
   return s

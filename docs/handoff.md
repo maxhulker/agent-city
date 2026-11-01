@@ -130,7 +130,16 @@ the pads come from the layout. The picture is the same to the pixel but for
 a strip on MetLife's east wall (the golden hash notes it). Not done from the
 brief's step two: `World.built` stays as the game's record (the Blueprints
 card, the torch, the Empire State's timing read it) and is kept in step with
-the buildings' own `built`; step seven can retire it. Step three is next.
+the buildings' own `built`; step seven can retire it. Step three (the rules
+in `src/layout.ts`, `City.build`, POST `/build`, `layout?` in the frame;
+`test/build.test.ts`) and step four (the toolbar, the cursor layer, the
+catalogue, the selection card and the borough sheet in `public/index.html`,
+with the rules served as JavaScript at `/layout.js` through
+`stripTypeScriptTypes`, which prints one ExperimentalWarning on first use)
+are in too. Checked in the app's browser against a sandboxed server by
+driving the tools with synthetic mouse events: each op re-sends the map once
+and leaves the other overlay items alone. Step five (walking the roads) is
+next; the page does not yet draw player-laid bridges or parks (step nine).
 
 ## Lessons from the first session, on cost
 

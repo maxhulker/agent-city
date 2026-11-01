@@ -105,6 +105,16 @@ test('the Statue is keyed on her launch, not on the clock in her markup', () => 
   assert.ok(rest.svg.includes('class="statue lit"'))
 })
 
+test('the frame carries the layout with its revision, for the build cursor', () => {
+  const city = builtCity()
+  const f = renderFrame(city.world, T0 + 100)
+  assert.equal(f.layout, city.world.layout, 'the world’s own layout')
+  assert.equal(f.layout.rev, 0)
+  assert.ok(city.build({ op: 'unzone', x: 9, y: 46 }, T0 + 200))
+  assert.equal(renderFrame(city.world, T0 + 300).layout.rev, 1, 'and the revision the page keys on')
+  assert.notEqual(renderFrame(city.world, T0 + 300).map.hash, f.map.hash, 'a placement changes the map')
+})
+
 test('taxis and fireworks are drawn above the agents', () => {
   const city = builtCity()
   tool(city, 'S1', 'Agent', { prompt: 'look', description: 'Looker' }, T0 + 1000)

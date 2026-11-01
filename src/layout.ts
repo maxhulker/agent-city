@@ -538,6 +538,21 @@ function roadBlocked(layout: Layout, x: number, y: number, dir: 0 | 1): string |
   return undefined
 }
 
+// Why a run of road could not be laid here, or nothing when it can: the
+// page's cursor asks as it moves. A run that is all road already is refused.
+export function canRoad(layout: Layout, x: number, y: number, dir: 0 | 1, len = 1): string | undefined {
+  let fresh = 0
+  for (let i = 0; i < len; i++) {
+    const sx = dir === 0 ? x : x + i
+    const sy = dir === 0 ? y + i : y
+    if (!inRange(sx, sy)) return 'Off the map'
+    const why = roadBlocked(layout, sx, sy, dir)
+    if (why) return why
+    if (!hasRoad(layout, sx, sy, dir)) fresh++
+  }
+  return fresh ? undefined : 'There is a road here already'
+}
+
 // A road beside a lot: along either street or either avenue.
 function lotHasRoad(layout: Layout, x: number, y: number): boolean {
   return (
@@ -625,16 +640,14 @@ export function applyOp(layout: Layout, op: Op): Applied {
     case 'road': {
       const len = op.len ?? 1
       const kind: RoadKind = op.kind ?? (op.dir === 0 ? 'avenue' : 'street')
+      const why = canRoad(layout, op.x, op.y, op.dir, len)
+      if (why) return { error: why }
       const added: Road[] = []
       for (let i = 0; i < len; i++) {
         const x = op.dir === 0 ? op.x : op.x + i
         const y = op.dir === 0 ? op.y + i : op.y
-        if (!inRange(x, y)) return { error: 'Off the map' }
-        const why = roadBlocked(layout, x, y, op.dir)
-        if (why) return { error: why }
         if (!hasRoad(layout, x, y, op.dir)) added.push([x, y, op.dir, kind])
       }
-      if (!added.length) return { error: 'There is a road here already' }
       return next({ roads: [...layout.roads, ...added] })
     }
     case 'unroad': {

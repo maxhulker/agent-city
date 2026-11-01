@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import * as nodeModule from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,6 +26,9 @@ const HOST = '127.0.0.1'
 const STATE_DIR = join(homedir(), '.agent-city')
 const STATE_FILE = join(STATE_DIR, 'state.json')
 const PAGE = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'index.html')
+const RULES = join(dirname(fileURLToPath(import.meta.url)), 'layout.ts')
+// Node 22.13 and later strips types at runtime; the typings lag behind it.
+const { stripTypeScriptTypes } = nodeModule as unknown as { stripTypeScriptTypes(code: string): string }
 const ORIGINS = new Set([`http://${HOST}:${PORT}`, `http://localhost:${PORT}`])
 
 function loadWorld(): World | undefined {
@@ -457,6 +461,11 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/') {
       return reply(res, 200, readFileSync(PAGE, 'utf8'), 'text/html; charset=utf-8')
+    }
+    // The layout's rules, for the page's build cursor: the same file the
+    // server checks placements with, as JavaScript (docs/city-builder.md).
+    if (req.method === 'GET' && url.pathname === '/layout.js') {
+      return reply(res, 200, stripTypeScriptTypes(readFileSync(RULES, 'utf8')), 'text/javascript; charset=utf-8')
     }
     return reply(res, 404, '{}')
   } catch (err) {

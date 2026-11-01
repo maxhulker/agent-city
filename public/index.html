@@ -407,6 +407,26 @@
       <div class="wskip">Rather have the whole city now? <button class="lnkbtn" type="button" data-buildall="1">Build it all now</button></div>
     </div>
     <div id="ticker"><div id="track"></div></div>
+    <!-- The city builder (docs/city-builder.md): the build toolbar, the catalogue, the selection card and the borough sheet. -->
+    <div id="build" hidden>
+      <button class="tool on" type="button" data-tool="select" title="Pan and select (Esc)">Select</button>
+      <button class="tool" type="button" data-tool="road" title="Drag along a line to lay a road; over water it is a bridge">Road</button>
+      <button class="tool" type="button" data-tool="zone" title="Zone a block beside a road: the population fills it in">Zone</button>
+      <button class="tool" type="button" data-tool="park" title="Plant a park on free land">Park</button>
+      <button class="tool" type="button" data-tool="borough" title="Drag a rectangle to lay out a borough for a project">Borough</button>
+      <button class="tool" type="button" data-tool="place" title="Place a building (R turns its front)">Build…</button>
+      <span class="sep"></span>
+      <button class="tool danger" type="button" data-tool="bulldoze" title="Remove a road, a building, a zoned lot or a park">Bulldoze</button>
+      <span id="bt-why" class="why"></span>
+    </div>
+    <div id="catalog" hidden></div>
+    <div id="sel" hidden></div>
+    <div id="bsheet" hidden>
+      <b>NEW BOROUGH</b>
+      <label for="bs-name">Name</label><input class="field" id="bs-name" maxlength="40" placeholder="Red Hook">
+      <label for="bs-root">For which repository?</label><select class="field" id="bs-root"><option value="">Not yet</option></select>
+      <div class="row"><button class="btn sm" type="button" id="bs-ok">Lay it out</button><button class="btn sm" type="button" id="bs-cancel">Cancel</button></div>
+    </div>
     <section id="convo" hidden aria-label="Conversation">
       <div class="cv-head"><div class="cv-title" id="cv-title"></div><button class="btn cv-x" id="cv-close" type="button" title="Close (Esc)" aria-label="Close">×</button></div>
       <div class="cv-tabs" role="tablist">
@@ -808,7 +828,8 @@
 
   let drag = null, justDragged = false
   map.addEventListener('mousedown', e => {
-    if (e.button !== 0) return
+    // The left button pans with the Select tool; the right button always does.
+    if (e.button === 0 ? map.classList.contains('tool') : e.button !== 2) return
     measure()
     drag = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false }
   })
@@ -832,6 +853,7 @@
   })
   // swallow the click that ends a drag so it never changes the selection
   map.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault() } }, true)
+  map.addEventListener('contextmenu', e => e.preventDefault())
   map.addEventListener('dblclick', e => { zoomAt(2, e.clientX, e.clientY, true) })
   $('fit').addEventListener('click', fit)
   $('lastcall').addEventListener('click', async () => {
@@ -874,6 +896,8 @@
       else if (f.map && f.map.hash !== mapHash) setMap(f.map)
       syncOverlay(f.overlay || [])
       syncAgents(f.agents || [])
+      // The layout, for the build cursor: sent when its revision changes.
+      if (f.layout) setLayout(f.layout)
       drawUpdate(meta.update)
       draw(meta)
       applySel(false)
@@ -2499,6 +2523,357 @@
   try { if (selected && localStorage.getItem('agent-city-panel') === '1') openPanel(selected) } catch {}
 
   connect()
+</script>
+<style>
+  /* The city builder (docs/city-builder.md): the toolbar above the ticker,
+     the catalogue over it, the selection card, the borough sheet, and the
+     cursor's ghosts, drawn in the overlay's own layer in grid units. */
+  #build { position: absolute; left: 50%; bottom: 38px; transform: translateX(-50%); z-index: 4; display: flex; gap: 3px; align-items: center;
+    background: #0f172aee; border: 1px solid #334155; border-radius: 999px; padding: 4px 6px; box-shadow: 0 8px 24px #0009; max-width: calc(100% - 20px); }
+  #build .tool { background: none; border: 1px solid transparent; color: var(--dim); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  #build .tool:hover { color: var(--text); border-color: var(--line); }
+  #build .tool.on { background: #3a2a07; border-color: #b45309; color: #fde68a; }
+  #build .tool.danger.on { background: #3b1016; border-color: #b91c1c; color: #fecaca; }
+  #build .sep { width: 1px; height: 16px; background: var(--line); margin: 0 2px; }
+  #build .why { font-size: 11px; color: #fca5a5; padding: 0 8px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  #build .why:empty { display: none; }
+  #catalog { position: absolute; left: 50%; bottom: 78px; transform: translateX(-50%); z-index: 4; background: #0f172af2; border: 1px solid #334155; border-radius: 10px;
+    padding: 8px; box-shadow: 0 8px 24px #0009; display: grid; grid-template-columns: repeat(2, minmax(170px, 1fr)); gap: 3px; max-height: 46%; overflow: auto; }
+  #catalog .kind { display: flex; align-items: center; gap: 8px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12px; color: var(--text); cursor: pointer; text-align: left; }
+  #catalog .kind:hover { border-color: var(--line); }
+  #catalog .kind.on { border-color: #b45309; background: #3a2a07; }
+  #catalog .kind.locked { opacity: .5; }
+  #catalog .kind .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; background: var(--c, #94a3b8); }
+  #catalog .kind .nm { flex: 1; }
+  #catalog .kind .ct { color: var(--dim); font-size: 11px; white-space: nowrap; }
+  #map.tool { cursor: crosshair; }
+  .ov-cursor { pointer-events: none; }
+  .ov-cursor .ok { fill: #4ade80; fill-opacity: .28; stroke: #4ade80; stroke-width: .08; }
+  .ov-cursor .bad { fill: #f87171; fill-opacity: .28; stroke: #f87171; stroke-width: .08; }
+  .ov-cursor .front { stroke: #fde68a; stroke-width: .16; }
+  .ov-cursor .road { stroke-width: .3; stroke-linecap: round; fill: none; }
+  .ov-cursor .road.ok { stroke: #4ade80; }
+  .ov-cursor .road.bad { stroke: #f87171; }
+  .ov-cursor .mark { fill: #f87171; fill-opacity: .18; stroke: #f87171; stroke-width: .1; stroke-dasharray: .25 .15; }
+  .ov-cursor .mark.road { fill: none; }
+  #sel { position: absolute; left: 14px; bottom: 78px; z-index: 4; width: 260px; background: #0f172af2; border: 1px solid #334155; border-left: 3px solid var(--accent, #fbbf24);
+    border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px #0009; font-size: 12px; }
+  #sel b { display: block; font-size: 13px; margin-bottom: 2px; }
+  #sel .note { color: #fca5a5; margin-top: 4px; }
+  #sel .row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  #bsheet { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 5; width: 300px; background: #0f172af8; border: 1px solid #334155; border-radius: 10px;
+    padding: 12px 14px; box-shadow: 0 8px 24px #000c; }
+  #bsheet b { display: block; letter-spacing: .14em; font-size: 12px; color: #7dd3fc; }
+  #bsheet label { display: block; font-size: 11px; color: var(--dim); margin: 8px 0 3px; }
+  #bsheet .row { display: flex; gap: 6px; margin-top: 10px; }
+</style>
+<script type="module">
+  // The layout's rules, the same file the server checks placements with,
+  // served with its types stripped (docs/city-builder.md).
+  import * as rules from '/layout.js'
+  window.cityRules = rules
+  window.dispatchEvent(new Event('rules-ready'))
+</script>
+<script>
+  // ---- the city builder (docs/city-builder.md) ---------------------------
+  // The page holds the layout the server sent, draws a ghost of what the
+  // active tool would do under the cursor (green or red by the shared rules,
+  // without a round trip), and posts one op per placement; the server checks
+  // it again and the next frame carries the new map.
+  const GRIDM = 'matrix(10 5 -10 5 0 0)'
+  const KINDS = [
+    ['hall', 'City Hall', '#c4a5ff'], ['library', 'Public Library', '#7cb6ff'], ['workshop', 'Garment District', '#facc15'],
+    ['foundry', 'Hudson Yards', '#fb923c'], ['observatory', 'Times Square', '#f472b6'], ['relay', "Grand Central's towers", '#2dd4bf'],
+    ['harbor', 'Seaport', '#38bdf8'], ['plaza', 'Central Park', '#4ade80'], ['empire', 'Empire State Building', '#f8fafc'],
+    ['liberty', 'Statue of Liberty', '#5eada0'], ['station', 'Grand Central', '#2dd4bf'],
+  ]
+  const DISTRICT_KINDS = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
+  const FACES = ['s', 'w', 'n', 'e']
+  let layout = null
+  let tool = 'select', placeKind = null, face = 's'
+  let gesture = null, gestureEnded = false, hover = null, catalogHtml = ''
+  const buildBar = $('build'), catalog = $('catalog'), selCard = $('sel'), sheet = $('bsheet')
+  const cursorLayer = layer('ov-cursor')
+  const cursorG = document.createElementNS(SVGNS, 'g')
+  cursorG.setAttribute('transform', GRIDM)
+  cursorLayer.append(cursorG)
+  const R = () => window.cityRules
+  window.addEventListener('rules-ready', () => { drawCatalog(); drawCursor() })
+
+  function setLayout(l) {
+    layout = l
+    buildBar.hidden = false
+    drawCatalog()
+    drawCursor()
+    if (!selCard.hidden && selCard.dataset.id && !l.buildings.some(b => b.id === selCard.dataset.id) && !l.boroughs.some(b => b.id === selCard.dataset.id)) hideSel()
+  }
+
+  // The pointer's place on the grid: the inverse of p(gx, gy).
+  function gridAt(e) {
+    const u = toUser(view, e.clientX, e.clientY)
+    return { gx: (u.x / 10 + u.y / 5) / 2, gy: (u.y / 5 - u.x / 10) / 2 }
+  }
+
+  function setTool(t, kind) {
+    tool = t
+    placeKind = t === 'place' ? kind || placeKind || 'hall' : null
+    gesture = null
+    for (const b of buildBar.querySelectorAll('.tool')) b.classList.toggle('on', b.dataset.tool === t)
+    map.classList.toggle('tool', t !== 'select')
+    catalog.hidden = t !== 'place'
+    if (t !== 'select') hideSel()
+    $('bt-why').textContent = ''
+    drawCatalog()
+    drawCursor()
+  }
+
+  // The catalogue: a button per kind, with how many stand in the city.
+  function drawCatalog() {
+    if (!layout) return
+    const standing = k => layout.buildings.filter(b => b.kind === k && !b.burb)
+    const districtsUp = DISTRICT_KINDS.every(d => standing(d).some(b => b.built !== undefined))
+    const html = KINDS.map(([k, name, c]) => {
+      const n = standing(k).length
+      const locked = k === 'empire' && !districtsUp
+      const fp = R() ? R().FOOTPRINT[k][0] : null
+      const size = fp ? `${fp[2]}×${fp[3]}` : ''
+      const hint = locked ? 'Build every district first' : k === 'liberty' ? 'In the water' : k === 'harbor' ? 'On a shore' : 'On land, along a road'
+      return `<button class="kind${placeKind === k ? ' on' : ''}${locked ? ' locked' : ''}" type="button" data-kind="${k}" style="--c:${c}" title="${esc(hint)}">
+        <span class="sw"></span><span class="nm">${esc(name)}</span><span class="ct">${size}${n ? ` · ${n} placed` : ''}</span></button>`
+    }).join('')
+    if (html !== catalogHtml) { catalog.innerHTML = html; catalogHtml = html }
+  }
+  catalog.addEventListener('click', e => {
+    const b = e.target.closest('[data-kind]')
+    if (b) setTool('place', b.dataset.kind)
+  })
+  buildBar.addEventListener('click', e => {
+    const b = e.target.closest('[data-tool]')
+    if (!b) return
+    if (b.dataset.tool === 'place' && tool === 'place') { setTool('select'); return }
+    setTool(b.dataset.tool)
+  })
+
+  // ---- the ghost under the cursor ----------------------------------------
+  const rect = (x, y, w, h, cls) => `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
+  const line = (x1, y1, x2, y2, cls) => `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`
+  const why = r => (r && 'error' in r ? r.error : '')
+
+  // The run a road gesture draws: from the pressed point along the longer axis.
+  function runOf(g, gx, gy) {
+    const rx = Math.round(gx), ry = Math.round(gy)
+    const dir = Math.abs(rx - g.x0) >= Math.abs(ry - g.y0) ? 1 : 0
+    const len = Math.max(1, dir === 1 ? Math.abs(rx - g.x0) : Math.abs(ry - g.y0))
+    return { x: dir === 1 ? Math.min(g.x0, rx) : g.x0, y: dir === 0 ? Math.min(g.y0, ry) : g.y0, dir, len }
+  }
+  // The rectangle a borough gesture draws, at least three cells each way.
+  function rectOf(g, gx, gy) {
+    const x0 = Math.min(g.x0, Math.floor(gx)), y0 = Math.min(g.y0, Math.floor(gy))
+    const x1 = Math.max(g.x0, Math.floor(gx)) + 1, y1 = Math.max(g.y0, Math.floor(gy)) + 1
+    return { x: x0, y: y0, w: Math.max(3, x1 - x0), h: Math.max(3, y1 - y0) }
+  }
+  // A zoned lot under the cursor: two cells, snapped to the gesture's parity.
+  function lotAt(gx, gy) {
+    let x = Math.floor(gx)
+    if (gesture && gesture.kind === 'zone') x = gesture.x0 + 2 * Math.round((x - gesture.x0) / 2)
+    return { x, y: Math.floor(gy) }
+  }
+
+  // What the bulldozer would take under the pointer: a building or borough
+  // (their hover zones), a zoned lot, a park cell, or the nearest road edge.
+  function bulldozeTarget(e, gx, gy) {
+    const z = e && e.target.closest && e.target.closest('[data-building], [data-borough]')
+    if (z && z.dataset.building) return { op: 'remove', id: z.dataset.building, cells: cellsOfId(z.dataset.building) }
+    if (z && z.dataset.borough) {
+      const bo = layout.boroughs.find(b => b.id === z.dataset.borough)
+      return { op: 'remove', id: z.dataset.borough, borough: true, cells: bo ? [[bo.x, bo.y, bo.w, bo.h]] : [] }
+    }
+    const cx = Math.floor(gx), cy = Math.floor(gy)
+    const lot = layout.zoned.find(([x, y]) => y === cy && (x === cx || x + 1 === cx))
+    if (lot) return { op: 'unzone', x: lot[0], y: lot[1], cells: [[lot[0], lot[1], 2, 1]] }
+    if (layout.park.some(([y, x0, x1]) => y === cy && cx >= x0 && cx < x1)) return { op: 'paint', what: 'none', x: cx, y: cy, cells: [[cx, cy, 1, 1]] }
+    const edges = [
+      [Math.abs(gx - cx), cx, cy, 0], [Math.abs(gx - cx - 1), cx + 1, cy, 0],
+      [Math.abs(gy - cy), cx, cy, 1], [Math.abs(gy - cy - 1), cx, cy + 1, 1],
+    ].sort((a, b) => a[0] - b[0])
+    for (const [d, x, y, dir] of edges) {
+      if (d > 0.3) break
+      if (R() && R().hasRoad(layout, x, y, dir)) return { op: 'unroad', x, y, dir, road: [x, y, dir] }
+    }
+    return null
+  }
+  function cellsOfId(id) {
+    const b = layout.buildings.find(one => one.id === id)
+    return b && R() ? R().cellsOf(b).map(([x0, y0, x1, y1]) => [x0, y0, x1 - x0, y1 - y0]) : []
+  }
+
+  function drawCursor() {
+    let g = ''
+    let note = ''
+    if (layout && hover && tool !== 'select' && R()) {
+      const { gx, gy } = hover
+      const rules = R()
+      if (tool === 'place' && placeKind) {
+        const x = Math.floor(gx), y = Math.floor(gy)
+        const bad = rules.canPlace(layout, placeKind, x, y, face)
+        note = bad || ''
+        const cls = bad ? 'bad' : 'ok'
+        for (const [dx, dy, w, d] of rules.FOOTPRINT[placeKind]) g += rect(x + dx, y + dy, w, d, cls)
+        const [, , w, d] = rules.FOOTPRINT[placeKind][0]
+        if (face === 's') g += line(x, y + d, x + w, y + d, 'front')
+        if (face === 'n') g += line(x, y, x + w, y, 'front')
+        if (face === 'e') g += line(x + w, y, x + w, y + d, 'front')
+        if (face === 'w') g += line(x, y, x, y + d, 'front')
+      } else if (tool === 'road') {
+        if (gesture) {
+          const r = runOf(gesture, gx, gy)
+          const bad = rules.canRoad(layout, r.x, r.y, r.dir, r.len)
+          note = bad || ''
+          g += line(r.x, r.y, r.dir === 1 ? r.x + r.len : r.x, r.dir === 0 ? r.y + r.len : r.y, `road ${bad ? 'bad' : 'ok'}`)
+        } else {
+          g += `<circle class="ok" cx="${Math.round(gx)}" cy="${Math.round(gy)}" r=".18"/>`
+        }
+      } else if (tool === 'zone') {
+        const { x, y } = lotAt(gx, gy)
+        const bad = why(rules.applyOp(layout, { op: 'zone', x, y }))
+        note = bad
+        g += rect(x, y, 2, 1, bad ? 'bad' : 'ok')
+      } else if (tool === 'park') {
+        const x = Math.floor(gx), y = Math.floor(gy)
+        const bad = why(rules.applyOp(layout, { op: 'paint', what: 'park', x, y }))
+        note = bad
+        g += rect(x, y, 1, 1, bad ? 'bad' : 'ok')
+      } else if (tool === 'borough') {
+        if (gesture) {
+          const r = rectOf(gesture, gx, gy)
+          const bad = why(rules.applyOp(layout, { op: 'borough', name: 'New borough', ...r }))
+          note = bad
+          g += rect(r.x, r.y, r.w, r.h, bad ? 'bad' : 'ok')
+        } else {
+          g += rect(Math.floor(gx), Math.floor(gy), 1, 1, 'ok')
+        }
+      } else if (tool === 'bulldoze') {
+        const t = bulldozeTarget(hover.e, gx, gy)
+        if (t && t.road) g += line(t.road[0], t.road[1], t.road[2] === 1 ? t.road[0] + 1 : t.road[0], t.road[2] === 0 ? t.road[1] + 1 : t.road[1], 'mark road')
+        else if (t) for (const [x, y, w, h] of t.cells) g += rect(x, y, w, h, 'mark')
+      }
+    }
+    cursorG.innerHTML = g
+    $('bt-why').textContent = note
+  }
+
+  async function build(op, quiet) {
+    const r = await post('/build', op)
+    if (r.error && !quiet) toast(r.error)
+    return !r.error
+  }
+
+  // ---- gestures ----------------------------------------------------------
+  map.addEventListener('mousedown', e => {
+    if (tool === 'select' || e.button !== 0 || !layout) return
+    const { gx, gy } = gridAt(e)
+    if (tool === 'road') gesture = { kind: 'road', x0: Math.round(gx), y0: Math.round(gy) }
+    else if (tool === 'borough') gesture = { kind: 'borough', x0: Math.floor(gx), y0: Math.floor(gy) }
+    else if (tool === 'zone' || tool === 'park') gesture = { kind: tool, x0: Math.floor(gx), y0: Math.floor(gy), done: new Set() }
+    drawCursor()
+  })
+  window.addEventListener('mousemove', e => {
+    if (!layout || tool === 'select') return
+    const { gx, gy } = gridAt(e)
+    hover = { gx, gy, e }
+    // Dragging the zone or park brush paints as it goes.
+    if (gesture && (gesture.kind === 'zone' || gesture.kind === 'park')) {
+      const at = gesture.kind === 'zone' ? lotAt(gx, gy) : { x: Math.floor(gx), y: Math.floor(gy) }
+      const key = `${at.x},${at.y}`
+      if (!gesture.done.has(key)) {
+        gesture.done.add(key)
+        build(gesture.kind === 'zone' ? { op: 'zone', ...at } : { op: 'paint', what: 'park', ...at }, true)
+      }
+    }
+    drawCursor()
+  })
+  window.addEventListener('mouseup', e => {
+    if (!gesture || e.button !== 0) return
+    const g = gesture
+    gesture = null
+    gestureEnded = true
+    setTimeout(() => { gestureEnded = false }, 0)
+    const { gx, gy } = gridAt(e)
+    if (g.kind === 'road') build({ op: 'road', ...runOf(g, gx, gy) })
+    else if (g.kind === 'borough') openSheet(rectOf(g, gx, gy))
+    else if (g.kind === 'zone' && !g.done.size) build({ op: 'zone', ...lotAt(gx, gy) })
+    else if (g.kind === 'park' && !g.done.size) build({ op: 'paint', what: 'park', x: Math.floor(gx), y: Math.floor(gy) })
+    drawCursor()
+  })
+  map.addEventListener('click', e => {
+    if (!layout) return
+    if (tool === 'select') {
+      const z = e.target.closest && e.target.closest('[data-building], [data-borough]')
+      if (z) showSel(z)
+      else hideSel()
+      return
+    }
+    e.stopPropagation()
+    if (gestureEnded) return
+    const { gx, gy } = gridAt(e)
+    if (tool === 'place' && placeKind) build({ op: 'place', kind: placeKind, x: Math.floor(gx), y: Math.floor(gy), face })
+    else if (tool === 'bulldoze') {
+      const t = bulldozeTarget(e, gx, gy)
+      if (!t) { toast('Nothing there to bulldoze'); return }
+      if (t.borough && !confirm('Bulldoze this borough and everything in it?')) return
+      const { cells, road, borough, ...op } = t
+      build(op)
+    }
+  }, true)
+  map.addEventListener('mouseleave', () => { hover = null; drawCursor() })
+  window.addEventListener('keydown', e => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return
+    if (e.key === 'Escape' && (tool !== 'select' || !sheet.hidden)) { sheet.hidden = true; setTool('select'); e.stopPropagation() }
+    else if ((e.key === 'r' || e.key === 'R') && tool === 'place') { face = FACES[(FACES.indexOf(face) + 1) % 4]; drawCursor() }
+  }, true)
+
+  // ---- the selection card ------------------------------------------------
+  function showSel(z) {
+    const id = z.dataset.building || z.dataset.borough
+    const b = layout.buildings.find(one => one.id === id)
+    const noRoad = b && R() && !R().facesRoad(layout, b)
+    selCard.dataset.id = id
+    selCard.style.setProperty('--accent', z.style.getPropertyValue('--accent') || '#fbbf24')
+    selCard.innerHTML = `<b>${esc(z.dataset.tipTitle)}</b>${esc(z.dataset.tipText)}` +
+      (noRoad ? `<div class="note">No road along its front: lay one so its agents can reach it.</div>` : '') +
+      `<div class="row"><button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
+      `<button class="btn sm" type="button" data-sel-close="1">Close</button></div>`
+    selCard.hidden = false
+  }
+  function hideSel() { selCard.hidden = true; delete selCard.dataset.id }
+  selCard.addEventListener('click', async e => {
+    const b = e.target.closest('button')
+    if (!b) return
+    if (b.dataset.selClose) hideSel()
+    else if (b.dataset.bulldoze) {
+      if (b.dataset.boroughCard && !confirm('Bulldoze this borough and everything in it?')) return
+      if (await build({ op: 'remove', id: b.dataset.bulldoze })) hideSel()
+    }
+  })
+
+  // ---- the borough sheet -------------------------------------------------
+  let sheetRect = null
+  function openSheet(r) {
+    sheetRect = r
+    const sel = $('bs-root')
+    sel.innerHTML = '<option value="">Not yet</option>' + ((lastMeta && lastMeta.places) || []).map(p => `<option value="${esc(p.path)}">${esc(p.name)}</option>`).join('')
+    $('bs-name').value = ''
+    sheet.hidden = false
+    $('bs-name').focus()
+  }
+  $('bs-cancel').addEventListener('click', () => { sheet.hidden = true })
+  $('bs-ok').addEventListener('click', async () => {
+    const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value ? $('bs-root').selectedOptions[0].textContent : '')
+    if (!name) { $('bs-name').focus(); return }
+    const root = $('bs-root').value
+    if (await build({ op: 'borough', name, ...(root ? { root } : {}), ...sheetRect })) { sheet.hidden = true; setTool('select') }
+  })
+  $('bs-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('bs-ok').click() })
 </script>
 <style>
   #tip { position: fixed; z-index: 20; max-width: 300px; pointer-events: none; display: none;
