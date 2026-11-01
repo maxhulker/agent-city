@@ -39,6 +39,70 @@ designed and half built:
   (was ~300 ms), and sample an agent's transform across a frame boundary (it
   used to jump to its destination).
 
+## Next round: the brief
+
+Two things the person asked for, in the city's own language. Build them in a
+fresh session, with Sonnet (or Haiku) subagents on small briefs, unit tests
+for the world rules (`src/world.ts` is pure: feed it hook events and assert),
+and no real Claude sessions until the final check.
+
+### A. Decommissioning: the last train home (do this first; it's small)
+
+The city fills up because its departure rules are slow (all in `flush()` in
+`src/world.ts`): a quiet session is kept 6 hours, a finished subagent rests
+10 minutes, a session only leaves at once if it posts SessionEnd, and a
+borough is never given up until all four are taken.
+
+- Grand Central is the exit as well as the entrance. An idle lead that has
+  heard nothing for 30 minutes walks to Grand Central and boards a departing
+  train (a short overlay animation: the train pulls out, the agent is gone).
+  If its session speaks again later it arrives fresh, as new sessions do.
+- A finished subagent leaves the same way 2 minutes after its report taxi
+  has arrived. An ended or failed app session's lead leaves at once (the app
+  session stays in the sidebar's list).
+- Fading with age: before the train, an idle agent dims the longer it has
+  been quiet (opacity by idle time), so active agents stand out.
+- Moving out: a borough with no activity for an hour packs up (sign down,
+  houses stay) and is free. Keep the repo known, so it moves straight back in
+  when a session works there again.
+- Controls: **Send home** on a session card (that session's agents leave
+  now) and **Last call** in the header (everyone idle leaves now): one small
+  POST each, origin-checked like the others.
+- A cap with manners: above 24 agents, the longest-idle leave first,
+  whatever their timers say.
+
+### B. Why each agent exists, and how it works
+
+1. **Work orders (why).** When a lead starts a subagent, the Agent tool's
+   `prompt` is the brief; today only `description` is kept (world.ts, the
+   `spawns` queue). Keep the prompt too (cut to ~2 KB), with who issued it and
+   when. On the map the agent carries a clipboard on its first walk; clicking
+   it, or its card, shows the work order: "WORK ORDER A-3 · issued by Ⓐ AIV at
+   14:02 · reports to Grand Central", then the brief.
+2. **Route lines (how).** Keep each agent's last eight stops (district or
+   borough, with times). When an agent is selected, draw its route as a
+   dotted subway-style line with numbered stops and a legend ("1 Library →
+   2 Garment District → 3 Hudson Yards → 4 Seaport"). Library ↔ Garment
+   District six times reads as debugging; Library → Grand Central as
+   delegating.
+3. **Site plans (progress).** Claude Code has TaskCreated and TaskCompleted
+   hook events for a session's own task checklist (verify their payloads
+   first: https://code.claude.com/docs/en/hooks.md); subscribe to them (one
+   more event in `src/install.ts`, with the person's OK since it changes their
+   settings). Show the checklist as a construction hoarding beside the
+   session's lead and as a "Site plan" tab in the drawer, and let the
+   scaffolding on the building being edited climb with the share completed.
+   An approved plan (ExitPlanMode, already captured by approvals) is posted at
+   City Hall as the zoning plan.
+4. Small touches: a hard hat in the session's colour on subagents; the report
+   taxi's envelope opening in the lead's bubble with the report's first line;
+   the conversation drawer for subagents too (their transcripts arrive with
+   SubagentStop).
+
+Order: A, then B1 and B2 together (mostly world.ts bookkeeping plus drawing),
+then B3 once the task hooks are verified. The smoothness rebuild
+(`docs/frames.md`) can wait; none of this depends on it.
+
 ## Lessons from the first session, on cost
 
 - One long session gets expensive: every action re-sends the whole history.
