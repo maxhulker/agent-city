@@ -512,7 +512,7 @@
   // moved on every animation frame, then the items drawn above them.
   const SVGNS = 'http://www.w3.org/2000/svg'
   const map = $('map'), cityEl = $('city')
-  let mapSvg = null, mapHash = null
+  let mapSvg = null, mapHash = null, legacyN = 0
   const overlay = document.createElementNS(SVGNS, 'svg')
   overlay.setAttribute('class', 'city overlay')
   overlay.setAttribute('preserveAspectRatio', 'xMidYMid meet')
@@ -786,6 +786,7 @@
     const svg = tmp.querySelector('svg')
     if (!svg) return
     mapHash = m.hash
+    svg.classList.add('city', 'map')
     const old = base && base.join(' ')
     readBase(svg)
     if (mapSvg) mapSvg.replaceWith(svg); else cityEl.insertBefore(svg, overlay)
@@ -866,7 +867,11 @@
         else if (meta.boot !== boot) { location.reload(); return }
       }
       clockOff = Date.now() - performance.now()
-      if (f.map && f.map.hash !== mapHash) setMap(f.map)
+      // A server from before the layers (still running across an update of
+      // the page) sends one whole SVG per frame: show it as the map, the old
+      // slow way, until it is restarted.
+      if (f.svg != null) setMap({ hash: 'legacy:' + ++legacyN, svg: f.svg })
+      else if (f.map && f.map.hash !== mapHash) setMap(f.map)
       syncOverlay(f.overlay || [])
       syncAgents(f.agents || [])
       drawUpdate(meta.update)

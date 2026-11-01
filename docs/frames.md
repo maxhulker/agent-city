@@ -28,6 +28,11 @@ items (`drawOverlay`); `src/draw/agents.ts` the sprites, trains and taxis;
 `src/draw/places.ts` the hover zones. `test/frames.test.ts` holds the
 contract to the tests.
 
+A server from before the layers, still running across an update of the page
+(Agent City serves `public/index.html` from disk on every load), sends
+`{svg, meta}`; the page shows that SVG as the map, the old slow way, until
+the server is restarted.
+
 ## map
 
 A complete `<svg class="city map" viewBox="…" preserveAspectRatio="xMidYMid meet">`
