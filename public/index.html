@@ -660,7 +660,7 @@
   let tickAt = null, tickHtml = '', pendingHtml = null, tx = 0, segW = 0, lastT = 0
 
   function tickerSeg(items) {
-    if (!items.length) return '<span class="seg"><span class="it">AGENT CITY</span><span class="sep">◆</span><span class="it">WAITING FOR THE FIRST SESSION</span><span class="sep">◆</span></span>'
+    if (!items.length) return '<span class="seg"><span class="it">AGENT CITY</span><span class="sep">◆</span><span class="it">ALL QUIET IN THE CITY</span><span class="sep">◆</span></span>'
     return '<span class="seg">' + items.map(t =>
       `<span class="it">${bullet(t.bullet, t.color, true)}<span>${esc(t.who)} ${esc(t.text)}</span></span><span class="sep">◆</span>`).join('') + '</span>'
   }
@@ -675,7 +675,9 @@
   }
 
   function updateTicker(items) {
-    const at = items.length ? items[0].at : 0
+    // The ticker shows what's happening now, so lines leave as well as arrive:
+    // rebuild whenever the set changes, still only at a loop boundary.
+    const at = items.map(i => `${i.bullet}|${i.who}|${i.text}`).join('\n')
     if (at === tickAt && tickHtml) return
     tickAt = at
     const seg = tickerSeg(items)

@@ -12,9 +12,9 @@ import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { readConversation } from './transcripts.ts'
 import { Updates } from './updates.ts'
-import type { Decision, Task, World } from './types.ts'
+import type { Agent, Decision, District, Task, World } from './types.ts'
 import { base, City, forgetRoots } from './world.ts'
-import type { HookEvent } from './world.ts'
+import type { HookEvent, TickerItem } from './world.ts'
 
 // Agent City: a local server Claude Code sessions post their hook events to,
 // and a page that draws every session at work in one isometric Manhattan.
@@ -101,6 +101,38 @@ function taskView(t: Task): Task {
   return t.result && t.result.length > 4000 ? { ...t, result: t.result.slice(0, 3999) + '…' } : t
 }
 
+// What each district's work is called while it's going on.
+const DOING: Record<District, string> = {
+  library: 'READING',
+  workshop: 'EDITING',
+  foundry: 'RUNNING',
+  observatory: 'BROWSING',
+  relay: 'DISPATCHING',
+  harbor: 'RUNNING',
+  hall: 'THINKING',
+  plaza: 'RESTING',
+}
+// Routine actions; while their agent is still at work, its live line says it.
+const ROUTINE = /^(READ|EDITED|RAN|SEARCHED|BROWSED|SENT A MESSAGE|DISPATCHED)\b/
+
+// The ticker is the news as it happens: each working agent's current action,
+// then whatever happened in the last minute. Nothing older.
+function tickerNow(world: World, now: number): TickerItem[] {
+  const live: TickerItem[] = []
+  for (const a of world.agents) {
+    if (a.status !== 'working' && a.status !== 'waiting') continue
+    const s = world.sessions.find(one => one.id === a.session)
+    const detail = a.activity
+      .replace(/^Thinking:\s*/, '')
+      .replace(/^(Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|WebFetch|WebSearch|Bash|PowerShell)\b:?\s*/, '')
+    const text = a.status === 'waiting' ? 'NEEDS YOU' : `${DOING[a.at]} ${detail}`.replace(/\s+/g, ' ').trim()
+    live.push({ at: a.updatedAt, bullet: s?.bullet ?? '', color: s?.color ?? a.color, who: a.name, text: text.length > 48 ? text.slice(0, 47) + '…' : text })
+  }
+  const busy = new Set(live.map(i => i.who))
+  const recent = city.ticker.filter(i => now - i.at < 60_000 && !(busy.has(i.who) && ROUTINE.test(i.text))).reverse()
+  return [...live.sort((a, b) => b.at - a.at), ...recent]
+}
+
 function meta(world: World) {
   return {
     home: world.home,
@@ -126,7 +158,7 @@ function meta(world: World) {
             : LABELS[a.at],
         })),
     })),
-    ticker: city.ticker.slice().reverse(),
+    ticker: tickerNow(world, Date.now()),
     counts: {
       sessions: world.sessions.length,
       working: world.agents.filter(a => a.status === 'working').length,
