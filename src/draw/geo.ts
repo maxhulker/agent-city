@@ -298,6 +298,9 @@ export function placeAt(place: Place, i: number): [number, number] {
   return place.burb ? burbAt(place.burb, i) : standAt(place.at, i)
 }
 
+// How long the train home takes to pull out of Grand Central and be gone.
+export const TRAIN_MS = 3_000
+
 // Along the walker's street to Fifth Avenue, down Fifth, along the street to
 // the destination: the grid way, crossing a bridge in or out of a borough.
 export function walk(from: Place, to: Place, end: [number, number]): { path: string; dur: number } {
@@ -376,7 +379,10 @@ export type Scene = {
   active: Set<District>
   hasConflict: boolean
   isWaiting: boolean
+  // The repositories living in each borough, and the ones that have packed up
+  // and left their houses behind (sign down, nobody home).
   repoOf: Map<Burb, Repo>
+  vacantOf: Map<Burb, Repo>
   // Agents' size on the map, before the page's zoom.
   k: number
   // A newer Agent City on main: the Empire State lights up and becomes the

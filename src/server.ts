@@ -162,7 +162,7 @@ function meta(world: World) {
     counts: {
       sessions: world.sessions.length,
       working: world.agents.filter(a => a.status === 'working').length,
-      subagents: world.agents.filter(a => !a.isMain && a.status !== 'done' && a.status !== 'failed').length,
+      subagents: world.agents.filter(a => !a.isMain && a.status !== 'done' && a.status !== 'failed' && a.status !== 'leaving').length,
     },
     conflicts: world.conflicts,
     asks: world.asks.map(q => ({ ...q, who: world.agents.find(a => a.id === q.agentId)?.name ?? '' })),
@@ -192,7 +192,8 @@ function broadcast(animateWalks: boolean) {
 let lastSave = 0
 setInterval(() => {
   const now = Date.now()
-  if (city.isDirty) {
+  // A train due to leave, or to be gone, is a change too.
+  if (city.isDirty || city.due(now)) {
     city.flush(now)
     broadcast(true)
     if (now - lastSave > 5000) {
@@ -350,9 +351,14 @@ const server = createServer(async (req, res) => {
       }, 300)
       return
     }
-    if (req.method === 'POST' && (url.pathname === '/resolve' || url.pathname === '/home')) {
+    if (req.method === 'POST' && (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
-      const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean }
+      const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
+      // Send home: that session's agents take the train now. Last call: everyone idle does.
+      if (url.pathname === '/sendhome') {
+        return city.sendHome(args.session, Date.now()) ? reply(res, 200, '{"ok":true}') : reply(res, 400, JSON.stringify({ error: 'No such session' }))
+      }
+      if (url.pathname === '/lastcall') return reply(res, 200, JSON.stringify({ ok: true, left: city.lastCall(Date.now()) }))
       if (url.pathname === '/resolve') city.resolve(args.id)
       else if (args.auto) city.autoHome()
       else if (args.root) city.makeHome(args.root, Date.now(), true)

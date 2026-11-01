@@ -69,6 +69,21 @@ The idea: you never need the terminal or the Claude window.
 Both work only from the page itself (the server refuses other origins), and
 only with the HTTP hooks or the `--quiet` hooks from this version on.
 
+## The last train home
+
+Grand Central is the exit as well as the entrance. Everyone who leaves the
+city walks there and boards a departing train: a lead that has sat idle for
+half an hour (it dims the longer it waits, so the busy ones stand out), a
+finished subagent two minutes after its report taxi has arrived, a session
+that ends, and the lead of an app session you have ended. If a session speaks
+again later it arrives fresh, like a new one. Above 24 agents, the ones idle
+longest leave first.
+
+A borough nobody has worked in for an hour packs up: the sign comes down and
+the houses stay, and the repository moves straight back in when a session
+works there again. **Send home** on a session's card sends that session's
+agents to the train now; **Last call** in the header sends everyone idle.
+
 It works with any account Claude Code is signed into, personal or company,
 because hooks are set on the machine, not the account. It does not work with
 claude.ai chat, which has no hooks.

@@ -13,7 +13,9 @@ export type Burb = 'brooklyn' | 'queens' | 'bronx' | 'jersey'
 
 export type View = 'island' | 'uptown' | 'midtown' | 'downtown'
 
-export type AgentStatus = 'working' | 'idle' | 'waiting' | 'done' | 'failed'
+// 'leaving': on its way to Grand Central for the train home; it is gone once
+// the train pulls out (Agent.leaving).
+export type AgentStatus = 'working' | 'idle' | 'waiting' | 'done' | 'failed' | 'leaving'
 
 // Where an agent is: a district of Manhattan (the home repository), or a
 // borough when it works in another one.
@@ -39,6 +41,22 @@ export type Agent = {
   inFlight: number
   startedAt: number
   updatedAt: number
+  // A finished subagent rests until then (its report has arrived, plus a while).
+  restUntil?: number
+  // When its train leaves Grand Central; set once it is on its way there.
+  leaving?: number
+}
+
+// A departing train at Grand Central: it waits while its passengers walk over,
+// pulls out at leaveAt, and is gone a few seconds later.
+export type Train = {
+  id: string
+  at: number
+  leaveAt: number
+  color: string
+  bullet?: string
+  // Who is aboard, for the tooltip.
+  who: string
 }
 
 export type Session = {
@@ -185,7 +203,10 @@ export type TaskTurn = {
   costUsd?: number
 }
 
-export type Repo = { root: string; name: string; burb: Burb; lastSeen: number }
+// A repository other than Manhattan's and the borough it lives in. One that
+// has packed up (`left`) is still known: it moves straight back in, to the
+// same borough when that is free, as soon as a session works there again.
+export type Repo = { root: string; name: string; burb: Burb; lastSeen: number; left?: number }
 
 export type Conflict = {
   id: string
@@ -219,6 +240,8 @@ export type World = {
   launch?: Launch
   // Taxis on the road now (each lasts a few seconds).
   rides?: Ride[]
+  // Trains boarding or pulling out of Grand Central.
+  trains?: Train[]
   // Tasks started from the page, newest last (the last 20).
   tasks?: Task[]
   // Sessions that live in the app, newest last.

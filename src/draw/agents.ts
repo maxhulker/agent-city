@@ -1,5 +1,5 @@
 import type { Agent, District, Session, World } from '../types.ts'
-import { burbAt, esc, n, p, placeAt, standAt, walk } from './geo.ts'
+import { TRAIN_MS, burbAt, esc, n, p, placeAt, standAt, walk } from './geo.ts'
 import type { Scene } from './geo.ts'
 
 // The agents: who they are, where they stand, what they are doing.
@@ -96,6 +96,21 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
   return `<g class="fig">${tip}${body}</g>`
 }
 
+// How faded an agent is drawn, so the active ones stand out: full while it
+// works or boards its train; an idle one dims the longer it has been quiet
+// (from two minutes on, down to a third at half an hour, when it leaves); a
+// finished subagent fades over the two minutes it rests. Undefined means full.
+export function opacityFor(a: Agent, now: number): number | undefined {
+  const quiet = Math.max(0, now - a.updatedAt)
+  const round = (v: number) => Math.round(v * 100) / 100
+  if (a.status === 'idle' || a.status === 'failed') {
+    const t = Math.min(1, Math.max(0, (quiet - 2 * 60_000) / (28 * 60_000)))
+    return t > 0 ? round(1 - 0.65 * t) : undefined
+  }
+  if (a.status === 'done') return round(0.85 - 0.45 * Math.min(1, quiet / (2 * 60_000)))
+  return undefined
+}
+
 // Every agent, always on top so no tower hides one.
 export function drawAgents(world: World, sc: Scene): string {
   const { byDistrict, byBurb, repoOf, k } = sc
@@ -106,7 +121,8 @@ export function drawAgents(world: World, sc: Scene): string {
   for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: burbAt(b, i), i }))
   placed.sort((x, y) => x.at[0] + x.at[1] - (y.at[0] + y.at[1]))
   for (const { a, at, i } of placed) {
-    const fade = a.status === 'done' ? ` opacity=".6"` : ''
+    const dim = opacityFor(a, sc.now)
+    const fade = dim === undefined ? '' : ` opacity="${dim}"`
     const alert = a.status === 'waiting' || a.status === 'failed'
     // The lead of a borough shares the repo's name, which is already on the sign.
     const dup = !!a.burb && a.name.toLowerCase() === repoOf.get(a.burb)?.name.toLowerCase()
@@ -122,6 +138,64 @@ export function drawAgents(world: World, sc: Scene): string {
       const [x, y] = p(at[0], at[1])
       s += `<g${who} transform="translate(${n(x)},${n(y)})"${fade}>${fig}</g>`
     }
+  }
+  return s
+}
+
+// The last train home: it waits on the street in front of Grand Central while
+// its passengers walk over, windows lit, then pulls out eastward, towards the
+// tunnel under the river, and is gone. Drawn under the agents, so whoever is
+// boarding stands in front of it. Three cars along 42nd Street.
+const TRACK_Y = 40.55
+const CAR_D = 0.32
+const CAR_H = 6
+const CAR_L = 1
+
+function quad(list: [number, number, number][], fill: string, extra = ''): string {
+  return `<polygon points="${list.map(([gx, gy, z]) => p(gx, gy, z).map(n).join(',')).join(' ')}" fill="${fill}"${extra}/>`
+}
+
+function car(x: number, color: string, isFront: boolean, boarding: boolean): string {
+  const y = TRACK_Y
+  const y1 = y + CAR_D
+  const x1 = x + CAR_L
+  const edge = ` stroke="${INK}" stroke-width=".35" stroke-linejoin="round"`
+  let g = quad([[x, y1, 0.8], [x1, y1, 0.8], [x1, y1, 0], [x, y1, 0]], '#1e293b')
+  g += quad([[x, y, CAR_H], [x1, y, CAR_H], [x1, y1, CAR_H], [x, y1, CAR_H]], '#e2e8f0', edge)
+  g += quad([[x, y1, CAR_H], [x1, y1, CAR_H], [x1, y1, 0.8], [x, y1, 0.8]], '#aab4c3', edge)
+  g += quad([[x1, y, CAR_H], [x1, y1, CAR_H], [x1, y1, 0.8], [x1, y, 0.8]], '#6b7687', edge)
+  // The session's colour as the stripe along the side.
+  g += quad([[x, y1, 2.1], [x1, y1, 2.1], [x1, y1, 3.1], [x, y1, 3.1]], color)
+  let windows = ''
+  for (let i = 0; i < 4; i++) {
+    const wx = x + 0.1 + i * 0.22
+    windows += quad([[wx, y1, 3.5], [wx + 0.14, y1, 3.5], [wx + 0.14, y1, 5.1], [wx, y1, 5.1]], '#fde68a')
+  }
+  g += `<g opacity=".9">${boarding ? '<animate attributeName="opacity" values=".9;.45;.9" dur="1.1s" repeatCount="indefinite"/>' : ''}${windows}</g>`
+  if (isFront) {
+    const [hx, hy] = p(x1, y + CAR_D / 2, 2.4)
+    g += `<circle cx="${n(hx)}" cy="${n(hy)}" r="1" fill="#fff7ae"><animate attributeName="opacity" values="1;.5;1" dur=".8s" repeatCount="indefinite"/></circle>`
+  }
+  return g
+}
+
+export function drawTrains(world: World, sc: Scene): string {
+  let s = ''
+  const [dx, dy] = p(7, 0)
+  for (const t of world.trains ?? []) {
+    // Negative while boarding; once it is positive, the train is on its way.
+    const age = (sc.now - t.leaveAt) / 1000
+    if (age > TRAIN_MS / 1000 + 1) continue
+    const boarding = age < 0
+    let cars = ''
+    for (let i = 0; i < 3; i++) cars += car(9.1 + i * (CAR_L + 0.1), esc(t.color), i === 2, boarding)
+    const timing = `begin="${(-age).toFixed(2)}s" dur="${n(TRAIN_MS / 1000)}s" fill="freeze"`
+    const motion = boarding
+      ? ''
+      : `<animateTransform attributeName="transform" type="translate" from="0,0" to="${n(dx)},${n(dy)}" ${timing} calcMode="spline" keySplines=".5 0 1 1"/>` +
+        `<animate attributeName="opacity" values="1;1;0" keyTimes="0;.55;1" ${timing}/>`
+    const who = `${boarding ? 'Boarding' : 'Gone'}: ${t.who}`
+    s += `<g class="train"${boarding ? '' : ' opacity="1"'}>${motion}<title>${esc(`The last train home · ${who}`)}</title>${cars}</g>`
   }
   return s
 }

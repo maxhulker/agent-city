@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, BURBS, BURB_ORDER, districtFor } from './city.ts'
-import type { Agent, Burb, District, Message, Place, Session, World } from './types.ts'
+import { TRAIN_MS, placeAt, walk } from './draw/geo.ts'
+import type { Agent, Burb, District, Message, Place, Repo, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
 
@@ -188,6 +189,21 @@ function resultText(value: unknown): string {
 
 const ACTIVITY_WINDOW = 10 * 60_000
 
+// Departures, all through Grand Central: an idle agent that has heard nothing
+// for this long boards the train home; a finished subagent rests this long
+// after its report has arrived; a borough nobody has worked in for this long
+// packs up; above the cap the longest-idle leave first, whatever the timers say.
+export const IDLE_LEAVE = 30 * 60_000
+export const REST_LEAVE = 2 * 60_000
+export const BURB_LEAVE = 60 * 60_000
+export const AGENT_CAP = 24
+export { TRAIN_MS }
+// An agent's walk to the station lasts this long at most (the SVG walk is capped at 4.5 s).
+const BOARDING_MS = 5_000
+// Sessions quiet for this long have closed without saying so (a backstop).
+const SESSION_LEAVE = 6 * 3600_000
+const STATION: Place = { at: 'relay' }
+
 // Messages for a session: how long one may be, how many may wait, how long a
 // delivered one stays listed.
 export const MESSAGE_MAX = 4000
@@ -320,7 +336,25 @@ export class City {
     return BULLETS.find(b => !used.includes(b)) ?? BULLETS[this.world.sessions.length % BULLETS.length]!
   }
 
-  // The borough of the repository at root, moving it in if it is new.
+  // The repository living in a borough now, if any (one that has packed up doesn't count).
+  private holder(b: Burb): Repo | undefined {
+    return this.world.repos.find(r => r.burb === b && !r.left)
+  }
+
+  // A borough for a repository moving in: the one it asks for when that is
+  // free, else any free one, else the one whose repository was seen longest
+  // ago, which packs up (and stays known).
+  private freeBurb(prefer: Burb | undefined, now: number): Burb {
+    if (prefer && !this.holder(prefer)) return prefer
+    const free = BURB_ORDER.find(b => !this.holder(b))
+    if (free) return free
+    const oldest = this.world.repos.filter(r => !r.left).sort((a, b) => a.lastSeen - b.lastSeen)[0]!
+    oldest.left = now
+    this.say(undefined, `${oldest.name} moved out of ${BURBS[oldest.burb].name}`, now)
+    return oldest.burb
+  }
+
+  // The borough of the repository at root, moving it in if it is new or had packed up.
   private burbFor(root: string | null, now: number): Burb | undefined {
     const w = this.world
     if (!root) return undefined
@@ -330,19 +364,20 @@ export class City {
     }
     if (same(root, w.homeRoot)) return undefined
     let repo = w.repos.find(r => same(r.root, root))
-    if (!repo) {
-      let burb = BURB_ORDER.find(b => !w.repos.some(r => r.burb === b))
-      if (!burb) {
-        // Every borough is taken: the one used longest ago moves out.
-        const oldest = [...w.repos].sort((a, b) => a.lastSeen - b.lastSeen)[0]!
-        burb = oldest.burb
-        w.repos = w.repos.filter(r => r !== oldest)
+    if (!repo || repo.left) {
+      const back = !!repo
+      const burb = this.freeBurb(repo?.burb, now)
+      if (repo) {
+        repo.burb = burb
+        delete repo.left
+      } else {
+        repo = { root, name: base(root), burb, lastSeen: now }
+        w.repos.push(repo)
       }
-      repo = { root, name: base(root), burb, lastSeen: now }
-      w.repos.push(repo)
-      this.toasts.push(`${repo.name} moved into ${BURBS[burb].name}`)
-      this.say(undefined, `${repo.name} moved into ${BURBS[burb].name}`, now)
-      this.tick(undefined, `${repo.name} moved into ${BURBS[burb].name}`, now)
+      const text = `${repo.name} moved ${back ? 'back ' : ''}into ${BURBS[burb].name}`
+      this.toasts.push(text)
+      this.say(undefined, text, now)
+      this.tick(undefined, text, now)
     }
     repo.lastSeen = now
     return repo.burb
@@ -352,6 +387,9 @@ export class City {
     const w = this.world
     let s = w.sessions.find(one => one.id === ev.session_id)
     if (!s) {
+      // A session that speaks again after being sent home arrives fresh; agents
+      // of its still waiting for their train are gone at once.
+      w.agents = w.agents.filter(a => !(a.session === ev.session_id && a.status === 'leaving'))
       const cwd = norm(str(ev.cwd) || '.')
       const root = repoRoot(cwd) ?? cwd
       const twins = w.sessions.filter(one => same(one.root, root)).length
@@ -415,6 +453,8 @@ export class City {
     const lead = this.lead(s, now)
     if (!ev.agent_id) return lead
     const id = `${s.id}:${ev.agent_id}`
+    // One already on its way to the train is gone; this event starts it afresh.
+    this.world.agents = this.world.agents.filter(one => !(one.id === id && one.status === 'leaving'))
     let a = this.world.agents.find(one => one.id === id)
     if (!a) {
       const pending = this.spawns.get(s.id) ?? []
@@ -583,8 +623,12 @@ export class City {
         w.asks = w.asks.filter(q => q.agentId !== a.id)
         this.say(a, 'finished', now)
         this.tick(a, 'filed its report', now)
-        // The report rides back to the lead.
-        if (!a.isMain) this.ride(from, placeOf(this.lead(s, now)), a.color, 'report', now)
+        // The report rides back to the lead; the agent rests a while after it has arrived.
+        if (!a.isMain) {
+          const to = placeOf(this.lead(s, now))
+          this.ride(from, to, a.color, 'report', now)
+          a.restUntil = now + walk(from, to, placeAt(to, 0)).dur * 1000 + REST_LEAVE
+        }
         break
       }
       case 'Stop':
@@ -616,14 +660,7 @@ export class City {
         break
       }
       case 'SessionEnd': {
-        for (const a of w.agents.filter(one => one.session === s.id)) {
-          a.status = 'done'
-          a.updatedAt = now
-        }
-        w.asks = w.asks.filter(q => !w.agents.some(a => a.id === q.agentId && a.session === s.id))
-        w.sessions = w.sessions.filter(one => one.id !== s.id)
-        this.spawns.delete(s.id)
-        this.say(undefined, `${s.name} left the city`, now)
+        this.departSession(s, now, 'ended')
         break
       }
       default:
@@ -638,7 +675,8 @@ export class City {
     this.isDirty = true
   }
 
-  // Makes the repository at root Manhattan; the old home takes its borough.
+  // Makes the repository at root Manhattan; the old home takes its borough
+  // (or another, when the new home had packed up and its old borough is taken).
   makeHome(root: string, now: number, pinned = true) {
     const w = this.world
     const repo = w.repos.find(r => same(r.root, root))
@@ -648,12 +686,157 @@ export class City {
     w.homeRoot = repo.root
     w.home = repo.name
     w.repos = w.repos.filter(r => r !== repo)
-    if (old.root) w.repos.push({ root: old.root, name: old.name, burb: repo.burb, lastSeen: now })
+    const burb = repo.left ? this.freeBurb(repo.burb, now) : repo.burb
+    if (old.root) w.repos.push({ root: old.root, name: old.name, burb, lastSeen: now })
     for (const a of w.agents) {
-      if (a.burb === repo.burb) delete a.burb
-      else if (!a.burb) a.burb = repo.burb
+      if (a.burb === repo.burb && !repo.left) delete a.burb
+      else if (!a.burb) a.burb = burb
     }
     this.isDirty = true
+  }
+
+  // ---- departures: the last train home --------------------------------------
+
+  // Sends agents to Grand Central to board one train; they are gone when it leaves.
+  private depart(list: Agent[], now: number, why: string) {
+    const w = this.world
+    const going = list.filter(a => a.status !== 'leaving')
+    if (!going.length) return
+    let leaveAt = now
+    for (const a of going) {
+      // The train waits for the longest walk.
+      const dur = walk(placeOf(a), STATION, placeAt(STATION, 0)).dur * 1000 + 400
+      leaveAt = Math.max(leaveAt, Math.min(now + BOARDING_MS, now + dur))
+    }
+    const first = going[0]!
+    const s = w.sessions.find(one => one.id === first.session)
+    for (const a of going) {
+      a.status = 'leaving'
+      a.inFlight = 0
+      a.leaving = leaveAt
+      this.goTo(a, 'relay', undefined)
+      a.activity = `Boarding the last train home (${why})`
+      this.say(a, `took the last train home (${why})`, now)
+    }
+    this.tick(first, going.length === 1 ? 'took the last train home' : `and ${going.length - 1} more took the last train home`, now)
+    w.asks = w.asks.filter(q => !going.some(a => a.id === q.agentId))
+    w.trains = [
+      ...(w.trains ?? []),
+      {
+        id: randomUUID(),
+        at: now,
+        leaveAt,
+        color: s?.color ?? first.color,
+        ...(s?.bullet ? { bullet: s.bullet } : {}),
+        who: going.map(a => a.name).join(', '),
+      },
+    ].slice(-8)
+    this.isDirty = true
+  }
+
+  // A whole session leaves: its agents board, and it is forgotten, so that it
+  // arrives fresh if it ever speaks again.
+  private departSession(s: Session, now: number, why: string) {
+    const w = this.world
+    this.depart(w.agents.filter(a => a.session === s.id), now, why)
+    w.sessions = w.sessions.filter(one => one !== s)
+    this.spawns.delete(s.id)
+    this.isDirty = true
+  }
+
+  // "Send home" on a session's card: its agents leave now.
+  sendHome(sessionId: unknown, now: number): boolean {
+    const s = this.world.sessions.find(one => one.id === sessionId)
+    if (!s) return false
+    this.departSession(s, now, 'sent home')
+    return true
+  }
+
+  // "Last call" in the header: everyone idle leaves now. Returns how many went.
+  lastCall(now: number): number {
+    const w = this.world
+    let n = 0
+    for (const s of [...w.sessions]) {
+      const lead = w.agents.find(a => a.id === `lead:${s.id}`)
+      if (lead && (lead.status === 'idle' || lead.status === 'failed')) {
+        n += w.agents.filter(a => a.session === s.id && a.status !== 'leaving').length
+        this.departSession(s, now, 'last call')
+      }
+    }
+    const rest = w.agents.filter(a => !a.isMain && (a.status === 'done' || a.status === 'idle'))
+    n += rest.length
+    this.depart(rest, now, 'last call')
+    return n
+  }
+
+  // True when a train is due to leave or to be gone: the server redraws then
+  // even if nothing else has happened.
+  due(now: number): boolean {
+    const w = this.world
+    if (w.agents.some(a => a.leaving && now >= a.leaving)) return true
+    return (w.trains ?? []).some(t => now >= t.leaveAt + TRAIN_MS)
+  }
+
+  // The departure rules, in order of urgency: ended app sessions, the idle
+  // timers, quiet sessions, then the cap.
+  private departures(now: number) {
+    const w = this.world
+    const leadOf = (s: Session) => w.agents.find(a => a.id === `lead:${s.id}`)
+    const quiet = (a: Agent) => now - a.updatedAt
+    const hasQueued = (s: Session) => (s.messages ?? []).some(m => m.status === 'queued')
+    // An ended or failed app session's lead leaves at once (the app session
+    // itself stays listed). One resumed in a new, living app session stays.
+    const apps = w.appSessions ?? []
+    for (const s of [...w.sessions]) {
+      const mine = apps.filter(a => a.sessionId === s.id)
+      if (mine.length && mine.every(a => a.status === 'ended' || a.status === 'failed')) this.departSession(s, now, 'ended')
+    }
+    for (const s of [...w.sessions]) {
+      const lead = leadOf(s)
+      // Quiet for six hours: it closed without saying so.
+      if (now - s.updatedAt > SESSION_LEAVE) {
+        this.departSession(s, now, 'quiet for six hours')
+        continue
+      }
+      // An idle lead that has heard nothing for half an hour, unless a message
+      // of yours is still waiting for it.
+      if (lead && (lead.status === 'idle' || lead.status === 'failed') && quiet(lead) > IDLE_LEAVE && !hasQueued(s)) {
+        this.departSession(s, now, 'idle for half an hour')
+      }
+    }
+    // Finished subagents whose report has arrived a while ago; idle ones after half an hour.
+    this.depart(
+      w.agents.filter(a => !a.isMain && a.status === 'done' && now >= (a.restUntil ?? a.updatedAt + REST_LEAVE)),
+      now,
+      'finished',
+    )
+    this.depart(
+      w.agents.filter(a => !a.isMain && a.status === 'idle' && quiet(a) > IDLE_LEAVE),
+      now,
+      'idle for half an hour',
+    )
+    // The cap: above it, the longest-idle leave first, a lead with its whole session.
+    const staying = () => w.agents.filter(a => a.status !== 'leaving')
+    const idle = (a: Agent) => a.status === 'idle' || a.status === 'failed' || a.status === 'done'
+    while (staying().length > AGENT_CAP) {
+      const next = staying()
+        .filter(idle)
+        .sort((a, b) => a.updatedAt - b.updatedAt)[0]
+      if (!next) break
+      const s = w.sessions.find(one => one.id === next.session)
+      if (next.isMain && s) this.departSession(s, now, 'the city is full')
+      else this.depart([next], now, 'the city is full')
+    }
+    // Boroughs nobody has worked in for an hour pack up; the houses stay.
+    for (const repo of w.repos) {
+      if (repo.left || now - repo.lastSeen < BURB_LEAVE) continue
+      if (w.agents.some(a => a.burb === repo.burb && a.status !== 'leaving')) continue
+      repo.left = now
+      const text = `${repo.name} moved out of ${BURBS[repo.burb].name}`
+      this.toasts.push(text)
+      this.say(undefined, text, now)
+      this.tick(undefined, text, now)
+    }
   }
 
   // Ends the sessions a stopped task started: a killed session never posts its
@@ -702,23 +885,11 @@ export class City {
     this.followWork(now)
     for (const s of w.sessions) if (!s.bullet) s.bullet = this.bulletFor()
     w.rides = (w.rides ?? []).filter(r => now - r.at < 8_000).slice(-12)
-    // An ask outlives nothing: not its agent, and a permission notice not half an hour.
-    w.asks = w.asks.filter(
-      q => w.agents.some(a => a.id === q.agentId && a.status !== 'done') && !(q.id.startsWith('perm:') && now - q.at > 30 * 60_000),
-    )
-    const live = new Set(w.sessions.map(s => s.id))
-    // Sessions quiet for six hours have closed without saying so.
-    w.sessions = w.sessions.filter(s => now - s.updatedAt < 6 * 3600_000)
     for (const s of w.sessions) {
       if (!s.messages) continue
       s.messages = s.messages.filter(m => m.status === 'queued' || now - (m.deliveredAt ?? m.at) < MESSAGE_KEPT)
       if (!s.messages.length) delete s.messages
     }
-    w.agents = w.agents
-      // An ended session's agents fade for a few seconds, then leave.
-      .filter(a => live.has(a.session) || now - a.updatedAt < 8_000)
-      .filter(a => a.isMain || a.status !== 'done' || now - a.updatedAt < 600_000)
-      .slice(-60)
     for (const a of w.agents) {
       // Ten quiet minutes while "working" means the session went away unannounced.
       if ((a.status === 'working' || a.status === 'waiting') && now - a.updatedAt > 10 * 60_000) {
@@ -727,6 +898,24 @@ export class City {
         a.activity = 'Quiet for a while'
         this.goTo(a, 'plaza', undefined)
       }
+    }
+    this.departures(now)
+    // An ask outlives nothing: not its agent, and a permission notice not half an hour.
+    w.asks = w.asks.filter(
+      q =>
+        w.agents.some(a => a.id === q.agentId && a.status !== 'done' && a.status !== 'leaving') &&
+        !(q.id.startsWith('perm:') && now - q.at > 30 * 60_000),
+    )
+    const live = new Set(w.sessions.map(s => s.id))
+    w.agents = w.agents
+      // Whoever's train has left is gone; so is anyone whose session is, a few seconds on (a backstop).
+      .filter(a => !(a.leaving && now >= a.leaving))
+      .filter(a => a.status === 'leaving' || live.has(a.session) || now - a.updatedAt < 8_000)
+      .slice(-60)
+    // A train is gone a few seconds after it leaves; it never leaves before its passengers are aboard.
+    w.trains = (w.trains ?? []).filter(t => now < t.leaveAt + TRAIN_MS)
+    if (!w.trains.length) delete w.trains
+    for (const a of w.agents) {
       const moved = a.shown.at !== a.at || a.shown.burb !== a.burb
       a.walkFrom = moved ? a.shown : undefined
       a.shown = a.burb ? { at: a.at, burb: a.burb } : { at: a.at }

@@ -112,6 +112,18 @@ export function drawPlaces(world: World, sc: Scene): string {
       who: sc.byBurb.get(b) ?? [],
     })
   }
+  // The houses a repository left behind when it packed up.
+  for (const [b, repo] of sc.vacantOf) {
+    const [cx, cy] = BURBS[b].center
+    zones.push({
+      box: [cx - 3, cy - 3, cx + 3, cy + 4.6],
+      height: 26,
+      title: `${BURBS[b].name}: empty`,
+      text: `${repo.name} moved out after an hour's quiet${repo.left ? `, ${ago(sc.now - repo.left)}` : ''}. It moves straight back in when a session works there again.`,
+      color: '#94a3b8',
+      who: sc.byBurb.get(b) ?? [],
+    })
+  }
 
   // Back to front, so the zone nearest the viewer wins the hover.
   zones.sort((a, b) => a.box[0] + a.box[1] + a.box[3] - (b.box[0] + b.box[1] + b.box[3]))

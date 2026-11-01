@@ -457,8 +457,9 @@ function pads(sc: Scene): string {
 const HOUSE_PALS: Pal[] = ['b', 'b', 'r', 'b', 'r', 's']
 
 // A Brooklyn-ish neighbourhood: brownstone rows back to back along their
-// streets, and a square at the front where the borough's agents gather.
-function burb(b: Burb, repo: Repo, sc: Scene): string {
+// streets, and a square at the front where the borough's agents gather. With
+// no repository (it packed up), the houses stay and the sign comes down.
+function burb(b: Burb, repo: Repo | undefined, sc: Scene): string {
   const [cx, cy] = BURBS[b].center
   const here = (sc.byBurb.get(b) ?? []).filter(a => a.status !== 'done')
   const isActive = here.some(a => a.status === 'working')
@@ -526,7 +527,7 @@ function burb(b: Burb, repo: Repo, sc: Scene): string {
   // The sign hangs at the back corner, clear of the square where agents stand.
   const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
   g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${BURBS[b].name.toUpperCase()}</text>`
-  g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
+  if (repo) g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
   return g
 }
 
@@ -1157,8 +1158,8 @@ function fireworks(): string {
 
 // Everything but the agents, back to front.
 export function drawMap(world: World, sc: Scene): string {
-  const { active, hasConflict, repoOf, now } = sc
-  const vb = frame([...repoOf.keys()])
+  const { active, hasConflict, repoOf, vacantOf, now } = sc
+  const vb = frame([...repoOf.keys(), ...vacantOf.keys()])
   let s = ''
   // The water's sparkle, and the city's lights reflected in it.
   s += `<rect x="${n(vb.x - 2000)}" y="${n(vb.y - 2000)}" width="${n(vb.w + 4000)}" height="${n(vb.h + 4000)}" fill="url(#rip)"/>`
@@ -1212,7 +1213,9 @@ export function drawMap(world: World, sc: Scene): string {
     s += `<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" stroke="#7aa2d6" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/>`
   }
 
-  // A borough for each repository in use besides the session's own.
+  // A borough for each repository in use besides the session's own, and the
+  // houses of the ones that have moved out.
+  for (const [b] of vacantOf) s += burb(b, undefined, sc)
   for (const [b, repo] of repoOf) s += burb(b, repo, sc)
 
   // Buildings and landmarks, back to front.
@@ -1255,7 +1258,7 @@ export function drawMap(world: World, sc: Scene): string {
     ['BROOKLYN', 25, 58, 'brooklyn'],
   ]
   for (const [name, gx, gy, b] of boroughs) {
-    if (repoOf.has(b)) continue
+    if (repoOf.has(b) || vacantOf.has(b)) continue
     const [x, y] = p(gx, gy)
     s += `<text class="hood big" x="${n(x)}" y="${n(y)}" text-anchor="middle">${name}</text>`
   }
