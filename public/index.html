@@ -54,7 +54,14 @@
   #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
   #map { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
   #map.dragging { cursor: grabbing; }
-  #map svg { width: 100%; height: 100%; display: block; }
+  /* Two stacked SVGs on one viewBox (docs/frames.md): the still map, its own
+     compositing layer so nothing animating above repaints it, and the overlay
+     (keyed items, the agents, the items drawn above them). A wheel or drag
+     gesture moves #city with a CSS transform; the viewBox is set once it pauses. */
+  #city { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+  #city > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; overflow: visible; }
+  #city > svg.map { will-change: transform; }
+  #city .agent.leaving { opacity: 0; transition: opacity .35s; pointer-events: none; }
   .agent { cursor: pointer; }
   .agent:hover .bubble, .agent.sel .bubble, .agent.waiting .bubble { display: inline; }
   #map .sel .ring { display: inline; animation: ringpulse 1.6s ease-in-out infinite; }
@@ -386,7 +393,7 @@
 </header>
 <main>
   <div id="stage">
-    <div id="map"></div>
+    <div id="map"><div id="city"></div></div>
     <div id="hud">
       <div id="title"><b>AGENT CITY</b><div class="sub" id="sub">Manhattan</div><div id="counts"></div></div>
       <div id="pills"></div>
@@ -498,69 +505,300 @@
   let boot = null
   let source
 
+  // ---- the city's layers (docs/frames.md) --------------------------------
+  // #city holds two SVGs on one viewBox: the still map, replaced only when its
+  // hash changes, and the overlay, made once here: a <g> per overlay item (by
+  // key, its content replaced only when its hash changes), then the agents,
+  // moved on every animation frame, then the items drawn above them.
+  const SVGNS = 'http://www.w3.org/2000/svg'
+  const map = $('map'), cityEl = $('city')
+  let mapSvg = null, mapHash = null
+  const overlay = document.createElementNS(SVGNS, 'svg')
+  overlay.setAttribute('class', 'city overlay')
+  overlay.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  const layer = cls => { const g = document.createElementNS(SVGNS, 'g'); g.setAttribute('class', cls); overlay.append(g); return g }
+  const ovUnder = layer('ov-items'), agentLayer = layer('ov-agents'), ovTop = layer('ov-top')
+  cityEl.append(overlay)
+
+  // Overlay markup carries SMIL begin offsets meant from "now" (a taxi mid-trip,
+  // the Statue mid-launch, a train pulling out). The overlay's own timeline
+  // started at page load, so plain clock offsets are shifted by its current
+  // time as the markup comes in, and the animation carries on where it is.
+  const ANIMS = 'animate, animateMotion, animateTransform, set'
+  const CLOCK = /^([+-]?(?:\d+\.?\d*|\.\d+))(ms|s|min|h)?$/
+  const UNIT = { ms: 0.001, s: 1, min: 60, h: 3600 }
+  function frag(svg) {
+    const g = document.createElementNS(SVGNS, 'g')
+    g.innerHTML = svg
+    let now = 0
+    try { now = overlay.getCurrentTime() } catch {}
+    if (now > 0.05) {
+      for (const a of g.querySelectorAll(ANIMS)) {
+        const b = a.getAttribute('begin')
+        const parts = (b == null ? '0' : b).split(';').map(x => x.trim())
+        if (!parts.every(x => CLOCK.test(x))) continue
+        a.setAttribute('begin', parts.map(x => { const m = CLOCK.exec(x); return (now + Number(m[1]) * UNIT[m[2] || 's']).toFixed(3) + 's' }).join(';'))
+      }
+    }
+    return g
+  }
+
+  // Puts `els` in this order inside `parent`, moving as few as possible.
+  // Agents fading out (leaving) are skipped over where they stand.
+  function order(parent, els) {
+    let at = parent.firstChild
+    for (const el of els) {
+      while (at && at !== el && at.classList?.contains('leaving')) at = at.nextSibling
+      if (el === at) at = at.nextSibling
+      else parent.insertBefore(el, at)
+    }
+  }
+
+  const ovItems = new Map() // k -> { g, h }
+  function syncOverlay(items) {
+    const under = [], top = [], seen = new Set()
+    for (const it of items) {
+      if (!it || seen.has(it.k)) continue
+      seen.add(it.k)
+      let o = ovItems.get(it.k)
+      if (!o) { o = { g: document.createElementNS(SVGNS, 'g'), h: null }; o.g.setAttribute('data-k', it.k); ovItems.set(it.k, o) }
+      if (o.h !== it.h) { o.g.replaceChildren(...frag(it.svg).childNodes); o.h = it.h }
+      ;(it.top ? top : under).push(o.g)
+    }
+    for (const [k, o] of ovItems) if (!seen.has(k)) { o.g.remove(); ovItems.delete(k) }
+    order(ovUnder, under)
+    order(ovTop, top)
+  }
+
+  // ---- agents: sprites the page walks itself ------------------------------
+  // Each sprite is a <g class="agent …" data-agent data-session> with its
+  // figure inside, kept across frames; its transform is set here, every
+  // animation frame while it walks, so a walk is never cut short by a frame.
+  const sprites = new Map() // id -> { g, fig, figH, cls, t, x, y, px, py, walk, leaving }
+  const moving = new Set()
+  let clockOff = Date.now() - performance.now()
+  const clockNow = () => performance.now() + clockOff
+
+  function setPos(a, x, y) {
+    const t = `translate(${x.toFixed(2)},${y.toFixed(2)})`
+    a.px = x; a.py = y
+    if (t !== a.t) { a.g.setAttribute('transform', t); a.t = t }
+  }
+
+  // A route at constant speed, easing in and out over the first and last
+  // quarter at most (less on a long walk).
+  function makeWalk(pts, t0, dur, easeIn, src) {
+    const cum = [0]
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+    const ramp = Math.min(0.25, 450 / Math.max(1, dur))
+    const rIn = easeIn ? ramp : 0, rOut = ramp
+    return { pts, cum, len: cum[cum.length - 1], t0, dur, rIn, rOut, v: 1 / (1 - rIn / 2 - rOut / 2), src, seg: 1 }
+  }
+
+  function walkAt(w, now) {
+    const t = Math.min(1, Math.max(0, (now - w.t0) / w.dur))
+    let f
+    if (t < w.rIn) f = w.v * t * t / (2 * w.rIn)
+    else if (t > 1 - w.rOut) f = 1 - w.v * (1 - t) * (1 - t) / (2 * w.rOut)
+    else f = w.v * (t - w.rIn / 2)
+    const d = Math.min(1, Math.max(0, f)) * w.len
+    let i = w.seg
+    if (w.cum[i - 1] > d) i = 1
+    while (i < w.cum.length - 1 && w.cum[i] < d) i++
+    w.seg = i
+    const a = w.pts[i - 1], b = w.pts[i], l = w.cum[i] - w.cum[i - 1]
+    const r = l > 0 ? (d - w.cum[i - 1]) / l : 1
+    return [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r]
+  }
+
+  const walking = (a, now) => a.walk && now < a.walk.t0 + a.walk.dur
+
+  function stepAgent(a, now) {
+    if (!walking(a, now)) { moving.delete(a); a.walk = null; setPos(a, a.x, a.y); return }
+    const [x, y] = walkAt(a.walk, now)
+    setPos(a, x, y)
+  }
+
+  function selSid() {
+    if (!selected) return ''
+    return selected.startsWith(APP) ? appOf(lastMeta, selected)?.sessionId || '' : selected
+  }
+
+  function syncAgents(list) {
+    const now = clockNow(), sid = selSid(), seen = new Set()
+    const sorted = list.filter(s => s && s.id != null).slice().sort((p, q) => (p.z || 0) - (q.z || 0))
+    const gs = []
+    for (const s of sorted) {
+      if (seen.has(s.id)) continue
+      seen.add(s.id)
+      let a = sprites.get(s.id)
+      if (!a) {
+        const g = document.createElementNS(SVGNS, 'g'), fig = document.createElementNS(SVGNS, 'g')
+        fig.setAttribute('class', 'fig')
+        g.append(fig)
+        g.setAttribute('data-agent', s.id)
+        a = { g, fig, figH: null, cls: '', t: '', walk: null, px: null, py: null, x: s.x, y: s.y, leaving: 0 }
+        sprites.set(s.id, a)
+      } else if (a.leaving) { clearTimeout(a.leaving); a.leaving = 0; a.g.classList.remove('leaving') }
+      const cls = String(s.cls || 'agent') + (sid && s.session === sid ? ' sel' : '')
+      if (cls !== a.cls) { a.g.setAttribute('class', cls); a.cls = cls }
+      if (a.g.getAttribute('data-session') !== String(s.session ?? '')) a.g.setAttribute('data-session', s.session ?? '')
+      if (s.fig && a.figH !== s.fig.h) { a.fig.replaceChildren(...frag(s.fig.svg).childNodes); a.figH = s.fig.h }
+      a.x = Number(s.x) || 0; a.y = Number(s.y) || 0
+      const w = s.walk
+      const fresh = w && Array.isArray(w.pts) && w.pts.length >= 2 && now < w.t0 + w.dur && (!a.walk || a.walk.src !== w.t0)
+      if (fresh) {
+        const pts = w.pts.map(p => [Number(p[0]), Number(p[1])])
+        let t0 = w.t0, dur = w.dur, easeIn = true
+        if (a.px != null) {
+          // Already on the map: set off from where it is drawn now, keeping
+          // the server's arrival time, so a new walk mid-walk turns instead of
+          // jumping; it keeps its speed through the turn.
+          easeIn = !walking(a, now)
+          pts[0] = [a.px, a.py]
+          if (now > t0) { const end = t0 + dur; t0 = now; dur = Math.max(250, end - now) }
+        }
+        a.walk = makeWalk(pts, t0, dur, easeIn, w.t0)
+        moving.add(a)
+      } else if (a.walk && w && a.walk.src === w.t0) {
+        // The same walk, still under way.
+      } else if (a.walk && walking(a, now) && Math.hypot(a.walk.pts[a.walk.pts.length - 1][0] - a.x, a.walk.pts[a.walk.pts.length - 1][1] - a.y) < 0.5) {
+        // Over on the server's clock a moment before ours: let it finish.
+      } else {
+        a.walk = null
+        moving.delete(a)
+      }
+      if (moving.has(a)) stepAgent(a, now)
+      else setPos(a, a.x, a.y)
+      gs.push(a.g)
+    }
+    for (const [id, a] of sprites) {
+      if (seen.has(id) || a.leaving) continue
+      moving.delete(a)
+      a.g.classList.add('leaving')
+      a.leaving = setTimeout(() => { a.g.remove(); sprites.delete(id) }, 380)
+    }
+    order(agentLayer, gs)
+  }
+
   // ---- zoom / pan -------------------------------------------------------
-  // View = zoom plus the visible centre as a fraction (u, v) of the server's fit box.
+  // View = zoom plus the visible centre as a fraction (u, v) of the map's fit
+  // box. `view` follows the gesture; `shown` is what the viewBox says. In
+  // between, #city carries a CSS transform from one to the other, and the
+  // viewBox (a full repaint of the map) is set once the gesture pauses.
   const MAXZ = 8
   let view = { z: 1, u: 0.5, v: 0.5 }
   try {
     const v = JSON.parse(localStorage.getItem('agent-city-zoom') || 'null')
     if (v && isFinite(v.z) && isFinite(v.u) && isFinite(v.v)) view = { z: Math.min(MAXZ, Math.max(1, v.z)), u: v.u, v: v.v }
   } catch {}
-  let base = null // [x, y, w, h] from the svg's own viewBox
+  let shown = null
+  let base = null // [x, y, w, h] from the map's own viewBox
+  let box = { l: 0, t: 0, w: 0, h: 0 } // #map on screen
+  let commitT = 0
 
-  const svgEl = () => $('map').querySelector('svg')
+  function measure() {
+    const r = map.getBoundingClientRect()
+    box = { l: r.left, t: r.top, w: r.width, h: r.height }
+  }
 
   function readBase(svg) {
     const p = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number)
     if (p.length === 4 && p.every(isFinite) && p[2] > 0 && p[3] > 0) base = p
   }
 
-  function applyView() {
-    const svg = svgEl()
-    if (!svg || !base) return
-    view.z = Math.min(MAXZ, Math.max(1, view.z))
-    view.u = Math.min(1, Math.max(0, view.u))
-    view.v = Math.min(1, Math.max(0, view.v))
+  function clampView(v) {
+    v.z = Math.min(MAXZ, Math.max(1, v.z))
+    v.u = Math.min(1, Math.max(0, v.u))
+    v.v = Math.min(1, Math.max(0, v.v))
+  }
+
+  function vbOf(v) {
     const [bx, by, bw, bh] = base
-    const w = bw / view.z, h = bh / view.z
-    const cx = bx + view.u * bw, cy = by + view.v * bh
-    svg.setAttribute('viewBox', `${cx - w / 2} ${cy - h / 2} ${w} ${h}`)
-    svg.style.setProperty('--zt', String(1 / view.z))
-    svg.style.setProperty('--zs', String(1 / Math.pow(view.z, 0.6)))
-    svg.classList.toggle('z2', view.z >= 2)
-    svg.classList.toggle('z4', view.z >= 4)
+    const w = bw / v.z, h = bh / v.z
+    return [bx + v.u * bw - w / 2, by + v.v * bh - h / 2, w, h]
+  }
+
+  // screen (relative to #map) = o + user * s, as preserveAspectRatio="xMidYMid meet" lays it out
+  function fitOf(vb) {
+    const s = Math.min(box.w / vb[2], box.h / vb[3]) || 1
+    return { s, ox: (box.w - vb[2] * s) / 2 - vb[0] * s, oy: (box.h - vb[3] * s) / 2 - vb[1] * s }
+  }
+
+  // client point -> svg user coordinates, for the view `v`
+  function toUser(v, cx, cy) {
+    const f = fitOf(vbOf(v))
+    return { x: (cx - box.l - f.ox) / f.s, y: (cy - box.t - f.oy) / f.s }
+  }
+
+  function paintView(svg, v) {
+    if (!svg) return
+    svg.setAttribute('viewBox', vbOf(v).map(n => +n.toFixed(3)).join(' '))
+    svg.style.setProperty('--zt', String(1 / v.z))
+    svg.style.setProperty('--zs', String(1 / Math.pow(v.z, 0.6)))
+    svg.classList.toggle('z2', v.z >= 2)
+    svg.classList.toggle('z4', v.z >= 4)
+  }
+
+  // Commit: the viewBox on both SVGs, and no transform.
+  function applyView() {
+    clearTimeout(commitT); commitT = 0
+    if (!base) return
+    clampView(view)
+    paintView(mapSvg, view)
+    paintView(overlay, view)
+    cityEl.style.transform = ''
+    shown = { ...view }
+  }
+
+  // During a gesture: move what is drawn for `shown` to where `view` puts it.
+  function preview() {
+    if (!base) return
+    clampView(view)
+    if (!shown || !box.w || !box.h) { applyView(); saveView(); return }
+    const a = fitOf(vbOf(shown)), b = fitOf(vbOf(view))
+    const k = b.s / a.s
+    cityEl.style.transform = `translate(${(b.ox - k * a.ox).toFixed(2)}px,${(b.oy - k * a.oy).toFixed(2)}px) scale(${k.toFixed(5)})`
+    clearTimeout(commitT)
+    commitT = setTimeout(() => { applyView(); saveView() }, 150)
   }
 
   function saveView() {
     try { localStorage.setItem('agent-city-zoom', JSON.stringify(view)) } catch {}
   }
 
-  // client point -> svg user coordinates (honours preserveAspectRatio)
-  function toUser(svg, cx, cy) {
-    const m = svg.getScreenCTM()
-    if (!m) return null
-    const pt = new DOMPoint(cx, cy).matrixTransform(m.inverse())
-    return pt
-  }
-
-  function zoomAt(factor, cx, cy) {
-    const svg = svgEl()
-    if (!svg || !base) return
-    const before = toUser(svg, cx, cy)
+  function zoomAt(factor, cx, cy, now) {
+    if (!base) return
+    const before = toUser(view, cx, cy)
     view.z = Math.min(MAXZ, Math.max(1, view.z * factor))
-    applyView()
-    const after = toUser(svg, cx, cy)
-    if (before && after) {
-      view.u += (before.x - after.x) / base[2]
-      view.v += (before.y - after.y) / base[3]
-      applyView()
-    }
-    saveView()
+    const after = toUser(view, cx, cy)
+    view.u += (before.x - after.x) / base[2]
+    view.v += (before.y - after.y) / base[3]
+    if (now) { applyView(); saveView() } else preview()
   }
 
   function fit() { view = { z: 1, u: 0.5, v: 0.5 }; applyView(); saveView() }
 
-  const map = $('map')
+  // A new map: swap the SVG, keep the view.
+  function setMap(m) {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = m.svg
+    const svg = tmp.querySelector('svg')
+    if (!svg) return
+    mapHash = m.hash
+    const old = base && base.join(' ')
+    readBase(svg)
+    if (mapSvg) mapSvg.replaceWith(svg); else cityEl.insertBefore(svg, overlay)
+    mapSvg = svg
+    // Mid-gesture with the same box, keep the transform; otherwise commit.
+    if (shown && old === base.join(' ')) paintView(svg, shown)
+    else applyView()
+  }
+
+  measure()
+  new ResizeObserver(() => { measure(); applyView() }).observe(map)
+  window.addEventListener('resize', () => { measure(); applyView() })
+
   map.addEventListener('wheel', e => {
     e.preventDefault()
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY
@@ -570,30 +808,30 @@
   let drag = null, justDragged = false
   map.addEventListener('mousedown', e => {
     if (e.button !== 0) return
+    measure()
     drag = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false }
   })
   window.addEventListener('mousemove', e => {
     if (!drag) return
     if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return
     if (!drag.moved) { drag.moved = true; map.classList.add('dragging') }
-    const svg = svgEl()
-    const m = svg && svg.getScreenCTM()
-    if (m && base) {
-      view.u -= (e.clientX - drag.lx) / m.a / base[2]
-      view.v -= (e.clientY - drag.ly) / m.d / base[3]
-      applyView()
+    if (base) {
+      const f = fitOf(vbOf(view))
+      view.u -= (e.clientX - drag.lx) / f.s / base[2]
+      view.v -= (e.clientY - drag.ly) / f.s / base[3]
+      preview()
     }
     drag.lx = e.clientX; drag.ly = e.clientY
   })
   window.addEventListener('mouseup', () => {
     if (!drag) return
-    if (drag.moved) { justDragged = true; setTimeout(() => { justDragged = false }, 0); saveView() }
+    if (drag.moved) { justDragged = true; setTimeout(() => { justDragged = false }, 0); applyView(); saveView() }
     map.classList.remove('dragging')
     drag = null
   })
   // swallow the click that ends a drag so it never changes the selection
   map.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault() } }, true)
-  map.addEventListener('dblclick', e => { zoomAt(2, e.clientX, e.clientY) })
+  map.addEventListener('dblclick', e => { zoomAt(2, e.clientX, e.clientY, true) })
   $('fit').addEventListener('click', fit)
   $('lastcall').addEventListener('click', async () => {
     const r = await post('/lastcall', {})
@@ -602,7 +840,6 @@
   window.addEventListener('keydown', e => {
     if (e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) fit()
   })
-  window.addEventListener('resize', () => applyView())
 
   // ---- sidebar toggle ---------------------------------------------------
   function setCollapsed(c) {
@@ -621,14 +858,17 @@
     source.onopen = () => { $('link').className = 'on'; $('link').lastChild.textContent = 'Live' }
     source.onerror = () => { $('link').className = ''; $('link').lastChild.textContent = 'Reconnecting…' }
     source.onmessage = e => {
-      const { svg, meta } = JSON.parse(e.data)
+      // A frame (docs/frames.md): { map?, overlay, agents, meta }.
+      const f = JSON.parse(e.data)
+      const meta = f.meta
       if (meta.boot != null) {
         if (boot === null) boot = meta.boot
         else if (meta.boot !== boot) { location.reload(); return }
       }
-      $('map').innerHTML = svg
-      const el = svgEl()
-      if (el) { readBase(el); applyView() }
+      clockOff = Date.now() - performance.now()
+      if (f.map && f.map.hash !== mapHash) setMap(f.map)
+      syncOverlay(f.overlay || [])
+      syncAgents(f.agents || [])
       drawUpdate(meta.update)
       draw(meta)
       applySel(false)
@@ -723,6 +963,7 @@
     else pendingHtml = seg // swap at the next loop boundary
   }
 
+  // The one animation loop: the ticker, and the agents that are walking.
   function tickFrame(t) {
     const dt = lastT ? Math.min(0.1, (t - lastT) / 1000) : 0
     lastT = t
@@ -733,6 +974,10 @@
         if (pendingHtml) { installTicker(pendingHtml); pendingHtml = null }
       }
       $('track').style.transform = `translateX(${tx.toFixed(2)}px)`
+    }
+    if (moving.size) {
+      const now = clockNow()
+      for (const a of moving) stepAgent(a, now)
     }
     requestAnimationFrame(tickFrame)
   }
