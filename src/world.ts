@@ -573,12 +573,11 @@ export class City {
       }
       case 'SubagentStop': {
         const a = this.agent(ev, s, now)
-        const burb = this.homeOf(s, now)
         const from = placeOf(a)
         a.status = 'done'
         a.inFlight = 0
-        // Manhattan's finished agents rest in Central Park; a borough's in its square.
-        this.goTo(a, burb ? 'hall' : 'plaza', burb)
+        // Finished agents rest in Central Park, whichever borough they worked in.
+        this.goTo(a, 'plaza', undefined)
         a.activity = 'Finished'
         a.updatedAt = now
         w.asks = w.asks.filter(q => q.agentId !== a.id)
@@ -593,8 +592,11 @@ export class City {
         const lead = this.lead(s, now)
         lead.status = ev.hook_event_name === 'Stop' ? 'idle' : 'failed'
         lead.inFlight = 0
-        this.goTo(lead, 'hall', this.homeOf(s, now))
-        lead.activity = ev.hook_event_name === 'Stop' ? 'Waiting for your next message' : 'Stopped with an error'
+        // An idle lead hangs out in Central Park until your next prompt calls it
+        // back to City Hall; one that failed waits at City Hall with its "!".
+        if (ev.hook_event_name === 'Stop') this.goTo(lead, 'plaza', undefined)
+        else this.goTo(lead, 'hall', this.homeOf(s, now))
+        lead.activity = ev.hook_event_name === 'Stop' ? 'Hanging out in Central Park, waiting for you' : 'Stopped with an error'
         lead.updatedAt = now
         w.asks = w.asks.filter(q => q.agentId !== lead.id || q.id.startsWith('perm:'))
         break
@@ -719,6 +721,7 @@ export class City {
         a.status = 'idle'
         a.inFlight = 0
         a.activity = 'Quiet for a while'
+        this.goTo(a, 'plaza', undefined)
       }
       const moved = a.shown.at !== a.at || a.shown.burb !== a.burb
       a.walkFrom = moved ? a.shown : undefined
