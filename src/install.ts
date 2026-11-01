@@ -15,7 +15,7 @@ const PORT = Number(process.env.AGENT_CITY_PORT ?? 4777)
 const URL = `http://127.0.0.1:${PORT}/hook`
 
 // Events Agent City listens to. Tool events take a matcher; the rest none.
-const TOOL_EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure']
+const TOOL_EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest']
 const EVENTS = [
   'SessionStart',
   'SessionEnd',
@@ -27,6 +27,10 @@ const EVENTS = [
   'StopFailure',
   'Notification',
 ]
+// The page answers these: Claude Code waits for the reply, so the hook may take
+// minutes (the server gives up a minute before this and answers with nothing).
+const HELD_EVENTS = ['PermissionRequest']
+const HELD_TIMEOUT = 600
 
 type Handler = { type?: string; url?: string; command?: string; [key: string]: unknown }
 type Group = { matcher?: string; hooks?: Handler[]; [key: string]: unknown }
@@ -43,7 +47,8 @@ const path = at >= 0 && args[at + 1] ? args[at + 1]! : join(homedir(), '.claude'
 // On Windows a closed local port isn't refused, it hangs: --connect-timeout keeps
 // that to a fraction of a second per event. The server's reply goes to stdout, so
 // a message sent from the page still reaches the session.
-const COMMAND = `curl -s --connect-timeout 0.3 -m 1 -H "content-type: application/json" --data-binary @- ${URL} || exit 0`
+const command = (maxSeconds: number) =>
+  `curl -s --connect-timeout 0.3 -m ${maxSeconds} -H "content-type: application/json" --data-binary @- ${URL} || exit 0`
 
 // Either mode, so installing one removes the other and --uninstall gets both.
 function isOurs(h: Handler): boolean {
@@ -68,7 +73,10 @@ function strip(settings: Settings) {
 function add(settings: Settings) {
   settings.hooks ??= {}
   for (const event of EVENTS) {
-    const hook: Handler = isQuiet ? { type: 'command', command: COMMAND, timeout: 3 } : { type: 'http', url: URL, timeout: 2 }
+    const held = HELD_EVENTS.includes(event)
+    const hook: Handler = isQuiet
+      ? { type: 'command', command: command(held ? HELD_TIMEOUT : 1), timeout: held ? HELD_TIMEOUT : 3 }
+      : { type: 'http', url: URL, timeout: held ? HELD_TIMEOUT : 2 }
     const group: Group = { hooks: [hook] }
     if (TOOL_EVENTS.includes(event)) group.matcher = '*'
     settings.hooks[event] = [...(settings.hooks[event] ?? []), group]

@@ -55,6 +55,58 @@ export type Session = {
   // What the person typed for it in the page: queued until its next hook event
   // can carry them, then kept for a while as delivered.
   messages?: Message[]
+  // Its transcript (JSONL), from the hook events: the page's conversation view.
+  transcriptPath?: string
+  // Subagents' own transcripts, by agent id (from SubagentStop).
+  agentTranscripts?: Record<string, string>
+}
+
+// A permission prompt, question or plan approval held open for the page to
+// decide (the PermissionRequest hook waits for the answer).
+export type Pending = {
+  id: string
+  session: string
+  agentId?: string
+  kind: 'permission' | 'question' | 'plan'
+  tool: string
+  // One line: the command, the file, the URL…
+  summary: string
+  // The tool's input, trimmed for display.
+  input: Record<string, unknown>
+  // For AskUserQuestion: what it asks, as the tool gives it.
+  questions?: { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean }[]
+  // For ExitPlanMode: the plan, in Markdown.
+  plan?: string
+  at: number
+  // After this the hook gives up and the session asks in its own window.
+  expiresAt: number
+}
+
+// The page's answer to a Pending.
+export type Decision = {
+  behavior: 'allow' | 'deny'
+  // Shown to Claude with a deny ("Try a different approach…").
+  message?: string
+  // For a question: question text → the chosen label(s), joined with ", ".
+  answers?: Record<string, string>
+}
+
+// One line of a session's conversation, read from its transcript.
+export type Entry = {
+  kind: 'user' | 'assistant' | 'tool' | 'result' | 'system'
+  text: string
+  at?: number
+  // For tool calls and their results.
+  tool?: string
+  isError?: boolean
+}
+
+// What a session has changed in its repository.
+export type Changes = {
+  root: string
+  files: { path: string; status: string; added?: number; removed?: number }[]
+  diff: string
+  truncated: boolean
 }
 
 export type Message = {
@@ -67,7 +119,8 @@ export type Message = {
   via?: 'tool' | 'prompt' | 'stop'
 }
 
-export type TaskLevel = 'read' | 'edit' | 'run'
+// 'ask': reads freely; anything more becomes an Allow/Deny card in the page.
+export type TaskLevel = 'read' | 'ask' | 'edit' | 'run'
 // 'default', a family alias ('opus' = its latest) or a full model ID.
 export type TaskModel = string
 export type TaskEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -88,6 +141,17 @@ export type Task = {
   result?: string
   error?: string
   sessionId?: string
+  costUsd?: number
+  // Follow-ups after the first answer, each resuming the same session.
+  turns?: TaskTurn[]
+}
+
+export type TaskTurn = {
+  prompt: string
+  at: number
+  endedAt?: number
+  result?: string
+  error?: string
   costUsd?: number
 }
 

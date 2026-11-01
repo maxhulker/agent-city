@@ -369,6 +369,11 @@ export class City {
     }
     // Sessions saved before bullets existed get one now.
     if (!s.bullet) s.bullet = this.bulletFor()
+    // Every event names the transcript; a subagent's stop names its own.
+    const transcript = str(ev.transcript_path)
+    if (transcript && !ev.agent_id) s.transcriptPath = transcript
+    const agentTranscript = str(ev.agent_transcript_path)
+    if (agentTranscript && ev.agent_id) s.agentTranscripts = { ...s.agentTranscripts, [ev.agent_id]: agentTranscript }
     s.updatedAt = now
     return s
   }

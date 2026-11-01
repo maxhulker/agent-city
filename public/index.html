@@ -168,6 +168,150 @@
     main { grid-template-columns: minmax(0, 1fr) !important; }
     aside { position: absolute; top: 0; right: 0; bottom: 0; width: min(var(--side), 86vw); z-index: 5; box-shadow: -8px 0 24px #000a; }
   }
+
+  /* ---- header toggles ---- */
+  :root { --mono: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; --cvw: clamp(380px, 46%, 720px); }
+  header .ibtn { display: inline-flex; align-items: center; justify-content: center; padding: 2px 7px; height: 22px; color: var(--dim); }
+  header .ibtn svg { width: 14px; height: 14px; display: block; }
+  header .ibtn.on { background: #3a2a07; border-color: #b45309; color: #fde68a; }
+  /* Top centre: the floating needs-you stack and the reply box own the bottom. */
+  #toasts { left: 50%; bottom: auto; top: 40px; transform: translateX(-50%); align-items: center; max-width: min(520px, 90vw); }
+
+  /* ---- conversation drawer ---- */
+  #convo { position: absolute; top: 0; right: 0; bottom: 30px; width: var(--cvw); z-index: 4; background: var(--panel);
+    border-left: 1px solid var(--line); box-shadow: -12px 0 32px #000a; display: flex; flex-direction: column; min-height: 0; }
+  body.panel-open #pills { right: calc(var(--cvw) + 14px); }
+  @media (max-width: 700px) { #convo { width: 100%; border-left: 0; } }
+  .cv-head { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px 8px; border-bottom: 1px solid var(--line); flex: none; }
+  .cv-title { flex: 1; min-width: 0; }
+  .cv-title .name { font-size: 14px; }
+  .cv-title .path, .cv-title .small { margin-left: 26px; }
+  .cv-x { font-size: 16px; line-height: 1; padding: 2px 9px 4px; }
+  .cv-tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); align-items: flex-end; flex: none; }
+  .cv-tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim); padding: 7px 10px 6px; font: inherit; cursor: pointer; }
+  .cv-tab:hover { color: var(--text); }
+  .cv-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .cv-tabs select.field { margin: 0 0 5px auto; width: auto; max-width: 48%; font-size: 12px; padding: 2px 6px; }
+  .cv-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #cv-talk { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  #cv-log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  #cv-pill { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 2; font-size: 12px; }
+  .cv-status { padding: 18px 16px; color: var(--dim); font-style: italic; }
+  .cv-g { display: flex; flex-direction: column; min-width: 0; }
+  .cv-g.u { align-items: flex-end; }
+  .cv-u { max-width: 85%; background: #1e293b; border: 1px solid #334155; border-radius: 14px 14px 4px 14px; padding: 7px 12px; white-space: pre-wrap; word-break: break-word; }
+  .cv-t { font-size: 10px; color: var(--dim); margin-top: 3px; }
+  .cv-who { font-size: 11px; color: var(--dim); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
+  .cv-g.s { align-items: center; }
+  .cv-sys { font-size: 11px; color: var(--dim); font-style: italic; text-align: center; max-width: 90%; white-space: pre-wrap; word-break: break-word; }
+  .md { word-break: break-word; line-height: 1.55; }
+  .md p { margin: 0 0 8px; }
+  .md > :last-child { margin-bottom: 0; }
+  .md code { font: var(--mono); font-size: 12px; background: #1e293b; padding: 1px 5px; border-radius: 4px; }
+  .md pre.code { font: var(--mono); background: #020617; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow: auto; margin: 0 0 8px; white-space: pre; max-height: 380px; }
+  .md pre.tbl { font: var(--mono); font-size: 11.5px; margin: 0 0 8px; overflow: auto; white-space: pre; color: var(--text); }
+  .md ul, .md ol { margin: 0 0 8px; padding-left: 20px; }
+  .md li { margin: 2px 0; }
+  .md li > ul, .md li > ol { margin: 2px 0 0; padding-left: 18px; }
+  .md .mh { font-weight: 700; margin: 10px 0 4px; }
+  .md .mh:first-child { margin-top: 0; }
+  .md .mq { border-left: 3px solid #334155; padding-left: 8px; color: var(--dim); margin: 0 0 8px; }
+  .md .lnk { color: #93c5fd; text-decoration: underline dotted; text-underline-offset: 2px; }
+  .md hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
+  .tools { display: flex; flex-direction: column; gap: 3px; margin: 6px 0 8px; }
+  .tools:last-child { margin-bottom: 0; }
+  .tc { font: var(--mono); font-size: 11.5px; }
+  .tc summary { list-style: none; display: flex; gap: 8px; align-items: center; background: #0b1222; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; cursor: pointer; min-width: 0; }
+  .tc summary::-webkit-details-marker { display: none; }
+  .tc summary:hover { border-color: #334155; }
+  .tc .tn { color: #93c5fd; flex: none; font-weight: 600; }
+  .tc .tt { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .tc .tk { flex: none; font-size: 10px; color: #4ade80; }
+  .tc.err summary { border-color: #7f1d1d; background: #1f0f14; }
+  .tc.err .tn, .tc.err .tk { color: var(--red); }
+  .tc pre { margin: 3px 0 0; padding: 6px 8px; background: #020617; border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow: auto; font: inherit; }
+  .tc pre .rh { color: #64748b; }
+  .terr { font: var(--mono); font-size: 11.5px; color: var(--red); padding: 2px 8px 0; white-space: pre-wrap; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .cv-reply { border-top: 1px solid var(--line); padding: 8px 12px 10px; flex: none; background: var(--panel); }
+  .cv-reply .compose { margin-top: 0; }
+  #cv-in { max-height: 160px; font-size: 13px; padding: 6px 9px; }
+  .cv-reply .msgs { max-height: 90px; overflow-y: auto; margin-bottom: 6px; }
+  .cv-reply .msgs:empty { display: none; }
+  #cv-turns:empty { display: none; }
+  #cv-turns { max-height: 130px; overflow-y: auto; margin-bottom: 8px; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  .cv-turn { display: flex; gap: 6px; align-items: baseline; margin: 2px 0; }
+  .cv-turn .tq { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cv-run { display: flex; align-items: center; gap: 6px; color: #bfdbfe; margin: 4px 0 2px; }
+  .cv-run .btn { margin-left: auto; }
+
+  /* ---- changes ---- */
+  #cv-changes { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; }
+  .ch-bar { display: flex; align-items: center; gap: 8px; flex: none; }
+  .ch-bar .path { flex: 1; min-width: 0; }
+  #ch-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  .ch-files { max-height: 34%; overflow: auto; border: 1px solid var(--line); border-radius: 8px; flex: none; }
+  .ch-file { display: flex; gap: 8px; align-items: center; padding: 3px 8px; cursor: pointer; font: var(--mono); border-bottom: 1px solid var(--line); }
+  .ch-file:last-child { border-bottom: 0; }
+  .ch-file:hover { background: #1e293b; }
+  .ch-file .fp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font: 700 10px/16px ui-monospace, Consolas, monospace; padding: 0 5px; border-radius: 4px; flex: none; min-width: 20px; text-align: center; background: var(--line); color: var(--dim); }
+  .badge.m { background: #713f12; color: #fde68a; }
+  .badge.a { background: #14532d; color: #bbf7d0; }
+  .badge.d { background: #7f1d1d; color: #fecaca; }
+  .badge.r { background: #1e3a8a; color: #bfdbfe; }
+  .add { color: #4ade80; } .del { color: var(--red); }
+  .ch-note { font-size: 11px; color: var(--dim); flex: none; }
+  .diff { flex: 1; min-height: 120px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #020617; font: var(--mono); position: relative; }
+  .diff .df { min-width: max-content; }
+  .diff .fh { position: sticky; top: 0; background: #1e293b; color: var(--text); padding: 3px 10px; font-weight: 600; z-index: 1; border-bottom: 1px solid #334155; }
+  .diff .df.flash .fh { background: #3a2a07; color: #fde68a; }
+  .diff .dl { display: flex; white-space: pre; min-width: 100%; width: max-content; }
+  .diff .g { flex: none; width: 4.5ch; text-align: right; padding-right: 6px; color: #475569; user-select: none; }
+  .diff .c { padding: 0 12px 0 4px; }
+  .diff .dl.a { background: #052e1655; } .diff .dl.a .c { color: #86efac; }
+  .diff .dl.d { background: #4c051955; } .diff .dl.d .c { color: #fca5a5; }
+  .diff .dl.h { background: #0b1730; } .diff .dl.h .c { color: #64748b; }
+  .diff .dl.x .c { color: #64748b; font-style: italic; }
+
+  /* ---- needs-you cards ---- */
+  .pcard { background: #1c1508; border: 1px solid #b45309; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .pcard.question { border-color: #7c3aed; background: #150f29; }
+  .pcard.plan { border-color: #2563eb; background: #0b1530; }
+  .pwho { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; min-width: 0; }
+  .pwho .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pwho:hover .pn { text-decoration: underline; }
+  .pkind { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #fde68a; margin-left: auto; flex: none; font-weight: 600; }
+  .question .pkind { color: #ddd6fe; } .plan .pkind { color: #bfdbfe; }
+  .pintro { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .pcode { font: var(--mono); background: #020617; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; margin: 6px 0 0; white-space: pre-wrap; word-break: break-all; max-height: 130px; overflow: auto; }
+  .pcode b { color: #fde68a; margin-right: 6px; }
+  .plan-box { max-height: 260px; overflow: auto; background: #020617; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 6px 0 0; font-size: 12.5px; }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .q { margin-top: 8px; }
+  .q .qt { font-weight: 600; margin: 3px 0 4px; }
+  .opt { display: flex; gap: 7px; align-items: flex-start; padding: 3px 5px; border-radius: 6px; cursor: pointer; }
+  .opt:hover { background: #ffffff0a; }
+  .opt input[type=radio], .opt input[type=checkbox] { margin: 3px 0 0; accent-color: #a78bfa; flex: none; }
+  .opt .ob { flex: 1; min-width: 0; }
+  .opt .od { font-size: 11.5px; color: var(--dim); }
+  .opt .field { margin-top: 3px; padding: 3px 7px; font-size: 12px; }
+  .denybox { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .denybox .field { flex: 1; min-width: 0; padding: 3px 8px; font-size: 12px; }
+  .btn.danger { border-color: #7f1d1d; color: #fecaca; }
+  .pcard.sent .pbody { opacity: .45; pointer-events: none; }
+  .psent { display: none; color: #bbf7d0; font-size: 12px; margin-top: 6px; }
+  .pcard.sent .psent { display: block; }
+  .pcard .cd { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .pcard .cd.late { color: var(--red); }
+  #float { position: absolute; left: 12px; bottom: 42px; z-index: 5; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 132px); display: flex; flex-direction: column; }
+  #float .fhead { align-self: flex-start; display: flex; align-items: center; gap: 8px; background: #3a2a07; border: 1px solid #b45309; color: #fde68a;
+    border-radius: 999px; padding: 3px 6px 3px 12px; font-weight: 600; box-shadow: 0 4px 14px #0008; cursor: pointer; }
+  #float .fhead .xbtn { color: #fde68a; font-size: 11px; }
+  #float .flist { overflow-y: auto; min-height: 0; margin-top: 6px; }
+  #float .flist .pcard { box-shadow: 0 8px 24px #000c; }
+  #float.shut .flist { display: none; }
+  @media (max-width: 700px) { body.panel-open #float { bottom: 150px; max-height: 42%; } }
 </style>
 </head>
 <body>
@@ -175,6 +319,8 @@
   <h1>AGENT CITY</h1>
   <button class="btn" id="fit" title="Reset zoom (0)">Fit</button>
   <span id="link"><i></i><span>Connecting…</span></span>
+  <button class="btn ibtn" id="bell" type="button" aria-pressed="false" aria-label="Desktop notifications" title="Notify me when a session needs me or finishes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+  <button class="btn ibtn" id="snd" type="button" aria-pressed="false" aria-label="Chime" title="Play a soft chime with each notification" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg></button>
   <button class="btn" id="sidebtn" title="Show or hide the panel">Panel</button>
 </header>
 <main>
@@ -185,6 +331,29 @@
       <div id="pills"></div>
     </div>
     <div id="ticker"><div id="track"></div></div>
+    <section id="convo" hidden aria-label="Conversation">
+      <div class="cv-head"><div class="cv-title" id="cv-title"></div><button class="btn cv-x" id="cv-close" type="button" title="Close (Esc)" aria-label="Close">×</button></div>
+      <div class="cv-tabs" role="tablist">
+        <button class="cv-tab on" data-tab="talk" type="button" role="tab">Conversation</button>
+        <button class="cv-tab" data-tab="changes" type="button" role="tab">Changes</button>
+        <select class="field" id="cv-agent" title="Whose conversation" aria-label="Whose conversation" hidden></select>
+      </div>
+      <div class="cv-body">
+        <div id="cv-talk"><div id="cv-log"></div><button class="pill amber" id="cv-pill" type="button" hidden>New messages ↓</button></div>
+        <div id="cv-changes" hidden>
+          <div class="ch-bar"><span class="path" id="ch-root"></span><button class="btn sm" id="ch-refresh" type="button">Refresh</button></div>
+          <div id="ch-body"></div>
+        </div>
+      </div>
+      <div class="cv-reply">
+        <div id="cv-turns"></div>
+        <div class="msgs" id="cv-msgs"></div>
+        <div class="compose"><textarea id="cv-in" rows="1" placeholder="Reply…" aria-label="Reply"></textarea><button class="btn primary" id="cv-send" type="button">Send</button></div>
+        <div class="hint" id="cv-hint"></div>
+        <div class="err" id="cv-err"></div>
+      </div>
+    </section>
+    <div id="float" hidden><div class="fhead" id="float-head" role="button" tabindex="0"><span id="float-n"></span><span class="xbtn" id="float-tog">Hide</span></div><div class="flist" id="float-list"></div></div>
   </div>
   <aside id="side">
     <section id="newtask">
@@ -200,6 +369,7 @@
             <div><label for="nt-level">Permissions</label>
               <select class="field" id="nt-level">
                 <option value="read">Read only</option>
+                <option value="ask">Ask me in the app</option>
                 <option value="edit">Can edit files</option>
                 <option value="run">Can edit and run commands</option>
               </select></div>
@@ -228,7 +398,7 @@
         <div id="tasks"></div>
       </div>
     </section>
-    <div id="needs"></div>
+    <div id="needs"><h2 id="needs-h" hidden>Needs you</h2><div id="needs-pending"></div><div id="needs-rest"></div></div>
     <h2>Sessions</h2>
     <div id="sessions"></div>
     <h2>Boroughs</h2>
@@ -405,10 +575,14 @@
     }
   }
 
+  // Selecting a session opens its conversation; selecting it again closes both,
+  // unless the panel was closed on its own, then it just reopens.
   function select(id, scroll) {
+    if (id && id === selected && !cv.open) { openPanel(id); applySel(scroll); return }
     selected = id && id !== selected ? id : ''
     try { localStorage.setItem('agent-city-selected', selected) } catch {}
     applySel(scroll)
+    if (selected) openPanel(selected); else closePanel()
   }
 
   const bullet = (text, color, small) => text
@@ -696,14 +870,20 @@
         <div class="small dim">${esc(c.files.length ? c.files.join(', ') : c.command)}</div>
         <div style="margin-top:6px"><button class="btn" data-resolve="${esc(c.id)}">Mark resolved</button></div></div>`
     }
-    for (const q of asks) {
+    // An ask from a session that also has a pending card is the same thing; the card answers it.
+    for (const q of visibleAsks(m)) {
       needs += `<div class="card ask"><div class="name">? ${esc(q.who)}</div><div class="small dim">${esc(q.label)}</div></div>`
     }
-    $('needs').innerHTML = needs ? `<h2>Needs you</h2>${needs}` : ''
+    if (needs !== needsRest) { $('needs-rest').innerHTML = needs; needsRest = needs }
+    $('needs-h').hidden = !needs && !(m.pending || []).length
 
     lastMeta = m
     drawSessions(m)
     drawTasks(m)
+    drawPending(m)
+    if (cv.open) drawPanel(m)
+    watch(m)
+    setTitle(m)
 
     $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">Manhattan</span>
         <span class="dim">${esc(m.home || 'the first repository seen')}</span>
@@ -732,7 +912,7 @@
     if (!b) {
       if (e.target.closest('.compose, .msgs, .res, .cerr')) return
       const tk = e.target.closest('[data-task-session]')
-      if (tk) { if (selected !== tk.dataset.taskSession) select(tk.dataset.taskSession, true); return }
+      if (tk) { if (selected !== tk.dataset.taskSession || !cv.open) select(tk.dataset.taskSession, true); return }
       const card = e.target.closest('[data-session-card]')
       if (card) { select(card.dataset.sessionCard, false); return }
       if (e.target.closest('#map')) {
@@ -757,7 +937,7 @@
       if (c && t) { c.h = taskHtml(t); c.el.innerHTML = c.h }
     } else if (b.dataset.needs) {
       setCollapsed(false)
-      ;($('needs').firstChild || $('side')).scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+      $('needs').scrollIntoView?.({ block: 'start', behavior: 'smooth' })
     } else if (b.dataset.homeAuto) {
       post('/home', { auto: true })
     } else if (b.dataset.resolve) {
@@ -766,6 +946,740 @@
       post('/home', { root: b.dataset.home })
     }
   })
+
+  // ---- shared helpers ----------------------------------------------------
+  let needsRest = ''
+  const sessOf = (m, sid) => (m?.sessions || []).find(s => s.id === sid)
+  const leadOf = s => s?.agents?.find(a => a.isMain)
+  const sessName = (m, sid) => { const s = sessOf(m, sid); return leadOf(s)?.name ?? s?.name ?? 'A session' }
+  const agentSession = (m, aid) => (m?.sessions || []).find(s => s.agents.some(a => a.id === aid))?.id || ''
+  // A task runs again for each follow-up turn, so its status says whether a turn is under way.
+  const taskBusy = t => t.status === 'running'
+  const taskFor = (m, sid) => sid ? (m?.tasks || []).find(t => t.sessionId === sid || (t.turns || []).some(u => u.sessionId === sid)) : undefined
+  const clock = at => at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  const oneLine = s => String(s ?? '').replace(/\s+/g, ' ').trim()
+  const dotOrBullet = (s, small) => s?.bullet ? bullet(s.bullet, s.color, small) : `<span class="dot" style="background:${esc(s?.color || '#64748b')}"></span>`
+
+  function visibleAsks(m) {
+    const busy = new Set((m.pending || []).map(p => p.session))
+    return (m.asks || []).filter(q => !busy.has(agentSession(m, q.agentId)))
+  }
+
+  function toast(text) {
+    const el = document.createElement('div')
+    el.className = 'toast'
+    el.textContent = text
+    $('toasts').append(el)
+    setTimeout(() => el.remove(), 5200)
+  }
+
+  // Moves el before `want` in box without losing the caret of a field inside it.
+  function place(box, el, want) {
+    if (el === want) return
+    const ae = document.activeElement
+    const keep = ae && el.contains(ae) && /^(TEXTAREA|INPUT)$/.test(ae.tagName) ? { ae, a: ae.selectionStart, b: ae.selectionEnd } : null
+    box.insertBefore(el, want)
+    if (keep) { keep.ae.focus(); try { keep.ae.setSelectionRange(keep.a, keep.b) } catch {} }
+  }
+
+  // ---- light Markdown (escape first, then a few safe patterns) ---------
+  function mdInline(s) {
+    return s.split(/(`[^`\n]+`)/g).map((part, i) => i % 2
+      ? `<code>${part.slice(1, -1)}</code>`
+      : part
+        .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, '<span class="lnk" title="$2">$1</span>')
+        .replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>')
+        .replace(/__([^_\n]+?)__/g, '<b>$1</b>')
+        .replace(/(^|[^\w*])\*([^*\s][^*\n]*?)\*(?![\w*])/g, '$1<i>$2</i>')
+    ).join('')
+  }
+
+  function md(text) {
+    const lines = esc(text).replace(/\r\n?/g, '\n').split('\n')
+    const out = []
+    let para = [], list = null
+    const flushPara = () => { if (para.length) out.push(`<p>${para.map(mdInline).join('<br>')}</p>`); para = [] }
+    const flushList = () => {
+      if (list) out.push(`<${list.t}>${list.items.map(it => `<li>${mdInline(it.text)}${it.kids.length
+        ? `<${it.kt}>${it.kids.map(k => `<li>${mdInline(k)}</li>`).join('')}</${it.kt}>` : ''}</li>`).join('')}</${list.t}>`)
+      list = null
+    }
+    const flush = () => { flushPara(); flushList() }
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (/^\s*```/.test(line)) {
+        flush()
+        const code = []
+        for (i++; i < lines.length && !/^\s*```\s*$/.test(lines[i]); i++) code.push(lines[i])
+        out.push(`<pre class="code">${code.join('\n')}</pre>`)
+        continue
+      }
+      if (!line.trim()) { flush(); continue }
+      let mm
+      if ((mm = /^(#{1,6})\s+(.*)$/.exec(line))) { flush(); out.push(`<div class="mh">${mdInline(mm[2])}</div>`); continue }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push('<hr>'); continue }
+      if (/^\s*\|/.test(line)) {
+        flush()
+        const rows = [line]
+        while (i + 1 < lines.length && /^\s*\|/.test(lines[i + 1])) rows.push(lines[++i])
+        out.push(`<pre class="tbl">${rows.join('\n')}</pre>`)
+        continue
+      }
+      if ((mm = /^&#62;\s?(.*)$/.exec(line))) { flush(); out.push(`<div class="mq">${mdInline(mm[1])}</div>`); continue }
+      const ul = /^(\s*)[-*+]\s+(.*)$/.exec(line), ol = !ul && /^(\s*)\d+[.)]\s+(.*)$/.exec(line)
+      if (ul || ol) {
+        flushPara()
+        const t = ul ? 'ul' : 'ol', m2 = ul || ol
+        // One level of nesting: an indented item belongs to the item above it.
+        const top = list?.items[list.items.length - 1]
+        if (m2[1].length >= 2 && top) {
+          if (!top.kids.length) top.kt = t
+          top.kids.push(m2[2])
+          continue
+        }
+        if (list && list.t !== t) flushList()
+        if (!list) list = { t, items: [] }
+        list.items.push({ text: m2[2], kids: [], kt: 'ul' })
+        continue
+      }
+      if (list && /^\s{2,}\S/.test(line)) {
+        const top = list.items[list.items.length - 1]
+        if (top.kids.length) top.kids[top.kids.length - 1] += ' ' + line.trim(); else top.text += ' ' + line.trim()
+        continue
+      }
+      flushList()
+      para.push(line)
+    }
+    flush()
+    return out.join('')
+  }
+
+  // ---- conversation drawer -----------------------------------------------
+  const cv = { open: false, sid: '', agent: '', tab: 'talk', key: '', count: 0, seq: 0, busy: false, drafts: new Map(),
+    headH: null, agentsKey: null, turnsH: null, msgsH: null, lastS: null, mode: '', changesSid: '' }
+  const CV = { panel: $('convo'), title: $('cv-title'), log: $('cv-log'), pill: $('cv-pill'), talk: $('cv-talk'), ch: $('cv-changes'),
+    chBody: $('ch-body'), agent: $('cv-agent'), ta: $('cv-in'), send: $('cv-send'), hint: $('cv-hint'), err: $('cv-err'),
+    turns: $('cv-turns'), msgs: $('cv-msgs') }
+
+  function growCv() {
+    CV.ta.style.height = 'auto'
+    CV.ta.style.height = Math.min(CV.ta.scrollHeight + 2, 160) + 'px'
+  }
+
+  function openPanel(sid) {
+    if (!sid) return
+    if (sid !== cv.sid) {
+      if (cv.sid) cv.drafts.set(cv.sid, CV.ta.value)
+      // null, not '': an empty value for the new session must still replace the old one's.
+      Object.assign(cv, { sid, agent: '', key: '', count: 0, busy: false, headH: null, agentsKey: null, turnsH: null, msgsH: null, lastS: null, mode: '', changesSid: '' })
+      cv.seq++
+      CV.log.innerHTML = '<div class="cv-status">Loading the conversation…</div>'
+      CV.pill.hidden = true
+      CV.ta.value = cv.drafts.get(sid) || ''
+      growCv()
+      CV.err.textContent = ''
+      CV.chBody.innerHTML = ''
+      $('ch-root').textContent = ''
+    }
+    cv.open = true
+    CV.panel.hidden = false
+    document.body.classList.add('panel-open')
+    try { localStorage.setItem('agent-city-panel', '1') } catch {}
+    if (lastMeta) drawPanel(lastMeta)
+    showTab(cv.tab)
+  }
+
+  function closePanel() {
+    if (!cv.open) return
+    cv.open = false
+    CV.panel.hidden = true
+    document.body.classList.remove('panel-open')
+    try { localStorage.setItem('agent-city-panel', '0') } catch {}
+  }
+
+  // From a notification or a needs-you card: select the session and show its conversation.
+  function openSession(sid) {
+    if (!sid) return
+    if (selected !== sid) {
+      selected = sid
+      try { localStorage.setItem('agent-city-selected', selected) } catch {}
+    }
+    applySel(true)
+    openPanel(sid)
+  }
+
+  function showTab(tab) {
+    cv.tab = tab
+    for (const b of document.querySelectorAll('.cv-tab')) b.classList.toggle('on', b.dataset.tab === tab)
+    CV.talk.hidden = tab !== 'talk'
+    CV.ch.hidden = tab !== 'changes'
+    if (!cv.open) return
+    if (tab === 'talk') loadConvo(true)
+    else if (cv.changesSid !== cv.sid) loadChanges()
+  }
+
+  function drawPanel(m) {
+    const live = sessOf(m, cv.sid)
+    if (live) cv.lastS = live
+    const s = cv.lastS
+    const lead = leadOf(live)
+    const head = s
+      ? `<div class="row">${dotOrBullet(s)}<span class="name">${esc(leadOf(s)?.name ?? s.name)}</span>
+          ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
+        <div class="path">${esc(s.cwd)}</div>
+        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}`
+      : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
+    if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
+
+    // Subagents: the live ones, and any whose transcript the server has kept.
+    const subs = new Map()
+    for (const a of s?.agents || []) if (!a.isMain) subs.set(a.id, a.name)
+    for (const id of Object.keys(s?.agentTranscripts || {})) if (!subs.has(id)) subs.set(id, `Subagent ${id.slice(0, 6)}`)
+    if (cv.agent && !subs.has(cv.agent)) subs.set(cv.agent, `Subagent ${cv.agent.slice(0, 6)}`)
+    const akey = [...subs].map(x => x.join('=')).join('|')
+    if (akey !== cv.agentsKey) {
+      cv.agentsKey = akey
+      CV.agent.innerHTML = `<option value="">Lead: ${esc(leadOf(s)?.name ?? 'main')}</option>` +
+        [...subs].map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('')
+      CV.agent.value = cv.agent
+      CV.agent.hidden = !subs.size
+    }
+
+    drawReply(m, live)
+  }
+
+  function drawReply(m, live) {
+    const task = taskFor(m, cv.sid)
+    const busy = task && taskBusy(task)
+    const mode = task && !busy ? 'continue' : 'message'
+    if (mode !== cv.mode) {
+      cv.mode = mode
+      CV.send.textContent = mode === 'continue' ? 'Reply' : 'Send'
+      CV.ta.placeholder = mode === 'continue' ? 'Reply to continue this task…' : 'Message this session…'
+    }
+    CV.hint.textContent = mode === 'continue'
+      ? `Enter sends a new turn of the task in ${baseName(task.cwd)}; Shift+Enter for a new line.`
+      : busy ? 'It is working on a turn: your message reaches it at its next step.'
+        : live ? 'Queued until its next step; an idle session gets it when it next does something.'
+          : 'This session has ended; a message waits until it comes back.'
+
+    let th = ''
+    if (task) {
+      const turns = task.turns || []
+      const chip = (st, cost) => `<span class="chip ${esc(st)}">${st === 'running' ? '<span class="spin"></span>' : ''}${esc(st)}</span>${cost != null ? `<span class="dim small">$${Number(cost).toFixed(2)}</span>` : ''}`
+      const first = turns.length ? (task.error && !turns.some(u => u.error) ? 'failed' : 'done') : task.status
+      th = `<div class="cv-turn"><span class="dim small">Task</span><span class="tq" title="${esc(task.prompt)}">${esc(task.prompt)}</span>${chip(first, turns.length ? null : task.costUsd)}</div>` +
+        turns.map((u, i) => {
+          const st = !u.endedAt ? (task.status === 'running' && i === turns.length - 1 ? 'running' : 'stopped') : u.error ? 'failed' : 'done'
+          return `<div class="cv-turn"><span class="dim small">↳</span><span class="tq" title="${esc(u.prompt)}">${esc(u.prompt)}</span>${chip(st, u.costUsd)}</div>`
+        }).join('') +
+        (busy ? `<div class="cv-run"><span class="spin"></span>Working on it… <button class="btn sm" data-task-stop="${esc(task.id)}" type="button">Stop</button></div>` : '')
+    }
+    if (th !== cv.turnsH) { CV.turns.innerHTML = th; cv.turnsH = th; CV.turns.scrollTop = CV.turns.scrollHeight }
+    const mh = live ? msgsHtml(live) : ''
+    if (mh !== cv.msgsH) { CV.msgs.innerHTML = mh; cv.msgsH = mh }
+  }
+
+  async function cvSend() {
+    const text = CV.ta.value.trim()
+    if (!text || !cv.sid || CV.send.disabled) return
+    const sid = cv.sid
+    const task = taskFor(lastMeta, sid)
+    const cont = task && !taskBusy(task)
+    CV.err.textContent = ''
+    CV.send.disabled = true
+    const r = cont ? await post('/task/continue', { id: task.id, prompt: text }) : await post('/message', { session: sid, text })
+    CV.send.disabled = false
+    if (r.error || r.ok === false) { if (cv.sid === sid) CV.err.textContent = r.error || 'Not sent.'; return }
+    if (cv.sid === sid && CV.ta.value.trim() === text) { CV.ta.value = ''; growCv() }
+    cv.drafts.delete(sid)
+    if (cont) setTimeout(() => { if (cv.sid === sid) loadConvo(true) }, 700)
+  }
+
+  CV.ta.addEventListener('input', growCv)
+  CV.ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); cvSend() }
+  })
+  CV.send.addEventListener('click', cvSend)
+  $('cv-close').addEventListener('click', closePanel)
+  for (const b of document.querySelectorAll('.cv-tab')) b.addEventListener('click', () => showTab(b.dataset.tab))
+  CV.agent.addEventListener('change', () => {
+    cv.agent = CV.agent.value
+    cv.key = ''; cv.count = 0; cv.seq++
+    CV.log.innerHTML = '<div class="cv-status">Loading the conversation…</div>'
+    CV.pill.hidden = true
+    loadConvo(true)
+  })
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !cv.open || e.target.closest?.('.pcard')) return
+    closePanel()
+  })
+
+  // -- conversation: fetched every 2 s while open, redrawn only when it changed
+  async function loadConvo(force) {
+    if (!cv.open || (cv.busy && !force)) return
+    cv.busy = true
+    const seq = ++cv.seq, sid = cv.sid, agent = cv.agent
+    let j
+    try {
+      const r = await fetch(`/conversation?session=${encodeURIComponent(sid)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`, { cache: 'no-store' })
+      j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
+    } catch (e) {
+      j = { error: String(e?.message || e) }
+    }
+    if (seq === cv.seq) cv.busy = false
+    if (seq !== cv.seq || sid !== cv.sid || agent !== cv.agent) return
+    renderConvo(j)
+  }
+  setInterval(() => { if (cv.open && cv.tab === 'talk' && !document.hidden) loadConvo(false) }, 2000)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && cv.open && cv.tab === 'talk') loadConvo(true) })
+
+  function convoGroups(entries) {
+    const groups = []
+    let g = null
+    entries.forEach((e, i) => {
+      if (e.kind === 'user') { groups.push({ t: 'user', items: [[i, e]] }); g = null; return }
+      if (e.kind === 'system') { groups.push({ t: 'sys', items: [[i, e]] }); g = null; return }
+      if (!g) { g = { t: 'asst', items: [] }; groups.push(g) }
+      g.items.push([i, e])
+    })
+    return groups
+  }
+
+  function toolHtml(b) {
+    const r = b.res, err = !!r?.isError
+    const full = b.e.text || ''
+    const mark = r ? (err ? '<span class="tk">failed</span>' : '<span class="tk">✓</span>') : ''
+    return `<div><details class="tc${err ? ' err' : ''}" data-k="${b.i}"><summary><span class="tn">${esc(b.e.tool || 'Tool')}</span><span class="tt" title="${esc(oneLine(full).slice(0, 300))}">${esc(oneLine(full))}</span>${mark}</summary>` +
+      `<pre>${esc(full)}${r ? `\n\n<span class="rh">── ${err ? 'error' : 'result'} ──</span>\n${esc(r.text || '(empty)')}` : ''}</pre></details>` +
+      `${err ? `<div class="terr">${esc(String(r.text || '').trim().split('\n').slice(0, 3).join('\n'))}</div>` : ''}</div>`
+  }
+
+  function groupHtml(g, s) {
+    const [i0, e0] = g.items[0]
+    if (g.t === 'user') return `<div class="cv-g u" data-g="${i0}"><div class="cv-u">${esc(e0.text)}</div>${e0.at ? `<div class="cv-t">${esc(clock(e0.at))}</div>` : ''}</div>`
+    if (g.t === 'sys') return `<div class="cv-g s" data-g="${i0}"><div class="cv-sys">${esc(e0.text)}</div></div>`
+    // Pair each result with the earliest open call of the same tool.
+    const blocks = [], open = []
+    for (const [i, e] of g.items) {
+      if (e.kind === 'tool') { const b = { t: 'tool', i, e, res: null }; blocks.push(b); open.push(b) }
+      else if (e.kind === 'result') {
+        const k = open.findIndex(b => !e.tool || !b.e.tool || b.e.tool === e.tool)
+        if (k >= 0) open.splice(k, 1)[0].res = e
+        else blocks.push({ t: 'tool', i, e: { tool: e.tool || 'Result', text: '' }, res: e })
+      } else blocks.push({ t: 'text', i, e })
+    }
+    let html = '', run = []
+    const flushRun = () => { if (run.length) html += `<div class="tools">${run.map(toolHtml).join('')}</div>`; run = [] }
+    for (const b of blocks) {
+      if (b.t === 'tool') { run.push(b); continue }
+      flushRun()
+      html += `<div class="md">${md(b.e.text)}</div>`
+    }
+    flushRun()
+    const who = cv.agent ? (CV.agent.selectedOptions[0]?.textContent || 'Subagent') : (leadOf(s)?.name ?? s?.name ?? 'Claude')
+    return `<div class="cv-g a" data-g="${i0}"><div class="cv-who">${dotOrBullet(s, true)}<span>${esc(who)}</span>${e0.at ? `<span>· ${esc(clock(e0.at))}</span>` : ''}</div>${html}</div>`
+  }
+
+  function renderConvo(j) {
+    const log = CV.log
+    if (j.error && !Array.isArray(j.entries)) {
+      if (!log.querySelector('.cv-g')) log.innerHTML = `<div class="cv-status">${esc(j.error === 'No such session' ? 'This session is gone from the city, so its conversation can’t be read.' : 'Couldn’t read the conversation: ' + j.error)}</div>`
+      return
+    }
+    const entries = Array.isArray(j.entries) ? j.entries : []
+    const last = entries[entries.length - 1]
+    const key = `${entries.length}|${last?.kind}|${last?.isError}|${last?.text}`
+    if (key === cv.key) return
+    const first = !cv.key
+    cv.key = key
+    if (!entries.length) { log.innerHTML = '<div class="cv-status">Nothing in this conversation yet.</div>'; cv.count = 0; return }
+    const wasBottom = first || log.scrollHeight - log.scrollTop - log.clientHeight < 48
+    const s = cv.lastS
+    const htmls = convoGroups(entries).map(g => groupHtml(g, s))
+    for (const c of [...log.children]) if (!c.classList.contains('cv-g')) c.remove()
+    const kids = [...log.children]
+    htmls.forEach((h, i) => {
+      const el = kids[i]
+      if (el && el._h === h) return
+      const box = document.createElement('div')
+      box.innerHTML = h
+      const ne = box.firstElementChild
+      ne._h = h
+      // Keep what the person expanded.
+      if (el) for (const d of el.querySelectorAll('details[open]')) ne.querySelector(`details[data-k="${d.dataset.k}"]`)?.setAttribute('open', '')
+      if (el) el.replaceWith(ne); else log.append(ne)
+    })
+    for (const el of kids.slice(htmls.length)) el.remove()
+    if (wasBottom) { log.scrollTop = log.scrollHeight; CV.pill.hidden = true }
+    else CV.pill.hidden = false // something new arrived below where they're reading
+    cv.count = entries.length
+  }
+
+  CV.log.addEventListener('scroll', () => {
+    if (CV.log.scrollHeight - CV.log.scrollTop - CV.log.clientHeight < 48) CV.pill.hidden = true
+  })
+  CV.pill.addEventListener('click', () => {
+    CV.log.scrollTo({ top: CV.log.scrollHeight, behavior: 'smooth' })
+    CV.pill.hidden = true
+  })
+
+  // -- changes tab
+  async function loadChanges() {
+    const sid = cv.sid
+    cv.changesSid = sid
+    CV.chBody.innerHTML = '<div class="cv-status">Reading the changes…</div>'
+    let j
+    try {
+      const r = await fetch(`/changes?session=${encodeURIComponent(sid)}`, { cache: 'no-store' })
+      j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
+    } catch (e) {
+      j = { error: String(e?.message || e) }
+    }
+    if (sid !== cv.sid) return
+    renderChanges(j)
+  }
+  $('ch-refresh').addEventListener('click', loadChanges)
+
+  const statusClass = st => { const c = String(st || '').trim()[0]; return c === 'M' ? 'm' : c === 'A' || c === '?' ? 'a' : c === 'D' ? 'd' : c === 'R' || c === 'C' ? 'r' : '' }
+
+  function diffHtml(text) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n')
+    if (lines.length && lines[lines.length - 1] === '') lines.pop()
+    let out = '', o = 0, n = 0, inFile = false
+    const row = (cls, a, b, t) => `<div class="dl ${cls}"><span class="g">${a}</span><span class="g">${b}</span><span class="c">${esc(t)}</span></div>`
+    for (const line of lines) {
+      if (line.startsWith('diff --git ')) {
+        const m = / b\/(.+)$/.exec(line)
+        const p = m ? m[1] : line.slice(11)
+        out += `${inFile ? '</div>' : ''}<div class="df" data-path="${esc(p)}"><div class="fh">${esc(p)}</div>`
+        inFile = true
+        continue
+      }
+      if (/^(index |--- |\+\+\+ |old mode|new mode)/.test(line)) continue
+      if (/^(new file mode|deleted file mode|similarity index|rename from|rename to|Binary files)/.test(line)) { out += row('x', '', '', line); continue }
+      if (line.startsWith('@@')) {
+        const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(line)
+        if (m) { o = +m[1]; n = +m[2] }
+        out += row('h', '', '', line)
+        continue
+      }
+      const c = line[0]
+      if (c === '+') out += row('a', '', n++, line)
+      else if (c === '-') out += row('d', o++, '', line)
+      else if (c === '\\') out += row('x', '', '', line)
+      else out += row('', o++, n++, line)
+    }
+    return out + (inFile ? '</div>' : '')
+  }
+
+  function renderChanges(j) {
+    $('ch-root').textContent = j.root || ''
+    if (j.error) { CV.chBody.innerHTML = `<div class="cv-status">${esc(j.error)}</div>`; return }
+    const files = j.files || []
+    if (!files.length && !j.diff) { CV.chBody.innerHTML = '<div class="cv-status">No uncommitted changes in this repository.</div>'; return }
+    const add = files.reduce((t, f) => t + (f.added || 0), 0), del = files.reduce((t, f) => t + (f.removed || 0), 0)
+    CV.chBody.innerHTML =
+      `<div class="ch-note">${files.length} file${files.length === 1 ? '' : 's'} changed · <span class="add">+${add}</span> <span class="del">−${del}</span></div>` +
+      `<div class="ch-files">${files.map(f => `<div class="ch-file" data-path="${esc(f.path)}" title="${esc(f.path)}"><span class="badge ${statusClass(f.status)}">${esc(f.status === '??' ? 'new' : f.status)}</span>` +
+        `<span class="fp">${esc(f.path)}</span>${f.added != null ? `<span class="add">+${f.added}</span>` : ''}${f.removed != null ? `<span class="del">−${f.removed}</span>` : ''}</div>`).join('')}</div>` +
+      `<div class="diff">${diffHtml(j.diff)}</div>` +
+      (j.truncated ? '<div class="warn">The diff was cut short here; the rest is in the repository.</div>' : '')
+  }
+
+  CV.chBody.addEventListener('click', e => {
+    const f = e.target.closest('.ch-file')
+    if (!f) return
+    const p = f.dataset.path, box = CV.chBody.querySelector('.diff')
+    const secs = [...CV.chBody.querySelectorAll('.df')]
+    const sec = secs.find(x => x.dataset.path === p) || secs.find(x => x.dataset.path.endsWith('/' + p) || p.endsWith('/' + x.dataset.path))
+    if (!sec || !box) { f.title = 'Not in the diff (untracked, binary or cut short)'; toast(`${baseName(p)} isn’t in the diff (untracked, binary or cut short).`); return }
+    box.scrollTo({ top: sec.offsetTop, behavior: 'smooth' })
+    sec.classList.add('flash')
+    setTimeout(() => sec.classList.remove('flash'), 1200)
+  })
+
+  // ---- needs-you cards (keyed by pending id, in the sidebar and over the map) ----
+  const decided = new Map() // pending id -> 'sending' | 'sent'
+  const pviews = [
+    { box: $('needs-pending'), prefix: 'side', els: new Map() },
+    { box: $('float-list'), prefix: 'float', els: new Map() },
+  ]
+  let floatShut = false, floatIds = new Set()
+
+  function whoHtml(m, p) {
+    const s = sessOf(m, p.session)
+    const sub = p.agentId && s?.agents.find(a => a.id === p.agentId && !a.isMain)
+    const kind = { permission: 'Permission', question: 'Question', plan: 'Plan' }[p.kind] || p.kind
+    return `${dotOrBullet(s)}<span class="pn">${esc(sessName(m, p.session))}${sub ? ` › ${esc(sub.name)}` : ''}</span><span class="pkind">${esc(kind)}</span>`
+  }
+
+  function buildPending(p, prefix) {
+    const el = document.createElement('div')
+    el.className = `pcard ${p.kind}`
+    el.dataset.pid = p.id
+    el._p = p
+    let body = '', acts = '', ph = ''
+    if (p.kind === 'question') {
+      body = (p.questions || []).map((q, qi) => {
+        const name = `${prefix}-${p.id}-${qi}`, type = q.multiSelect ? 'checkbox' : 'radio'
+        return `<div class="q" data-qi="${qi}">${q.header ? `<span class="chip">${esc(q.header)}</span>` : ''}<div class="qt">${esc(q.question)}</div>` +
+          (q.options || []).map((o, oi) => `<label class="opt"><input type="${type}" name="${esc(name)}" value="${oi}"><span class="ob"><span>${esc(o.label)}</span>${o.description ? `<div class="od">${esc(o.description)}</div>` : ''}</span></label>`).join('') +
+          `<label class="opt"><input type="${type}" name="${esc(name)}" value="other"><span class="ob"><span>Other…</span><input class="field oth" placeholder="Your own answer"></span></label></div>`
+      }).join('')
+      acts = '<button class="btn primary" type="button" data-pact="answer">Submit</button><button class="btn" type="button" data-pact="deny-open">Skip</button>'
+      ph = 'A note for Claude (optional)'
+    } else if (p.kind === 'plan') {
+      body = `<div class="pintro">Wants to leave plan mode and start on this plan:</div><div class="plan-box md">${md(p.plan || p.summary || '')}</div>`
+      acts = '<button class="btn primary" type="button" data-pact="allow">Approve plan</button><button class="btn" type="button" data-pact="deny-open">Keep planning</button>'
+      ph = 'What should change? (optional)'
+    } else {
+      body = `<div class="pintro">Wants to use a tool:</div><div class="pcode"><b>${esc(p.tool)}</b>${esc(p.summary)}</div>`
+      acts = '<button class="btn primary" type="button" data-pact="allow">Allow</button><button class="btn" type="button" data-pact="deny-open">Deny</button>'
+      ph = 'Why not, or what to do instead (optional)'
+    }
+    const sendLabel = p.kind === 'plan' ? 'Keep planning' : p.kind === 'question' ? 'Skip' : 'Deny'
+    el.innerHTML = `<div class="pwho" data-open-sid="${esc(p.session)}" title="Open this session’s conversation"></div>
+      <div class="pbody">${body}<div class="acts">${acts}</div>
+        <div class="denybox" hidden><input class="field dr" placeholder="${esc(ph)}"><button class="btn sm danger" type="button" data-pact="deny">${esc(sendLabel)}</button><button class="btn sm" type="button" data-pact="deny-cancel">Cancel</button></div></div>
+      <div class="psent">Sent. Waiting for the session to pick it up…</div>
+      <div class="err perr"></div>
+      <div class="cd" data-exp="${Number(p.expiresAt) || 0}"></div>`
+    tickCountdown(el.querySelector('.cd'))
+    return el
+  }
+
+  function drawPending(m) {
+    const list = (m.pending || []).slice().sort((a, b) => (a.expiresAt || 0) - (b.expiresAt || 0))
+    const ids = new Set(list.map(p => p.id))
+    for (const id of decided.keys()) if (!ids.has(id)) decided.delete(id)
+    for (const v of pviews) {
+      for (const [id, el] of v.els) if (!ids.has(id)) { el.remove(); v.els.delete(id) }
+      let prev = null
+      for (const p of list) {
+        let el = v.els.get(p.id)
+        if (!el) { el = buildPending(p, v.prefix); v.els.set(p.id, el) }
+        const w = whoHtml(m, p)
+        if (el._w !== w) { el.querySelector('.pwho').innerHTML = w; el._w = w }
+        el.classList.toggle('sent', decided.has(p.id))
+        place(v.box, el, prev ? prev.nextSibling : v.box.firstChild)
+        prev = el
+      }
+    }
+    // A new one opens the stack over the map even if it was hidden.
+    if (list.some(p => !floatIds.has(p.id))) floatShut = false
+    floatIds = ids
+    $('float').hidden = !list.length
+    $('float').classList.toggle('shut', floatShut)
+    $('float-n').textContent = `${list.length} need${list.length === 1 ? 's' : ''} you`
+    $('float-tog').textContent = floatShut ? 'Show' : 'Hide'
+  }
+
+  function toggleFloat() { floatShut = !floatShut; $('float').classList.toggle('shut', floatShut); $('float-tog').textContent = floatShut ? 'Show' : 'Hide' }
+  $('float-head').addEventListener('click', toggleFloat)
+  $('float-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFloat() } })
+
+  function tickCountdown(cd) {
+    const exp = Number(cd.dataset.exp)
+    if (!exp) { cd.textContent = ''; return }
+    const left = Math.round((exp - Date.now()) / 1000)
+    if (left <= 0) { cd.textContent = 'Now asking in its own window.'; cd.classList.add('late'); return }
+    const h = Math.floor(left / 3600), mn = Math.floor(left % 3600 / 60), sc = String(left % 60).padStart(2, '0')
+    cd.textContent = `Asks in its own window in ${h ? `${h}:${String(mn).padStart(2, '0')}` : mn}:${sc}`
+    cd.classList.toggle('late', left < 60)
+  }
+  setInterval(() => { for (const cd of document.querySelectorAll('.pcard .cd[data-exp]')) tickCountdown(cd) }, 1000)
+
+  function eachCard(id, fn) { for (const v of pviews) { const el = v.els.get(id); if (el) fn(el) } }
+
+  async function decide(id, d) {
+    if (decided.has(id)) return
+    decided.set(id, 'sending')
+    eachCard(id, el => { el.classList.add('sent'); el.querySelector('.perr').textContent = '' })
+    const r = await post('/decide', { id, ...d })
+    if (r.error || r.ok === false) {
+      decided.delete(id)
+      eachCard(id, el => { el.classList.remove('sent'); el.querySelector('.perr').textContent = r.error || 'Not sent.' })
+      return
+    }
+    decided.set(id, 'sent')
+  }
+
+  function answersOf(el) {
+    const p = el._p, answers = {}
+    for (const [qi, q] of (p.questions || []).entries()) {
+      const qel = el.querySelector(`.q[data-qi="${qi}"]`)
+      const picks = [...qel.querySelectorAll('input[type=radio]:checked, input[type=checkbox]:checked')]
+        .map(i => i.value === 'other' ? qel.querySelector('.oth').value.trim() : q.options[+i.value]?.label)
+      if (!picks.length) return { error: `Pick an answer for “${q.question}”.` }
+      if (picks.some(x => !x)) return { error: `Type your own answer for “${q.question}”, or pick an option.` }
+      answers[q.question] = picks.join(', ')
+    }
+    return { answers }
+  }
+
+  document.addEventListener('click', e => {
+    const who = e.target.closest('.pwho[data-open-sid]')
+    if (who) { openSession(who.dataset.openSid); return }
+    const b = e.target.closest('button[data-pact]')
+    if (!b) return
+    const el = b.closest('.pcard'), id = el?.dataset.pid
+    if (!id) return
+    const box = el.querySelector('.denybox'), act = b.dataset.pact
+    if (act === 'allow') decide(id, { behavior: 'allow' })
+    else if (act === 'deny-open') { box.hidden = false; box.querySelector('input').focus() }
+    else if (act === 'deny-cancel') box.hidden = true
+    else if (act === 'deny') { const msg = box.querySelector('input').value.trim(); decide(id, msg ? { behavior: 'deny', message: msg } : { behavior: 'deny' }) }
+    else if (act === 'answer') {
+      const r = answersOf(el)
+      if (r.error) { el.querySelector('.perr').textContent = r.error; return }
+      decide(id, { behavior: 'allow', answers: r.answers })
+    }
+  })
+  // Typing an "Other" answer picks it; Enter in a reason field sends the deny.
+  document.addEventListener('input', e => {
+    if (!e.target.matches?.('.pcard .oth')) return
+    const radio = e.target.closest('.opt').querySelector('input[value="other"]')
+    if (radio && e.target.value.trim()) radio.checked = true
+  })
+  document.addEventListener('keydown', e => {
+    if (!e.target.matches?.('.pcard .dr')) return
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.target.closest('.denybox').querySelector('[data-pact="deny"]').click() }
+    else if (e.key === 'Escape') { e.target.closest('.denybox').hidden = true }
+  })
+
+  // ---- notifications ------------------------------------------------------
+  let notifyOn = false, soundOn = true, actx = null, seen = null
+  try { notifyOn = localStorage.getItem('agent-city-notify') === '1'; soundOn = localStorage.getItem('agent-city-sound') !== '0' } catch {}
+  window.__agentCityNotes = []
+
+  function syncBell() {
+    $('bell').classList.toggle('on', notifyOn)
+    $('bell').setAttribute('aria-pressed', String(notifyOn))
+    $('bell').title = notifyOn ? 'Notifications on: click to turn off' : 'Notify me when a session needs me or finishes'
+    $('snd').hidden = !notifyOn
+    $('snd').classList.toggle('on', soundOn)
+    $('snd').setAttribute('aria-pressed', String(soundOn))
+    $('snd').title = soundOn ? 'Chime on: click to mute' : 'Chime off: click to turn on'
+  }
+  syncBell()
+
+  function ensureAudio() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)()
+      if (actx.state === 'suspended') actx.resume()
+    } catch { actx = null }
+  }
+  // Browsers only start audio after a gesture: the first click anywhere unlocks it.
+  window.addEventListener('pointerdown', () => { if (notifyOn && soundOn) ensureAudio() }, { once: true })
+
+  function chime() {
+    if (!soundOn) return
+    ensureAudio()
+    if (!actx) return
+    try {
+      const t = actx.currentTime
+      for (const [f, d] of [[659.25, 0], [987.77, 0.13]]) {
+        const o = actx.createOscillator(), g = actx.createGain()
+        o.type = 'sine'
+        o.frequency.value = f
+        g.gain.setValueAtTime(0.0001, t + d)
+        g.gain.exponentialRampToValueAtTime(0.08, t + d + 0.02)
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.7)
+        o.connect(g).connect(actx.destination)
+        o.start(t + d)
+        o.stop(t + d + 0.75)
+      }
+    } catch {}
+  }
+
+  $('bell').addEventListener('click', async () => {
+    notifyOn = !notifyOn
+    try { localStorage.setItem('agent-city-notify', notifyOn ? '1' : '0') } catch {}
+    syncBell()
+    if (!notifyOn) return
+    if (soundOn) ensureAudio()
+    const N = window.Notification
+    if (N && N.permission === 'default') { try { await N.requestPermission() } catch {} }
+    toast(N && N.permission === 'granted' ? 'Notifications on.'
+      : 'Desktop notifications are blocked for this page; you’ll still get a chime and a note here.')
+  })
+  $('snd').addEventListener('click', () => {
+    soundOn = !soundOn
+    try { localStorage.setItem('agent-city-sound', soundOn ? '1' : '0') } catch {}
+    syncBell()
+    if (soundOn) chime()
+  })
+
+  function fire(ev) {
+    window.__agentCityNotes.push({ ...ev, at: Date.now() })
+    if (!notifyOn) return
+    const N = window.Notification
+    const away = document.hidden || !document.hasFocus()
+    if (N && N.permission === 'granted' && away) {
+      try {
+        const n = new N(ev.title, { body: ev.body || '', tag: ev.tag, silent: soundOn })
+        n.onclick = () => { window.focus(); n.close(); openSession(ev.sid) }
+      } catch { toast(`${ev.title}${ev.body ? ': ' + ev.body : ''}`) }
+    } else {
+      toast(`${ev.title}${ev.body ? ': ' + ev.body : ''}`)
+    }
+  }
+
+  function snapshot(m) {
+    return {
+      pending: new Set((m.pending || []).map(p => p.id)),
+      asks: new Set((m.asks || []).map(a => a.id)),
+      conflicts: new Set((m.conflicts || []).map(c => c.id)),
+      leads: new Map(m.sessions.map(s => [s.id, leadOf(s)?.status || ''])),
+      tasks: new Map((m.tasks || []).map(t => [t.id, taskBusy(t)])),
+    }
+  }
+
+  // Compares each frame with the last; nothing fires for what was there at load.
+  function watch(m) {
+    const now = snapshot(m), was = seen
+    seen = now
+    if (!was) return
+    const evs = [], ended = new Set()
+    for (const p of m.pending || []) {
+      if (was.pending.has(p.id)) continue
+      const what = p.kind === 'plan' ? 'has a plan for you to approve' : p.kind === 'question' ? 'has a question' : `wants to use ${p.tool}`
+      evs.push({ title: `${sessName(m, p.session)} ${what}`, body: p.kind === 'question' ? (p.questions?.[0]?.question || p.summary) : p.summary, sid: p.session, tag: `p-${p.id}` })
+    }
+    for (const q of visibleAsks(m)) {
+      if (was.asks.has(q.id)) continue
+      evs.push({ title: `${q.who || 'An agent'} is waiting for you`, body: q.label, sid: agentSession(m, q.agentId), tag: `a-${q.id}` })
+    }
+    for (const c of m.conflicts || []) {
+      if (was.conflicts.has(c.id)) continue
+      evs.push({ title: `Merge conflict · ${c.agentName}`, body: c.files.length ? c.files.join(', ') : c.command, sid: agentSession(m, c.agentId), tag: `c-${c.id}` })
+    }
+    for (const t of m.tasks || []) {
+      if (was.tasks.get(t.id) !== true || taskBusy(t)) continue
+      const turn = t.turns?.[t.turns.length - 1]
+      const text = (turn ? turn.error || turn.result : t.error || t.result) || ''
+      if (t.sessionId) ended.add(t.sessionId)
+      evs.push({ title: `Task in ${baseName(t.cwd)} ${t.status === 'failed' ? 'failed' : t.status === 'stopped' ? 'stopped' : 'finished'}`, body: oneLine(text).slice(0, 160), sid: t.sessionId, tag: `t-${t.id}` })
+    }
+    for (const s of m.sessions) {
+      const cur = leadOf(s)?.status || ''
+      if (was.leads.get(s.id) === 'working' && (cur === 'idle' || cur === 'done') && !ended.has(s.id)) {
+        evs.push({ title: `${sessName(m, s.id)} finished its turn`, body: leadOf(s)?.activity || '', sid: s.id, tag: `s-${s.id}` })
+      }
+    }
+    if (evs.length && notifyOn) chime()
+    for (const ev of evs) fire(ev)
+  }
+
+  function setTitle(m) {
+    const n = (m.pending || []).length + visibleAsks(m).length + (m.conflicts || []).length
+    const t = n ? `(${n}) Agent City` : 'Agent City'
+    if (document.title !== t) document.title = t
+  }
+
+  // Reopen the conversation that was open before a reload.
+  try { if (selected && localStorage.getItem('agent-city-panel') === '1') openPanel(selected) } catch {}
 
   connect()
 </script>

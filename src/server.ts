@@ -6,8 +6,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { BURBS, LABELS, renderCity } from './city.ts'
+import { Approvals } from './approvals.ts'
+import { changesIn } from './changes.ts'
 import { Tasks } from './tasks.ts'
-import type { Task, World } from './types.ts'
+import { readConversation } from './transcripts.ts'
+import type { Decision, Task, World } from './types.ts'
 import { base, City, forgetRoots } from './world.ts'
 import type { HookEvent } from './world.ts'
 
@@ -46,6 +49,11 @@ const tasks = new Tasks(city.world.tasks, (task, what) => {
   if (what !== 'start') save()
 })
 city.world.tasks = tasks.list
+
+// Permission prompts, questions and plans waiting on the page; any change redraws.
+const approvals = new Approvals(() => {
+  city.isDirty = true
+})
 
 function save() {
   try {
@@ -114,6 +122,7 @@ function meta(world: World) {
     toasts: city.toasts.splice(0),
     tasks: tasks.list.slice().reverse().map(taskView),
     places: places(world),
+    pending: approvals.list(),
   }
 }
 
@@ -185,10 +194,23 @@ const server = createServer(async (req, res) => {
       // AGENT_CITY_DEBUG=1 keeps every event as it came, for checking what a session sends.
       if (process.env.AGENT_CITY_DEBUG) appendFileSync(join(STATE_DIR, 'events.log'), text.replace(/\n/g, ' ') + '\n')
       const ev = JSON.parse(text) as HookEvent
+      // A prompt answered in the session's own window leaves its card here: clear it.
+      approvals.seen(ev)
+      if (ev.hook_event_name === 'PermissionRequest') {
+        city.apply(ev, Date.now())
+        // Held open until the page decides, the session goes away, or it expires
+        // (then {} lets the session ask in its own window).
+        const ac = new AbortController()
+        res.on('close', () => {
+          if (!res.writableEnded) ac.abort()
+        })
+        const out = await approvals.hold(ev, Date.now(), ac.signal)
+        return reply(res, 200, JSON.stringify(out))
+      }
       // Usually {}: the hook decides nothing. With messages waiting, it carries them to the lead.
       return reply(res, 200, JSON.stringify(city.apply(ev, Date.now())))
     }
-    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task'))) {
+    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname === '/decide')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 256 * 1024)) || '{}') as Record<string, unknown>
       const fail = (error: string) => reply(res, 400, JSON.stringify({ error }))
@@ -203,6 +225,26 @@ const server = createServer(async (req, res) => {
         try {
           const task = tasks.start(args, Date.now())
           return reply(res, 200, JSON.stringify({ ok: true, id: task.id }))
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err))
+        }
+      }
+      if (url.pathname === '/decide') {
+        const behavior = args.behavior === 'allow' || args.behavior === 'deny' ? args.behavior : undefined
+        if (!behavior) return fail('behavior must be allow or deny')
+        const decision: Decision = { behavior }
+        if (typeof args.message === 'string' && args.message.trim()) decision.message = args.message.trim().slice(0, 2000)
+        if (args.answers && typeof args.answers === 'object') {
+          decision.answers = Object.fromEntries(
+            Object.entries(args.answers as Record<string, unknown>).map(([q, a]) => [q, String(a).slice(0, 2000)]),
+          )
+        }
+        return approvals.decide(String(args.id), decision) ? reply(res, 200, '{"ok":true}') : fail('That request is no longer waiting')
+      }
+      if (url.pathname === '/task/continue') {
+        try {
+          tasks.continue(args.id, args.prompt, Date.now())
+          return reply(res, 200, '{"ok":true}')
         } catch (err) {
           return fail(err instanceof Error ? err.message : String(err))
         }
@@ -239,6 +281,22 @@ const server = createServer(async (req, res) => {
         clients.delete(client)
       })
       return
+    }
+    // A session's conversation, read from its transcript (a subagent's with &agent=).
+    // Read-only, and a page on another site can't read the reply (no CORS headers).
+    if (req.method === 'GET' && url.pathname === '/conversation') {
+      const s = city.world.sessions.find(one => one.id === url.searchParams.get('session'))
+      if (!s) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
+      const agent = url.searchParams.get('agent')
+      const path = agent ? s.agentTranscripts?.[agent] : s.transcriptPath
+      if (!path || !path.endsWith('.jsonl')) return reply(res, 200, JSON.stringify({ entries: [], updatedAt: s.updatedAt }))
+      return reply(res, 200, JSON.stringify({ entries: readConversation(path, { limit: 300 }), updatedAt: s.updatedAt }))
+    }
+    // What a session has changed in its repository.
+    if (req.method === 'GET' && url.pathname === '/changes') {
+      const s = city.world.sessions.find(one => one.id === url.searchParams.get('session'))
+      if (!s) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
+      return reply(res, 200, JSON.stringify(await changesIn(s.root)))
     }
     if (req.method === 'GET' && url.pathname === '/state.json') {
       return reply(res, 200, JSON.stringify(city.world, null, 2))

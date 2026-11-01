@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import type { Task, TaskEffort, TaskLevel, TaskModel } from './types.ts'
+import type { Task, TaskEffort, TaskLevel, TaskModel, TaskTurn } from './types.ts'
 import { norm } from './world.ts'
 
 // Headless Claude Code sessions started from the page. Each reports to the
@@ -20,6 +20,8 @@ const EDIT_TOOLS = [...READ_TOOLS, 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']
 // No word in these has a space or a quote: on Windows they pass through a shell.
 const LEVELS: Record<TaskLevel, string[]> = {
   read: ['--allowedTools', ...READ_TOOLS],
+  // The rest goes through the PermissionRequest hook to the page; unanswered, it's denied.
+  ask: ['--allowedTools', ...READ_TOOLS],
   edit: ['--permission-mode', 'acceptEdits', '--allowedTools', ...EDIT_TOOLS],
   run: ['--permission-mode', 'acceptEdits', '--allowedTools', ...EDIT_TOOLS, 'Bash', 'PowerShell'],
 }
@@ -70,7 +72,7 @@ export class Tasks {
     if (!prompt) throw new Error('The prompt is empty')
     if (prompt.length > PROMPT_MAX) throw new Error(`The prompt is longer than ${PROMPT_MAX} characters`)
     const level = args.level as TaskLevel
-    if (typeof level !== 'string' || !Object.hasOwn(LEVELS, level)) throw new Error('level must be read, edit or run')
+    if (typeof level !== 'string' || !Object.hasOwn(LEVELS, level)) throw new Error('level must be read, ask, edit or run')
     const model: TaskModel = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : 'default'
     // Checked by shape, since it reaches a shell on Windows.
     if (!ALIASES.includes(model) && !MODEL_ID.test(model)) {
@@ -137,6 +139,87 @@ export class Tasks {
       } catch {
         task.status = 'failed'
         task.error = failure ?? (tail(err) || tail(out) || `claude exited with code ${code}`)
+      }
+      this.changed(task, task.status === 'done' ? 'done' : 'failed')
+    }
+    child.on('error', e => finish(null, `Could not start claude: ${e.message}`))
+    child.on('close', code => finish(code))
+    this.changed(task, 'start')
+    return task
+  }
+
+  // Sends a follow-up to a finished task by resuming its session; the task runs again.
+  continue(id: unknown, prompt: unknown, now: number): Task {
+    const task = this.list.find(t => t.id === id)
+    if (!task) throw new Error('No such task')
+    if (task.status === 'running') throw new Error('The task is still running')
+    const sessionId = task.sessionId
+    // Checked by shape, since it reaches a shell on Windows.
+    if (!sessionId || !/^[A-Za-z0-9-]{1,100}$/.test(sessionId)) throw new Error('This task has no session to continue')
+    const text = typeof prompt === 'string' ? prompt.trim() : ''
+    if (!text) throw new Error('The prompt is empty')
+    if (text.length > PROMPT_MAX) throw new Error(`The prompt is longer than ${PROMPT_MAX} characters`)
+    if (this.running >= RUNNING_MAX) throw new Error(`${RUNNING_MAX} tasks are already running`)
+
+    const turn: TaskTurn = { prompt: text, at: now }
+    const argv = [
+      '-p',
+      '--resume',
+      sessionId,
+      '--output-format',
+      'json',
+      ...(task.model === 'default' ? [] : ['--model', task.model]),
+      ...(task.effort === 'default' ? [] : ['--effort', task.effort]),
+      ...LEVELS[task.level],
+    ]
+    const env = { ...process.env }
+    delete env.CLAUDECODE
+    const child = spawn('claude', argv, { cwd: task.cwd, env, shell: IS_WINDOWS, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    task.turns = [...(task.turns ?? []), turn]
+    task.status = 'running'
+    delete task.endedAt
+    delete task.error
+    this.procs.set(task.id, child)
+
+    let out = ''
+    let err = ''
+    child.stdout!.on('data', (chunk: Buffer) => {
+      if (out.length < 8 * 1024 * 1024) out += chunk.toString('utf8')
+    })
+    child.stderr!.on('data', (chunk: Buffer) => {
+      err = (err + chunk.toString('utf8')).slice(-8000)
+    })
+    child.stdin!.on('error', () => {})
+    child.stdin!.end(text)
+
+    let isOver = false
+    const finish = (code: number | null, failure?: string) => {
+      if (isOver) return
+      isOver = true
+      this.procs.delete(task.id)
+      turn.endedAt = task.endedAt = Date.now()
+      if (task.status === 'stopped') {
+        this.changed(task, 'stopped')
+        return
+      }
+      try {
+        const res = parseResult(out)
+        if (typeof res.result === 'string') turn.result = res.result
+        // Resuming may return the same session id or a new one; the next turn resumes the latest.
+        if (typeof res.session_id === 'string') task.sessionId = res.session_id
+        if (typeof res.total_cost_usd === 'number') {
+          turn.costUsd = res.total_cost_usd
+          task.costUsd = (task.costUsd ?? 0) + res.total_cost_usd
+        }
+        if (res.modelUsage && typeof res.modelUsage === 'object') {
+          task.usedModels = [...new Set([...(task.usedModels ?? []), ...Object.keys(res.modelUsage)])]
+        }
+        const isError = res.is_error === true || code !== 0
+        task.status = isError ? 'failed' : 'done'
+        if (isError) turn.error = task.error = tail(err) || turn.result || `claude exited with code ${code}`
+      } catch {
+        task.status = 'failed'
+        turn.error = task.error = failure ?? (tail(err) || tail(out) || `claude exited with code ${code}`)
       }
       this.changed(task, task.status === 'done' ? 'done' : 'failed')
     }

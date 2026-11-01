@@ -33,17 +33,33 @@ that session.
 
 ## Talk to your sessions
 
+The idea: you never need the terminal or the Claude window.
+
+- **Read the conversation.** Click a session (on the map or its card) to open
+  its conversation: your prompts, Claude's replies, and its tool calls folded
+  into one-liners, read live from the session's transcript. The **Changes**
+  tab shows the git diff of what it changed.
+- **Approve, answer and review plans** from the "Needs you" cards: Allow or
+  Deny a permission request (with a reason Claude sees), answer Claude's
+  multiple-choice questions, approve or send back a plan. Unanswered after
+  nine minutes, the request falls back to the session's own window.
+- **Get notified.** The bell in the header turns on desktop notifications and
+  a chime for anything that needs you, finished turns and finished tasks; the
+  window title counts what's waiting.
 - **Message a running session** from its card in the sidebar. The message rides
   back on the session's next hook event: after its next tool call while it
   works, with your next prompt, or instead of stopping at the end of a turn
   (it carries on with your message). A session sitting idle gets it when it
   next does something; until then it shows as queued, and you can cancel it.
 - **Start a new task** from the New task form: pick a folder, describe the
-  task, and choose what it may do (read only, edit files, or edit and run
+  task, and choose what it may do (read only; ask me in the app, where every
+  edit or command becomes an Allow/Deny card; edit files; or edit and run
   commands), a model and version (the latest, a pinned one, or any model ID)
   and an effort level. It runs as a headless Claude Code session, shows up in
-  the city like any other, and its answer lands in the task list. Stop ends it
-  and everything it started.
+  the city like any other, and its answer lands in the task list. Reply to it
+  from its conversation and it carries on in the same session, with memory.
+  Stop ends it and everything it started. (Headless tasks can't ask
+  multiple-choice questions or present plans; sessions in a terminal can.)
 
 Both work only from the page itself (the server refuses other origins), and
 only with the HTTP hooks or the `--quiet` hooks from this version on.
