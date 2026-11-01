@@ -5,8 +5,8 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BURBS, LABELS, VIEWS, renderCity } from './city.ts'
-import type { View, World } from './types.ts'
+import { BURBS, LABELS, renderCity } from './city.ts'
+import type { World } from './types.ts'
 import { City, forgetRoots } from './world.ts'
 import type { HookEvent } from './world.ts'
 
@@ -44,7 +44,7 @@ function save() {
 
 // ---- streaming frames to the page -----------------------------------------
 
-type Client = { res: ServerResponse; view: View }
+type Client = { res: ServerResponse }
 const clients = new Set<Client>()
 
 function meta(world: World) {
@@ -72,6 +72,12 @@ function meta(world: World) {
             : LABELS[a.at],
         })),
     })),
+    ticker: city.ticker.slice().reverse(),
+    counts: {
+      sessions: world.sessions.length,
+      working: world.agents.filter(a => a.status === 'working').length,
+      subagents: world.agents.filter(a => !a.isMain && a.status !== 'done' && a.status !== 'failed').length,
+    },
     conflicts: world.conflicts,
     asks: world.asks.map(q => ({ ...q, who: world.agents.find(a => a.id === q.agentId)?.name ?? '' })),
     log: city.log.slice(-30).reverse(),
@@ -80,7 +86,7 @@ function meta(world: World) {
 }
 
 function send(client: Client, world: World, animateWalks: boolean, info: ReturnType<typeof meta>) {
-  const svg = renderCity(world, Date.now(), { animateWalks, view: client.view })
+  const svg = renderCity(world, Date.now(), { animateWalks })
   client.res.write(`data: ${JSON.stringify({ svg, meta: info })}\n\n`)
 }
 
@@ -160,13 +166,12 @@ const server = createServer(async (req, res) => {
       return reply(res, 200, '{}')
     }
     if (req.method === 'GET' && url.pathname === '/stream') {
-      const view = (url.searchParams.get('view') ?? 'island') as View
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-store',
         connection: 'keep-alive',
       })
-      const client: Client = { res, view: view in VIEWS ? view : 'island' }
+      const client: Client = { res }
       clients.add(client)
       send(client, city.world, false, meta(city.world))
       const ping = setInterval(() => res.write(': ping\n\n'), 20_000)

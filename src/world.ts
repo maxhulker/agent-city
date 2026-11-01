@@ -15,6 +15,12 @@ export type HookEvent = Record<string, unknown> & {
 
 export type LogLine = { at: number; color: string; who: string; text: string }
 
+// Subway lines a session can be: one letter or number each, in a circle.
+const BULLETS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'J', 'L', 'M', 'N', 'Q', 'R', 'W', 'Z', '1', '2', '3', '4', '5', '6', '7']
+
+// One line of the news ticker.
+export type TickerItem = { at: number; bullet: string; color: string; who: string; text: string }
+
 const LEAD_COLORS = ['#fbbf24', '#f472b6', '#38bdf8', '#a3e635', '#fb7185', '#c084fc', '#2dd4bf', '#fdba74']
 
 const CONFLICT =
@@ -110,7 +116,13 @@ function pathOf(tool: string, input: Record<string, unknown>, cwd: string): stri
   return isAbsolute(p) ? p : `${norm(cwd)}/${p}`
 }
 
-function activityFor(tool: string, input: Record<string, unknown>): string {
+// An MCP tool by its own name: mcp__Claude_Browser__browser_batch → browser batch.
+function toolName(tool: string): string {
+  return tool.startsWith('mcp__') ? tool.replace(/^mcp__.+?__/, '').replace(/_/g, ' ') : tool
+}
+
+function activityFor(name: string, input: Record<string, unknown>): string {
+  const tool = toolName(name)
   const file = str(input.file_path) || str(input.notebook_path)
   if (file) return `${tool} ${base(file)}`
   if (input.command) return short(str(input.command))
@@ -118,7 +130,7 @@ function activityFor(tool: string, input: Record<string, unknown>): string {
   if (input.url) return `${tool} ${short(str(input.url).replace(/^https?:\/\//, ''), 36)}`
   if (input.query) return `${tool} ${short(str(input.query), 36)}`
   if (input.description) return `${tool}: ${short(str(input.description), 36)}`
-  return tool.replace(/^mcp__[^_]+__/, '')
+  return tool
 }
 
 // A shell command without its quoted strings and heredoc bodies, so a commit
@@ -127,6 +139,40 @@ function shellCode(command: string): string {
   return command
     .replace(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(?=\n|$)/g, '<<heredoc')
     .replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""')
+}
+
+// The ticker's verb phrase for a tool call, if it earns one.
+function tickerFor(tool: string, input: Record<string, unknown>): string | undefined {
+  const file = str(input.file_path) || str(input.notebook_path)
+  const url = str(input.url)
+  const host = () => {
+    try {
+      return new URL(url).host
+    } catch {
+      return short(url.replace(/^https?:\/\//, ''), 30)
+    }
+  }
+  if (tool === 'Read') return `READ ${base(file)}`
+  if (tool === 'Grep' || tool === 'Glob') return `SEARCHED ${short(str(input.pattern), 30)}`
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) return `EDITED ${base(file)}`
+  if (tool === 'Bash' || tool === 'PowerShell') {
+    const command = str(input.command)
+    const code = shellCode(command)
+    // Commits and pushes are announced when they go through, not when they start.
+    if (PUSH.test(code) || COMMIT.test(code)) return undefined
+    return `RAN ${short(command, 30)}`
+  }
+  if (tool === 'WebFetch') return url ? `BROWSED ${host()}` : 'BROWSED THE WEB'
+  if (tool === 'WebSearch') return 'SEARCHED THE WEB'
+  if (/^mcp__.*(browser|chrome|playwright|puppeteer)/i.test(tool)) return url ? `BROWSED ${host()}` : 'BROWSED THE WEB'
+  if (SPAWNS.test(tool)) return `DISPATCHED A SUBAGENT: ${short(str(input.description) || str(input.subagent_type) || 'Subagent', 40)}`
+  if (tool === 'SendMessage') return 'SENT A MESSAGE'
+  if (ASKS.test(tool)) return 'NEEDS YOU'
+  return undefined
+}
+
+function placeOf(a: Agent): Place {
+  return a.burb ? { at: a.at, burb: a.burb } : { at: a.at }
 }
 
 function resultText(value: unknown): string {
@@ -152,6 +198,8 @@ export class City {
   private activity = new Map<string, number[]>()
   private activityRoots = new Map<string, string>()
   private lastFollow = 0
+  // The last 40 ticker items, oldest first. Not saved.
+  ticker: TickerItem[] = []
 
   private touch(root: string | undefined, now: number) {
     if (!root) return
@@ -169,6 +217,27 @@ export class City {
   private say(a: Agent | undefined, text: string, now: number) {
     this.log.push({ at: now, color: a?.color ?? '#94a3b8', who: a?.name ?? 'City', text })
     if (this.log.length > 60) this.log.splice(0, this.log.length - 60)
+  }
+
+  // Adds a ticker line; a repeat of the last one within ten seconds is dropped.
+  private tick(a: Agent | undefined, text: string, now: number) {
+    const who = a?.name ?? 'CITY HALL'
+    const t = text.toUpperCase()
+    if (this.ticker.some(i => i.who === who && i.text === t && now - i.at < 10_000)) return
+    const s = a && this.world.sessions.find(one => one.id === a.session)
+    this.ticker.push({ at: now, bullet: s?.bullet ?? '★', color: a?.color ?? '#94a3b8', who, text: t })
+    if (this.ticker.length > 40) this.ticker.splice(0, this.ticker.length - 40)
+  }
+
+  private ride(from: Place, to: Place, color: string, kind: 'report' | 'message', now: number) {
+    const w = this.world
+    w.rides = [...(w.rides ?? []), { at: now, from, to, color, kind }].slice(-12)
+  }
+
+  // The first line not yet taken by a session; all taken, it wraps around.
+  private bulletFor(): string {
+    const used = this.world.sessions.map(s => s.bullet)
+    return BULLETS.find(b => !used.includes(b)) ?? BULLETS[this.world.sessions.length % BULLETS.length]!
   }
 
   // The borough of the repository at root, moving it in if it is new.
@@ -193,6 +262,7 @@ export class City {
       w.repos.push(repo)
       this.toasts.push(`${repo.name} moved into ${BURBS[burb].name}`)
       this.say(undefined, `${repo.name} moved into ${BURBS[burb].name}`, now)
+      this.tick(undefined, `${repo.name} moved into ${BURBS[burb].name}`, now)
     }
     repo.lastSeen = now
     return repo.burb
@@ -211,11 +281,14 @@ export class City {
         cwd,
         root,
         color: LEAD_COLORS[w.sessions.length % LEAD_COLORS.length]!,
+        bullet: this.bulletFor(),
         startedAt: now,
         updatedAt: now,
       }
       w.sessions.push(s)
     }
+    // Sessions saved before bullets existed get one now.
+    if (!s.bullet) s.bullet = this.bulletFor()
     s.updatedAt = now
     return s
   }
@@ -329,6 +402,7 @@ export class City {
           worked = a.burb ? w.repos.find(r => r.burb === a.burb)?.root : w.homeRoot
         }
         this.touch(worked, now)
+        const before = placeOf(a)
         const isAsk = ASKS.test(tool)
         this.goTo(a, isAsk ? 'hall' : districtFor(tool, str(input.command)), isAsk ? this.homeOf(s, now) : burb)
         a.status = isAsk ? 'waiting' : 'working'
@@ -339,6 +413,17 @@ export class City {
         if (isAsk) {
           w.asks.push({ id: str(ev.tool_use_id), agentId: a.id, label: tool === 'ExitPlanMode' ? 'Plan approval' : 'Question', at: now })
           this.toasts.push(`${a.name} needs you`)
+        }
+        const news = tickerFor(tool, input)
+        if (news) this.tick(a, news, now)
+        if (tool === 'SendMessage') {
+          const to = str(input.to).toLowerCase()
+          const peer = to
+            ? w.agents.find(
+                one => one !== a && one.session === s.id && (one.name.toLowerCase() === to || one.id.toLowerCase().endsWith(to)),
+              )
+            : undefined
+          this.ride(before, peer ? placeOf(peer) : a.burb ? { at: 'relay', burb: a.burb } : { at: 'relay' }, a.color, 'message', now)
         }
         if (SPAWNS.test(tool)) {
           const list = this.spawns.get(s.id) ?? []
@@ -377,6 +462,7 @@ export class City {
             a.activity = `Hit a merge conflict${files.length ? ` in ${files.length} file${files.length === 1 ? '' : 's'}` : ''}`
             this.toasts.push(`${a.name} hit a merge conflict${where ? ` in ${where}` : ''}`)
             this.say(a, `hit a merge conflict${where ? ` in ${where}` : ''}`, now)
+            this.tick(a, `⚠ hit a merge conflict${where ? ` in ${where}` : ''}`, now)
           } else if (RESOLVED.test(command) && ev.hook_event_name === 'PostToolUse') {
             w.conflicts = w.conflicts.filter(c => c.agentId !== a.id)
           }
@@ -388,6 +474,7 @@ export class City {
           const repo = (a.burb ? w.repos.find(r => r.burb === a.burb)?.name : w.home) ?? ''
           w.launch = { kind, at: now, who: a.name, repo }
           this.say(a, `${kind === 'push' ? 'pushed' : 'committed'}${repo ? ` in ${repo}` : ''}`, now)
+          this.tick(a, kind === 'push' ? `🚀 pushed${repo ? ` ${repo}` : ''}` : `committed${repo ? ` in ${repo}` : ''}`, now)
           if (kind === 'push') this.toasts.push(`🚀 ${a.name} pushed${repo ? ` ${repo}` : ''}`)
         }
         break
@@ -395,11 +482,13 @@ export class City {
       case 'SubagentStart': {
         const a = this.agent(ev, s, now)
         a.status = 'working'
+        this.tick(a, 'started work', now)
         break
       }
       case 'SubagentStop': {
         const a = this.agent(ev, s, now)
         const burb = this.homeOf(s, now)
+        const from = placeOf(a)
         a.status = 'done'
         a.inFlight = 0
         // Manhattan's finished agents rest in Central Park; a borough's in its square.
@@ -408,6 +497,9 @@ export class City {
         a.updatedAt = now
         w.asks = w.asks.filter(q => q.agentId !== a.id)
         this.say(a, 'finished', now)
+        this.tick(a, 'filed its report', now)
+        // The report rides back to the lead.
+        if (!a.isMain) this.ride(from, placeOf(this.lead(s, now)), a.color, 'report', now)
         break
       }
       case 'Stop':
@@ -432,6 +524,7 @@ export class City {
         }
         this.toasts.push(`${a.name} is waiting for permission`)
         this.say(a, 'is waiting for permission', now)
+        this.tick(a, 'is waiting for permission', now)
         break
       }
       case 'SessionEnd': {
@@ -509,6 +602,8 @@ export class City {
   flush(now: number): World {
     const w = this.world
     this.followWork(now)
+    for (const s of w.sessions) if (!s.bullet) s.bullet = this.bulletFor()
+    w.rides = (w.rides ?? []).filter(r => now - r.at < 8_000).slice(-12)
     const live = new Set(w.sessions.map(s => s.id))
     // Sessions quiet for six hours have closed without saying so.
     w.sessions = w.sessions.filter(s => now - s.updatedAt < 6 * 3600_000)

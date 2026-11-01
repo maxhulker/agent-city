@@ -48,6 +48,8 @@ export type Session = {
   // The repository root it started in, or its folder when that is none.
   root: string
   color: string
+  // Its subway bullet: a letter in a circle of its color, shared by its agents.
+  bullet?: string
   startedAt: number
   updatedAt: number
 }
@@ -65,6 +67,10 @@ export type Conflict = {
 
 export type Ask = { id: string; agentId: string; label: string; at: number }
 
+// A taxi across town: a finished subagent's report going back to its lead, or
+// a message from one agent to another.
+export type Ride = { at: number; from: Place; to: Place; color: string; kind: 'report' | 'message' }
+
 // The latest commit or push: the Statue of Liberty hops for one, launches for the other.
 export type Launch = { kind: 'commit' | 'push'; at: number; who: string; repo: string }
 
@@ -80,5 +86,7 @@ export type World = {
   conflicts: Conflict[]
   asks: Ask[]
   launch?: Launch
+  // Taxis on the road now (each lasts a few seconds).
+  rides?: Ride[]
   flushedAt: number
 }

@@ -15,10 +15,20 @@ subagents walk between landmarks as they call tools:
 | City Hall | the lead; questions and permission prompts raise a "?" here |
 | Central Park | finished subagents rest here |
 
-The first repository seen is Manhattan. Every other repository a session works
-in moves into Brooklyn, Queens, the Bronx or Jersey City, and agents cross the
-bridges to reach it. Use **Make Manhattan** in the sidebar to change which
-repository is home.
+Each session has a subway bullet (Ⓐ, Ⓑ, …) shared by its agents. Agents hold
+a prop for what they're doing (a book, a hammer, a laptop…), show a speech
+bubble on hover, and send finished reports back by yellow cab. The building
+being edited goes up in scaffolding, the Statue of Liberty hops on a commit and
+launches on a push, and a Times Square news ticker runs along the bottom.
+
+Manhattan is the busiest repository. Every other repository a session works in
+moves into Brooklyn, Queens, the Bronx or Jersey City, and agents cross the
+bridges to reach it. Use **Make Manhattan** in the sidebar to pick home
+yourself, and **Pick automatically** to hand it back.
+
+Scroll to zoom, drag to pan, double-click to zoom in, and press `0` or **Fit**
+to see the whole island. Click an agent or a session card to highlight that
+session.
 
 It works with any account Claude Code is signed into, personal or company,
 because hooks are set on the machine, not the account. It does not work with

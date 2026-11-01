@@ -13,9 +13,10 @@
     --dim: #94a3b8;
     --accent: #fbbf24;
     --red: #f87171;
+    --side: 300px;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -26,14 +27,14 @@
   header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
+    gap: 8px;
+    height: 30px;
+    flex: none;
+    padding: 0 10px;
     border-bottom: 1px solid var(--line);
-    flex-wrap: wrap;
   }
-  header h1 { font-size: 15px; letter-spacing: .12em; margin: 0 8px 0 0; }
-  .views { display: flex; gap: 4px; flex-wrap: wrap; }
-  .views button, .btn {
+  header h1 { font-size: 12px; letter-spacing: .14em; margin: 0 8px 0 0; }
+  .btn {
     background: var(--panel);
     color: var(--text);
     border: 1px solid var(--line);
@@ -42,21 +43,64 @@
     font: inherit;
     cursor: pointer;
   }
-  .views button[aria-pressed="true"] { background: var(--accent); color: #111827; border-color: var(--accent); font-weight: 600; }
-  .btn:hover, .views button:hover { border-color: var(--dim); }
-  #link { margin-left: auto; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+  header .btn { padding: 1px 10px; font-size: 12px; }
+  .btn:hover { border-color: var(--dim); }
+  #link { margin-left: auto; color: var(--dim); display: flex; align-items: center; gap: 6px; font-size: 12px; }
   #link i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; }
   #link.on i { background: #4ade80; }
-  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
-  #map { overflow: auto; display: flex; align-items: flex-start; justify-content: center; }
-  #map svg { width: 100%; height: auto; display: block; }
-  aside { border-left: 1px solid var(--line); overflow-y: auto; padding: 12px 16px 24px; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) var(--side); min-height: 0; position: relative; }
+  body.collapsed main { grid-template-columns: minmax(0, 1fr) 0; }
+  body.collapsed aside { display: none; }
+  #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+  #map { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+  #map.dragging { cursor: grabbing; }
+  #map svg { width: 100%; height: 100%; display: block; }
+  .agent { cursor: pointer; }
+  .agent:hover .bubble, .agent.sel .bubble, .agent.waiting .bubble { display: inline; }
+  #map .sel .ring { display: inline; animation: ringpulse 1.6s ease-in-out infinite; }
+  @keyframes ringpulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  #map [data-session] { cursor: pointer; }
+
+  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  #title { position: absolute; top: 12px; left: 14px; text-shadow: 0 1px 6px #000c; }
+  #title b { font-size: 16px; letter-spacing: .16em; display: block; }
+  #title .sub { color: var(--dim); font-size: 12px; }
+  #counts { color: var(--accent); font-size: 12px; }
+  #pills { position: absolute; top: 12px; right: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .pill { pointer-events: auto; cursor: pointer; border: 1px solid; border-radius: 999px; padding: 4px 12px; font: inherit; font-weight: 600; box-shadow: 0 4px 14px #0008; }
+  .pill.red { background: #3b1016; color: #fecaca; border-color: #b91c1c; }
+  .pill.amber { background: #3a2a07; color: #fde68a; border-color: #b45309; }
+  .pill:hover { filter: brightness(1.25); }
+
+  #ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 30px; z-index: 3;
+    background: #0a0703; border-top: 1px solid #3a2a07; overflow: hidden; pointer-events: none;
+    box-shadow: 0 -4px 18px #000a;
+  }
+  #ticker::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0 2px, #0006 2px 3px);
+  }
+  #track { position: absolute; left: 0; top: 0; height: 100%; display: flex; align-items: center; white-space: nowrap; will-change: transform;
+    font: 700 14px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .14em; text-transform: uppercase;
+    color: #ffb830; text-shadow: 0 0 6px #ff9a1faa, 0 0 14px #ff9a1f55; }
+  #track .seg { display: inline-flex; align-items: center; flex: none; }
+  #track .it { display: inline-flex; align-items: center; gap: 8px; }
+  #track .sep { margin: 0 18px; color: #b45309; }
+  #track .bul { text-shadow: none; }
+
+  .bul { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
+    font: 700 11px/1 ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: #fff; flex: none; letter-spacing: 0; text-transform: none; }
+  .bul.sm { width: 14px; height: 14px; font-size: 9px; }
+
+  aside { border-left: 1px solid var(--line); overflow-y: auto; padding: 12px 14px 24px; background: var(--bg); min-height: 0; }
   h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 18px 0 8px; }
   h2:first-child { margin-top: 4px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
   .card.alert { border-color: #7f1d1d; background: #1f0f14; }
   .card.ask { border-color: #713f12; background: #1c1508; }
   .row { display: flex; align-items: baseline; gap: 8px; }
+  .row > .bul { align-self: center; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; transform: translateY(1px); }
   .name { font-weight: 600; }
   .dim { color: var(--dim); }
@@ -71,35 +115,35 @@
   .log { list-style: none; padding: 0; margin: 0; }
   .log li { padding: 3px 0; border-bottom: 1px solid var(--line); }
   .empty { color: var(--dim); font-style: italic; }
-  #toasts { position: fixed; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+  #toasts { position: fixed; bottom: 46px; left: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; pointer-events: none; }
   .toast { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 8px 14px; box-shadow: 0 8px 24px #0008; animation: fade 5s forwards; }
   @keyframes fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
-  #map [data-session] { cursor: pointer; }
-  #map .sel .ring { display: inline; animation: ringpulse 1.6s ease-in-out infinite; }
-  @keyframes ringpulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
   .card[data-session-card] { cursor: pointer; }
   .card[data-session-card].selected { border-color: var(--accent); }
   .agents li[data-session-card] { cursor: pointer; }
   @media (max-width: 900px) {
-    main { grid-template-columns: 1fr; }
-    aside { border-left: 0; border-top: 1px solid var(--line); }
+    main { grid-template-columns: minmax(0, 1fr) !important; }
+    aside { position: absolute; top: 0; right: 0; bottom: 0; width: min(var(--side), 86vw); z-index: 5; box-shadow: -8px 0 24px #000a; }
   }
 </style>
 </head>
 <body>
 <header>
   <h1>AGENT CITY</h1>
-  <div class="views" role="group" aria-label="Zoom">
-    <button data-view="island">Whole island</button>
-    <button data-view="uptown">Uptown</button>
-    <button data-view="midtown">Midtown</button>
-    <button data-view="downtown">Downtown</button>
-  </div>
+  <button class="btn" id="fit" title="Reset zoom (0)">Fit</button>
   <span id="link"><i></i><span>Connecting…</span></span>
+  <button class="btn" id="sidebtn" title="Show or hide the panel">Panel</button>
 </header>
 <main>
-  <div id="map"></div>
-  <aside>
+  <div id="stage">
+    <div id="map"></div>
+    <div id="hud">
+      <div id="title"><b>AGENT CITY</b><div class="sub" id="sub">Manhattan</div><div id="counts"></div></div>
+      <div id="pills"></div>
+    </div>
+    <div id="ticker"><div id="track"></div></div>
+  </div>
+  <aside id="side">
     <div id="needs"></div>
     <h2>Sessions</h2>
     <div id="sessions"></div>
@@ -113,17 +157,127 @@
 <script>
   const $ = id => document.getElementById(id)
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
-  let view = 'island'
-  try { view = localStorage.getItem('agent-city-view') || 'island' } catch {}
   let selected = ''
   try { selected = localStorage.getItem('agent-city-selected') || '' } catch {}
   let boot = null
   let source
 
+  // ---- zoom / pan -------------------------------------------------------
+  // View = zoom plus the visible centre as a fraction (u, v) of the server's fit box.
+  const MAXZ = 8
+  let view = { z: 1, u: 0.5, v: 0.5 }
+  try {
+    const v = JSON.parse(localStorage.getItem('agent-city-zoom') || 'null')
+    if (v && isFinite(v.z) && isFinite(v.u) && isFinite(v.v)) view = { z: Math.min(MAXZ, Math.max(1, v.z)), u: v.u, v: v.v }
+  } catch {}
+  let base = null // [x, y, w, h] from the svg's own viewBox
+
+  const svgEl = () => $('map').querySelector('svg')
+
+  function readBase(svg) {
+    const p = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number)
+    if (p.length === 4 && p.every(isFinite) && p[2] > 0 && p[3] > 0) base = p
+  }
+
+  function applyView() {
+    const svg = svgEl()
+    if (!svg || !base) return
+    view.z = Math.min(MAXZ, Math.max(1, view.z))
+    view.u = Math.min(1, Math.max(0, view.u))
+    view.v = Math.min(1, Math.max(0, view.v))
+    const [bx, by, bw, bh] = base
+    const w = bw / view.z, h = bh / view.z
+    const cx = bx + view.u * bw, cy = by + view.v * bh
+    svg.setAttribute('viewBox', `${cx - w / 2} ${cy - h / 2} ${w} ${h}`)
+    svg.style.setProperty('--zt', String(1 / view.z))
+    svg.style.setProperty('--zs', String(1 / Math.pow(view.z, 0.6)))
+    svg.classList.toggle('z2', view.z >= 2)
+    svg.classList.toggle('z4', view.z >= 4)
+  }
+
+  function saveView() {
+    try { localStorage.setItem('agent-city-zoom', JSON.stringify(view)) } catch {}
+  }
+
+  // client point -> svg user coordinates (honours preserveAspectRatio)
+  function toUser(svg, cx, cy) {
+    const m = svg.getScreenCTM()
+    if (!m) return null
+    const pt = new DOMPoint(cx, cy).matrixTransform(m.inverse())
+    return pt
+  }
+
+  function zoomAt(factor, cx, cy) {
+    const svg = svgEl()
+    if (!svg || !base) return
+    const before = toUser(svg, cx, cy)
+    view.z = Math.min(MAXZ, Math.max(1, view.z * factor))
+    applyView()
+    const after = toUser(svg, cx, cy)
+    if (before && after) {
+      view.u += (before.x - after.x) / base[2]
+      view.v += (before.y - after.y) / base[3]
+      applyView()
+    }
+    saveView()
+  }
+
+  function fit() { view = { z: 1, u: 0.5, v: 0.5 }; applyView(); saveView() }
+
+  const map = $('map')
+  map.addEventListener('wheel', e => {
+    e.preventDefault()
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY
+    zoomAt(Math.pow(1.0015, -dy), e.clientX, e.clientY)
+  }, { passive: false })
+
+  let drag = null, justDragged = false
+  map.addEventListener('mousedown', e => {
+    if (e.button !== 0) return
+    drag = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false }
+  })
+  window.addEventListener('mousemove', e => {
+    if (!drag) return
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return
+    if (!drag.moved) { drag.moved = true; map.classList.add('dragging') }
+    const svg = svgEl()
+    const m = svg && svg.getScreenCTM()
+    if (m && base) {
+      view.u -= (e.clientX - drag.lx) / m.a / base[2]
+      view.v -= (e.clientY - drag.ly) / m.d / base[3]
+      applyView()
+    }
+    drag.lx = e.clientX; drag.ly = e.clientY
+  })
+  window.addEventListener('mouseup', () => {
+    if (!drag) return
+    if (drag.moved) { justDragged = true; setTimeout(() => { justDragged = false }, 0); saveView() }
+    map.classList.remove('dragging')
+    drag = null
+  })
+  // swallow the click that ends a drag so it never changes the selection
+  map.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault() } }, true)
+  map.addEventListener('dblclick', e => { zoomAt(2, e.clientX, e.clientY) })
+  $('fit').addEventListener('click', fit)
+  window.addEventListener('keydown', e => {
+    if (e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) fit()
+  })
+  window.addEventListener('resize', () => applyView())
+
+  // ---- sidebar toggle ---------------------------------------------------
+  function setCollapsed(c) {
+    document.body.classList.toggle('collapsed', c)
+    try { localStorage.setItem('agent-city-collapsed', c ? '1' : '0') } catch {}
+  }
+  let side = null
+  try { side = localStorage.getItem('agent-city-collapsed') } catch {}
+  setCollapsed(side === null ? window.innerWidth <= 900 : side === '1')
+  $('sidebtn').addEventListener('click', () => setCollapsed(!document.body.classList.contains('collapsed')))
+
+  // ---- connection -------------------------------------------------------
   function connect() {
     source?.close()
-    for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === view))
-    source = new EventSource(`/stream?view=${view}`)
+    source = new EventSource('/stream')
     source.onopen = () => { $('link').className = 'on'; $('link').lastChild.textContent = 'Live' }
     source.onerror = () => { $('link').className = ''; $('link').lastChild.textContent = 'Reconnecting…' }
     source.onmessage = e => {
@@ -133,6 +287,8 @@
         else if (meta.boot !== boot) { location.reload(); return }
       }
       $('map').innerHTML = svg
+      const el = svgEl()
+      if (el) { readBase(el); applyView() }
       draw(meta)
       applySel(false)
     }
@@ -166,14 +322,72 @@
     applySel(scroll)
   }
 
+  const bullet = (text, color, small) => text
+    ? `<span class="bul${small ? ' sm' : ''}" style="background:${esc(color)}">${esc(text)}</span>` : ''
+
+  // ---- ticker (JS-driven so frames never restart the scroll) ------------
+  const SPEED = 55 // px per second
+  let tickAt = null, tickHtml = '', pendingHtml = null, tx = 0, segW = 0, lastT = 0
+
+  function tickerSeg(items) {
+    if (!items.length) return '<span class="seg"><span class="it">AGENT CITY</span><span class="sep">◆</span><span class="it">WAITING FOR THE FIRST SESSION</span><span class="sep">◆</span></span>'
+    return '<span class="seg">' + items.map(t =>
+      `<span class="it">${bullet(t.bullet, t.color, true)}<span>${esc(t.who)} ${esc(t.text)}</span></span><span class="sep">◆</span>`).join('') + '</span>'
+  }
+
+  function installTicker(seg) {
+    const track = $('track')
+    track.innerHTML = seg
+    segW = track.firstChild.getBoundingClientRect().width || 1
+    const need = Math.ceil(($('ticker').clientWidth || 1200) / segW) + 1
+    track.innerHTML = seg.repeat(need + 1)
+    tickHtml = seg
+  }
+
+  function updateTicker(items) {
+    const at = items.length ? items[0].at : 0
+    if (at === tickAt && tickHtml) return
+    tickAt = at
+    const seg = tickerSeg(items)
+    if (!tickHtml) { tx = $('ticker').clientWidth; installTicker(seg) } // first paint: enter from the right
+    else pendingHtml = seg // swap at the next loop boundary
+  }
+
+  function tickFrame(t) {
+    const dt = lastT ? Math.min(0.1, (t - lastT) / 1000) : 0
+    lastT = t
+    if (tickHtml) {
+      tx -= SPEED * dt
+      if (tx <= -segW) {
+        tx += segW
+        if (pendingHtml) { installTicker(pendingHtml); pendingHtml = null }
+      }
+      $('track').style.transform = `translateX(${tx.toFixed(2)}px)`
+    }
+    requestAnimationFrame(tickFrame)
+  }
+  requestAnimationFrame(tickFrame)
+
+  // ---- sidebar + overlays ------------------------------------------------
   function draw(m) {
+    const conflicts = m.conflicts || [], asks = m.asks || []
+
+    $('sub').textContent = `Manhattan · ${m.home || 'the first repository seen'}`
+    const c = m.counts
+    $('counts').textContent = c ? `${c.sessions} session${c.sessions === 1 ? '' : 's'} · ${c.working} working · ${c.subagents} subagent${c.subagents === 1 ? '' : 's'}` : ''
+    $('pills').innerHTML =
+      (conflicts.length ? `<button class="pill red" data-needs="1">⚠ ${conflicts.length} merge conflict${conflicts.length === 1 ? '' : 's'} at the Seaport</button>` : '') +
+      (asks.length ? `<button class="pill amber" data-needs="1">? ${asks.length} waiting at City Hall</button>` : '')
+
+    updateTicker(m.ticker || [])
+
     let needs = ''
-    for (const c of m.conflicts) {
+    for (const c of conflicts) {
       needs += `<div class="card alert"><div class="name">⚠ Merge conflict · ${esc(c.agentName)}</div>
         <div class="small dim">${esc(c.files.length ? c.files.join(', ') : c.command)}</div>
         <div style="margin-top:6px"><button class="btn" data-resolve="${esc(c.id)}">Mark resolved</button></div></div>`
     }
-    for (const q of m.asks) {
+    for (const q of asks) {
       needs += `<div class="card ask"><div class="name">? ${esc(q.who)}</div><div class="small dim">${esc(q.label)}</div></div>`
     }
     $('needs').innerHTML = needs ? `<h2>Needs you</h2>${needs}` : ''
@@ -182,14 +396,14 @@
       const lead = s.agents.find(a => a.isMain)
       const subs = s.agents.filter(a => !a.isMain)
       return `<div class="card${s.id === selected ? ' selected' : ''}" data-session-card="${esc(s.id)}">
-        <div class="row"><span class="dot" style="background:${esc(s.color)}"></span>
+        <div class="row">${s.bullet ? bullet(s.bullet, s.color) : `<span class="dot" style="background:${esc(s.color)}"></span>`}
           <span class="name">${esc(lead?.name ?? s.name)}</span>
           ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : ''}</div>
-        <div class="path" style="margin-left:17px">${esc(s.cwd)}</div>
-        ${lead ? `<div class="small dim" style="margin-left:17px">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}
-        ${subs.length ? `<ul class="agents">${subs.map(a => `<li data-session-card="${esc(s.id)}"><div class="row"><span class="dot" style="background:${esc(a.color)}"></span>
+        <div class="path" style="margin-left:26px">${esc(s.cwd)}</div>
+        ${lead ? `<div class="small dim" style="margin-left:26px">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}
+        ${subs.length ? `<ul class="agents">${subs.map(a => `<li data-session-card="${esc(s.id)}"><div class="row">${s.bullet ? bullet(s.bullet, a.color || s.color, true) : `<span class="dot" style="background:${esc(a.color)}"></span>`}
           <span>${esc(a.name)}</span><span class="status ${esc(a.status)}">${esc(a.status)}</span></div>
-          <div class="small dim" style="margin-left:17px">${esc(a.where)} · ${esc(a.activity)}</div></li>`).join('')}</ul>` : ''}
+          <div class="small dim" style="margin-left:22px">${esc(a.where)} · ${esc(a.activity)}</div></li>`).join('')}</ul>` : ''}
       </div>`
     }).join('') : '<div class="empty">No sessions yet. Start Claude Code anywhere on this machine.</div>'
 
@@ -206,7 +420,7 @@
       <span><b>${esc(l.who)}</b> ${esc(l.text)} <span class="dim small">${ago(l.at)}</span></span></span></li>`).join('')
       : '<li class="empty">Quiet so far.</li>'
 
-    for (const t of m.toasts) {
+    for (const t of m.toasts || []) {
       const el = document.createElement('div')
       el.className = 'toast'
       el.textContent = t
@@ -227,12 +441,11 @@
       }
       return
     }
-    if (b.dataset.homeAuto) {
+    if (b.dataset.needs) {
+      setCollapsed(false)
+      ;($('needs').firstChild || $('side')).scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    } else if (b.dataset.homeAuto) {
       post('/home', { auto: true })
-    } else if (b.dataset.view) {
-      view = b.dataset.view
-      try { localStorage.setItem('agent-city-view', view) } catch {}
-      connect()
     } else if (b.dataset.resolve) {
       post('/resolve', { id: b.dataset.resolve })
     } else if (b.dataset.home) {
