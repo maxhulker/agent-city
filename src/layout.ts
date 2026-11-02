@@ -1015,3 +1015,21 @@ export function generateMap(seed: number): Layout {
   const station: Building = { id: 'station', kind: 'station', x: sx, y: sy, face: 's', built: 0 }
   return { rev: 0, map: { seed }, land, park: [], roads, zoned: [], buildings: [station], boroughs: [] }
 }
+
+// The spans joined to the one at (x, y), by index: rows touching rows.
+export function componentOf(land: Span[], x: number, y: number): Set<number> {
+  const start = land.findIndex(([ry, x0, x1]) => ry === y && x >= x0 && x < x1)
+  const out = new Set<number>()
+  if (start < 0) return out
+  const todo = [start]
+  out.add(start)
+  while (todo.length) {
+    const [ry, a0, a1] = land[todo.pop()!]!
+    land.forEach(([sy, b0, b1], j) => {
+      if (out.has(j) || Math.abs(sy - ry) !== 1 || b1 <= a0 || b0 >= a1) return
+      out.add(j)
+      todo.push(j)
+    })
+  }
+  return out
+}

@@ -1,5 +1,5 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
-import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, deltaOf, doorOf, edges, isWaiting, lots, route, siteFor, spotFor } from '../layout.ts'
+import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, componentOf, deltaOf, doorOf, edges, isWaiting, lots, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
@@ -330,13 +330,18 @@ export function frame(burbs: Burb[], layout?: Layout): Frame {
     y1 = Math.max(y1, y)
   }
   if (layout && !('preset' in layout.map)) {
-    // A generated map: all its land.
-    for (const [y, x0, x1] of layout.land) {
-      take(x0, y)
-      take(x1, y)
-      take(x0, y + 1)
-      take(x1, y + 1)
-    }
+    // A generated map: the station's island and a few cells of water and
+    // mainland round it (the rest is a pan away), or all the land without one.
+    const station = layout.buildings.find(b => b.kind === 'station')
+    const island = station ? componentOf(layout.land, station.x, station.y) : new Set<number>()
+    const m = island.size ? 6 : 0
+    layout.land.forEach(([y, x0, x1], i) => {
+      if (island.size && !island.has(i)) return
+      take(x0 - m, y - m)
+      take(x1 + m, y - m)
+      take(x0 - m, y + 1 + m)
+      take(x1 + m, y + 1 + m)
+    })
   } else {
     for (let gy = -3; gy <= 71; gy += 0.5) {
       const [w, e] = edges(gy)

@@ -1,7 +1,7 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, boroughRect, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, boroughRect, componentOf, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
@@ -1399,43 +1399,83 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
 
 // ---- water and sky --------------------------------------------------------
 
-// A generated map's land, from its cells: each row's spans drawn half a cell
-// in and stroked half a cell wide with round joins, so the cells meet and the
-// shore's corners round off, over a darker shore. The station's island is
-// paved; the rest is the mainland's green.
+// A generated map's land, from its cells, with a smoothed shore: marching
+// squares over the cells' centres, so a step in the coast becomes a
+// diagonal, over a darker shore. The station's island is paved; the rest is
+// the mainland's green.
 function generatedLand(layout: Layout): string {
   const station = layout.buildings.find(b => b.kind === 'station')
   const island = station ? componentOf(layout.land, station.x, station.y) : new Set<number>()
-  let paved = ''
-  let green = ''
+  const all = new Set<string>()
+  const paved = new Set<string>()
   layout.land.forEach(([y, x0, x1], i) => {
-    const d = `M${n(x0 + 0.25)} ${n(y + 0.25)}H${n(x1 - 0.25)}V${n(y + 0.75)}H${n(x0 + 0.25)}z`
-    if (island.has(i)) paved += d
-    else green += d
+    for (let x = x0; x < x1; x++) {
+      all.add(`${x},${y}`)
+      if (island.has(i)) paved.add(`${x},${y}`)
+    }
   })
-  const shape = (d: string, fill: string) => (d ? `<path d="${d}" fill="${fill}" stroke="${fill}" stroke-width=".54" stroke-linejoin="round"/>` : '')
-  let s = `<g class="shore" transform="translate(0 4)">${GRID}${shape(paved + green, '#0d1a14')}</g></g>`
-  s += GRID + shape(green, '#17251d') + shape(paved, '#30353f') + '</g>'
+  const green = new Set([...all].filter(c => !paved.has(c)))
+  const shape = (d: string, fill: string) => (d ? `<path d="${d}" fill="${fill}" stroke="${fill}" stroke-width=".06" stroke-linejoin="round"/>` : '')
+  let s = `<g class="shore" transform="translate(0 4)">${GRID}${shape(marching(all), '#0d1a14')}</g></g>`
+  s += GRID + shape(marching(green), '#17251d') + shape(marching(paved), '#30353f') + '</g>'
   return s
 }
 
-// The spans joined to the one at (x, y), by index: rows touching rows.
-function componentOf(land: Span[], x: number, y: number): Set<number> {
-  const start = land.findIndex(([ry, x0, x1]) => ry === y && x >= x0 && x < x1)
-  const out = new Set<number>()
-  if (start < 0) return out
-  const todo = [start]
-  out.add(start)
-  while (todo.length) {
-    const [ry, a0, a1] = land[todo.pop()!]!
-    land.forEach(([sy, b0, b1], j) => {
-      if (out.has(j) || Math.abs(sy - ry) !== 1 || b1 <= a0 || b0 >= a1) return
-      out.add(j)
-      todo.push(j)
-    })
+// The outline of a set of cells ("x,y") as marching squares over their
+// centres: whole squares joined into runs along each row, and each square on
+// the shore cut from edge middle to edge middle.
+function marching(cells: Set<string>): string {
+  if (!cells.size) return ''
+  let x0 = Infinity
+  let x1 = -Infinity
+  let y0 = Infinity
+  let y1 = -Infinity
+  for (const c of cells) {
+    const [x, y] = c.split(',').map(Number) as [number, number]
+    x0 = Math.min(x0, x)
+    x1 = Math.max(x1, x)
+    y0 = Math.min(y0, y)
+    y1 = Math.max(y1, y)
   }
-  return out
+  const at = (x: number, y: number) => cells.has(`${x},${y}`)
+  let d = ''
+  for (let j = y0 - 1; j <= y1; j++) {
+    let run = -1
+    for (let i = x0 - 1; i <= x1 + 1; i++) {
+      // The square between the centres of (i, j), (i+1, j), (i+1, j+1), (i, j+1).
+      const tl = at(i, j)
+      const tr = at(i + 1, j)
+      const br = at(i + 1, j + 1)
+      const bl = at(i, j + 1)
+      const full = tl && tr && br && bl
+      if (full) {
+        if (run < 0) run = i
+        continue
+      }
+      if (run >= 0) {
+        d += `M${n(run + 0.5)} ${n(j + 0.5)}H${n(i + 0.5)}V${n(j + 1.5)}H${n(run + 0.5)}z`
+        run = -1
+      }
+      if (!tl && !tr && !br && !bl) continue
+      const cx = i + 0.5
+      const cy = j + 0.5
+      const pts: [number, number][] = []
+      const corner = (on: boolean, x: number, y: number) => on && pts.push([x, y])
+      const mid = (a: boolean, b: boolean, x: number, y: number) => a !== b && pts.push([x, y])
+      corner(tl, cx, cy)
+      mid(tl, tr, cx + 0.5, cy)
+      corner(tr, cx + 1, cy)
+      mid(tr, br, cx + 1, cy + 0.5)
+      corner(br, cx + 1, cy + 1)
+      mid(br, bl, cx + 0.5, cy + 1)
+      corner(bl, cx, cy + 1)
+      mid(bl, tl, cx, cy + 0.5)
+      d += 'M' + pts.map(([x, y]) => `${n(x)} ${n(y)}`).join('L') + 'z'
+    }
+  }
+  return d
 }
+
 
 // City lights reflected in the rivers: streaks under the shores that face us.
 function reflections(): string {

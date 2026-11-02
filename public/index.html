@@ -106,6 +106,9 @@
   #welcome .wstart { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--dim); }
   .bp-line .nm { flex: 1; min-width: 0; }
   .bp-line .hn { color: var(--dim); font-size: 11px; text-align: right; }
+  /* A quest: its name on one line; only the next one says how, underneath. */
+  .bp-line.q { flex-wrap: wrap; }
+  .bp-line.q .hn { flex-basis: 100%; text-align: left; padding-left: 22px; }
   .bp-line.built .hn { display: none; }
   .bp-done { display: flex; align-items: center; gap: 10px; font-size: 12px; }
   .pill { pointer-events: auto; cursor: pointer; border: 1px solid; border-radius: 999px; padding: 4px 12px; font: inherit; font-weight: 600; box-shadow: 0 4px 14px #0008; }
@@ -1523,8 +1526,8 @@
       <button class="btn sm" type="button" data-rebuild="manhattan" title="Manhattan, whole; sessions and agents stay">Rebuild: Manhattan</button>`
     $('bp-title').textContent = g.quests ? 'First district' : 'Blueprints'
     const html = g.quests
-      ? g.quests.map(q => `<div class="bp-line ${esc(q.state)}" title="${esc(q.hint)}"><span class="st">${MARK[q.state] || ''}</span><span class="nm">${esc(q.name)}</span>
-          ${q.opened ? '<span class="op" title="A session has used it">open</span>' : ''}<span class="hn">${esc(q.state === 'done' ? '' : q.hint)}</span></div>`).join('') +
+      ? g.quests.map(q => `<div class="bp-line q ${esc(q.state)}" title="${esc(q.hint)}"><span class="st">${MARK[q.state] || ''}</span><span class="nm">${esc(q.name)}</span>
+          ${q.opened ? '<span class="op" title="A session has used it">open</span>' : ''}${q.state === 'next' ? `<span class="hn">${esc(q.hint)}</span>` : ''}</div>`).join('') +
         `<div class="row wrap" style="margin-top:8px"><span class="small dim">${g.quests.filter(q => q.state === 'done').length} of ${g.quests.length} done</span>${rebuild}</div>`
       : g.complete
       ? `<div class="bp-done"><span>✓ The city is complete.</span></div><div class="row wrap">${rebuild}</div>`
@@ -2651,7 +2654,13 @@
   const R = () => window.cityRules
   window.addEventListener('rules-ready', () => { drawCatalog(); drawCursor() })
 
+  // The land the layout stands on: when it changes (a map picked, Rebuild),
+  // the old view means nothing on the new land, so the view fits again.
+  let landId = null
   function setLayout(l) {
+    const id = JSON.stringify(l.map)
+    if (landId !== null && landId !== id && typeof fit === 'function') fit()
+    landId = id
     layout = l
     drawMapPicker()
     buildBar.hidden = false
@@ -2672,7 +2681,12 @@
     gesture = null
     for (const b of buildBar.querySelectorAll('.tool')) b.classList.toggle('on', b.dataset.tool === t)
     map.classList.toggle('tool', t !== 'select')
-    catalog.hidden = t !== 'place'
+    // The catalogue opens with Build… and closes once a kind is picked, so it
+    // never covers the ground you are placing on; Build… opens it again.
+    catalog.hidden = !(t === 'place' && !kind)
+    const placeBtn = buildBar.querySelector('[data-tool="place"]')
+    const picked = KINDS.find(([k]) => k === placeKind)
+    placeBtn.textContent = t === 'place' && kind && picked ? `Build: ${picked[1]}` : 'Build…'
     if (t !== 'select') hideSel()
     $('bt-why').textContent = ''
     drawCatalog()
@@ -2707,7 +2721,12 @@
   buildBar.addEventListener('click', e => {
     const b = e.target.closest('[data-tool]')
     if (!b) return
-    if (b.dataset.tool === 'place' && tool === 'place') { setTool('select'); return }
+    if (b.dataset.tool === 'place' && tool === 'place') {
+      // Placing with the catalogue shut: open it to pick another; open: back to Select.
+      if (catalog.hidden) { catalog.hidden = false; return }
+      setTool('select')
+      return
+    }
     setTool(b.dataset.tool)
   })
 
