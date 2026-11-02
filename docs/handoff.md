@@ -131,6 +131,16 @@ in `test/siteplan.test.ts`. B4's small touches are not done. (The
 installer's two task events only landed with the Treasury's commit: the
 site plans commit missed them.)
 
+Generated maps were reworked after the person found them unnatural:
+`terrainOf(seed)` in `src/layout.ts` builds a heightmap from domain-warped
+noise (five octaves), the mainland rising inland along a direction that
+varies by seed, a tilted island with a strongly warped outline and a solid
+core, one or two rivers meandering from the mainland's far side to the sea
+and widening to their mouths, and small islets and puddles swept away.
+`generatedLand` in map.ts draws blurred shallows round the coasts and up
+the rivers, a sand rim, green rising into three bands of hills by height,
+and pavement only under zoned blocks and buildings.
+
 ### E. The City Treasury
 
 A civic building (`treasury` in `FOOTPRINT` and `FIXED`: it stands at once

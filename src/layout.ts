@@ -976,40 +976,184 @@ function fbm(seed: number, x: number, y: number): number {
   return 0.55 * noise(seed, x, y, 16) + 0.3 * noise(seed + 1, x, y, 8) + 0.15 * noise(seed + 2, x, y, 4)
 }
 
-// The shape of a seed's map: the island's middle and half-sizes, and how wide
-// the strait round it runs.
-export function mapShape(seed: number): { cx: number; cy: number; a: number; b: number; strait: number } {
-  const r = (k: number) => rnd(seed, 1000 + k, 7)
-  return { cx: 30 + (r(0) - 0.5) * 8, cy: 38 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 13 + r(3) * 4, strait: 0.35 + r(4) * 0.3 }
+// Five octaves, for terrain, in [0, 1).
+function fbm5(seed: number, x: number, y: number): number {
+  let v = 0
+  let amp = 0.5
+  let scale = 24
+  let sum = 0
+  for (let o = 0; o < 5; o++) {
+    v += amp * noise(seed + o * 7, x, y, scale)
+    sum += amp
+    amp *= 0.5
+    scale /= 2
+  }
+  return v / sum
 }
 
-// A map made from a seed (docs/city-builder.md, "The map"): value noise over
-// the grid with a coast threshold. The mainland rises towards the back and the
-// west, cut by inlets and headlands; the island sits in front of it across a
-// strait, with a core of solid land big enough for every footprint; the sea
-// lies in front. The station stands on the island near its east shore, its
-// track running out to the water, with a street along its front.
-export function generateMap(seed: number): Layout {
-  const { cx, cy, a, b, strait } = mapShape(seed)
-  const isLand = (x: number, y: number): boolean => {
-    const px = x + 0.5
-    const py = y + 0.5
-    const e = ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2
-    const wobble = (fbm(seed + 10, px, py) - 0.5) * 0.7
-    if (e < 0.55) return true
-    if (e + wobble < 1) return true
-    // The strait round the island.
-    if (e + wobble < 1 + strait + 0.5) return false
-    // The mainland: high at the back and the west, sinking into the sea in front.
-    const back = Math.max(0, Math.min(1, 1.45 - (px + py) / 46))
-    return fbm(seed + 20, px, py) * 1.0 + back * 0.55 > 0.86
+// Noise read through noise: the coordinates pushed about by two slower
+// fields, so coasts wander into bays and headlands instead of blobs.
+function warped(seed: number, x: number, y: number, by = 12): number {
+  const wx = x + (fbm(seed + 31, x, y) - 0.5) * by
+  const wy = y + (fbm(seed + 37, x, y) - 0.5) * by
+  return fbm5(seed, wx, wy)
+}
+
+// The shape of a seed's map: the island's middle and half-sizes, how wide
+// the strait round it runs, and which way the mainland lies (a unit vector
+// pointing inland, always towards the back of the view).
+export function mapShape(seed: number): { cx: number; cy: number; a: number; b: number; strait: number; inland: [number, number]; tilt: number } {
+  const r = (k: number) => rnd(seed, 1000 + k, 7)
+  const turn = (r(5) - 0.5) * 1.2
+  const inland: [number, number] = [-Math.cos(Math.PI / 4 + turn), -Math.sin(Math.PI / 4 + turn)]
+  return { cx: 32 + (r(0) - 0.5) * 8, cy: 38 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 12 + r(3) * 4, strait: 0.25 + r(4) * 0.25, inland, tilt: (r(6) - 0.5) * 0.9 }
+}
+
+// A seed's terrain: which cells are land, and how high each stands (0 at the
+// sea, rising inland), for the generator and for the drawing's hills.
+export function terrainOf(seed: number): { land: boolean[][]; height: number[][] } {
+  const { cx, cy, a, b, strait, inland, tilt } = mapShape(seed)
+  const land: boolean[][] = []
+  const height: number[][] = []
+  // How far inland a point lies along the mainland's direction, 0 at the
+  // island's middle, about 1 at the far edge.
+  const depth = (x: number, y: number) => ((x - cx) * inland[0] + (y - cy) * inland[1]) / 30
+  // The island: a tilted oval, its outline thrown about into coves and points.
+  const cos = Math.cos(tilt)
+  const sin = Math.sin(tilt)
+  const islandAt = (x: number, y: number) => {
+    const u = (x - cx) * cos + (y - cy) * sin
+    const v = -(x - cx) * sin + (y - cy) * cos
+    const e = Math.sqrt((u / a) ** 2 + (v / b) ** 2)
+    return { e, warped: e + (warped(seed + 50, x, y, 14) - 0.5) * 2.8 }
   }
-  const cells: boolean[][] = []
   for (let y = 0; y < GEN; y++) {
-    const row: boolean[] = []
-    for (let x = 0; x < GEN; x++) row.push(isLand(x, y))
-    cells.push(row)
+    const lr: boolean[] = []
+    const hr: number[] = []
+    for (let x = 0; x < GEN; x++) {
+      const px = x + 0.5
+      const py = y + 0.5
+      const t = warped(seed, px, py)
+      const isl = islandAt(px, py)
+      // The mainland: rising inland, its coast thrown about by the noise.
+      const main = (t - 0.5) * 3.2 + (depth(px, py) - 0.45) * 1.2
+      let h = main
+      let on = h > 0
+      // The strait keeps the island apart; the island has a solid core.
+      if (isl.warped < 1 + strait) on = false
+      if (isl.warped < 1 || isl.e < 0.62) {
+        on = true
+        h = Math.max(0.02, (1 - isl.warped) * 0.3)
+      }
+      lr.push(on)
+      hr.push(on ? Math.max(0.02, h) : 0)
+    }
+    land.push(lr)
+    height.push(hr)
   }
+  // Rivers: from the far side of the mainland down to the sea, meandering,
+  // widening towards their mouths.
+  const rivers = 1 + Math.floor(rnd(seed, 2000, 1) * 2)
+  for (let k = 0; k < rivers; k++) {
+    const along = [-inland[1], inland[0]]
+    const offset = (rnd(seed, 2001, k) - 0.5) * 36
+    // Its source: as far inland as the map goes, a little in from the edge.
+    let x = cx + along[0]! * offset
+    let y = cy + along[1]! * offset
+    while (x + inland[0] > 2 && y + inland[1] > 2 && x + inland[0] < GEN - 3 && y + inland[1] < GEN - 3) {
+      x += inland[0]
+      y += inland[1]
+    }
+    let dir = Math.atan2(-inland[1], -inland[0])
+    for (let step = 0; step < 160; step++) {
+      // A slow swing either side of seaward, from the noise along its course.
+      const swing = (noise(seed + 60 + k, step, k * 13, 9) - 0.5) * 2.4
+      const seaward = Math.atan2(-inland[1], -inland[0])
+      dir = seaward + swing
+      x += Math.cos(dir) * 0.5
+      y += Math.sin(dir) * 0.5
+      if (x < -2 || y < -2 || x > GEN + 1 || y > GEN + 1) break
+      const isl = islandAt(x, y)
+      if (isl.warped < 1 + strait) break
+      const width = 0.75 + Math.min(1, step / 100) * 0.9
+      for (let yy = Math.floor(y - width); yy <= Math.ceil(y + width); yy++) {
+        for (let xx = Math.floor(x - width); xx <= Math.ceil(x + width); xx++) {
+          if (yy < 0 || xx < 0 || yy >= GEN || xx >= GEN) continue
+          if ((xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2 <= width * width) {
+            land[yy]![xx] = false
+            height[yy]![xx] = 0
+          }
+        }
+      }
+      // It ends where it meets the open water.
+      if (step > 20 && !land[Math.floor(y)]?.[Math.floor(x)] && seaNear(land, Math.floor(x), Math.floor(y))) break
+    }
+  }
+  // Tidy up: no specks of island, no puddles (rivers and lakes of some size stay).
+  sweep(land, true, 8)
+  sweep(land, false, 5)
+  for (let y = 0; y < GEN; y++) for (let x = 0; x < GEN; x++) if (!land[y]![x]) height[y]![x] = 0
+  return { land, height }
+}
+
+// Whether open sea lies within two cells: water that reaches the map's edge
+// in a straight line, as a river mouth does.
+function seaNear(land: boolean[][], x: number, y: number): boolean {
+  for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const) {
+    let cx = x
+    let cy = y
+    let open = true
+    for (let i = 0; i < 6; i++) {
+      cx += dx
+      cy += dy
+      if (cy < 0 || cx < 0 || cy >= GEN || cx >= GEN) break
+      if (land[cy]![cx]) {
+        open = false
+        break
+      }
+    }
+    if (open) return true
+  }
+  return false
+}
+
+// Flips the small patches of `value` (fewer than `min` cells, not touching
+// the map's edge) to the other: islets sink, puddles fill.
+function sweep(land: boolean[][], value: boolean, min: number) {
+  const seen = new Set<number>()
+  for (let y = 0; y < GEN; y++) {
+    for (let x = 0; x < GEN; x++) {
+      if (land[y]![x] !== value || seen.has(y * GEN + x)) continue
+      const patch: [number, number][] = []
+      let edge = false
+      const todo: [number, number][] = [[x, y]]
+      seen.add(y * GEN + x)
+      while (todo.length) {
+        const [px, py] = todo.pop()!
+        patch.push([px, py])
+        if (px === 0 || py === 0 || px === GEN - 1 || py === GEN - 1) edge = true
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = px + dx
+          const ny = py + dy
+          if (nx < 0 || ny < 0 || nx >= GEN || ny >= GEN || seen.has(ny * GEN + nx) || land[ny]![nx] !== value) continue
+          seen.add(ny * GEN + nx)
+          todo.push([nx, ny])
+        }
+      }
+      if (patch.length < min && !edge) for (const [px, py] of patch) land[py]![px] = !value
+    }
+  }
+}
+
+// A map made from a seed (docs/city-builder.md, "The map"): warped value
+// noise over the grid with a coast threshold, the mainland rising inland,
+// rivers running down to the sea, and the station's island in front of it
+// across a strait, with a core of solid land big enough for every footprint.
+// The station stands on the island near its east shore, its track running
+// out to the water, with a street along its front.
+export function generateMap(seed: number): Layout {
+  const { cx, cy } = mapShape(seed)
+  const cells = terrainOf(seed).land
   // The station: on the island's row a little above its middle, four cells in
   // from the east shore, on a quay of solid land with the street in front.
   const sy = Math.round(cy) - 2

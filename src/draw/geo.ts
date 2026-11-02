@@ -334,7 +334,7 @@ export function frame(burbs: Burb[], layout?: Layout): Frame {
     // mainland round it (the rest is a pan away), or all the land without one.
     const station = layout.buildings.find(b => b.kind === 'station')
     const island = station ? componentOf(layout.land, station.x, station.y) : new Set<number>()
-    const m = island.size ? 6 : 0
+    const m = island.size ? 10 : 0
     layout.land.forEach(([y, x0, x1], i) => {
       if (island.size && !island.has(i)) return
       take(x0 - m, y - m)

@@ -1,7 +1,7 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, boroughAt, boroughRect, componentOf, doorOf as doorOfHall, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
@@ -1433,26 +1433,67 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
 
 // ---- water and sky --------------------------------------------------------
 
-// A generated map's land, from its cells, with a smoothed shore: marching
-// squares over the cells' centres, so a step in the coast becomes a
-// diagonal, over a darker shore. The station's island is paved; the rest is
-// the mainland's green.
+// A generated map's land, from its cells, with a smoothed shore (marching
+// squares over the cells' centres): the shallows round every coast and up
+// the rivers, a darker shore under the land, a sand rim, and inland the
+// green rising into hills by the terrain's height. The city's island is green
+// too, paved where its blocks are zoned and its buildings stand.
 function generatedLand(layout: Layout): string {
-  const station = layout.buildings.find(b => b.kind === 'station')
-  const island = station ? componentOf(layout.land, station.x, station.y) : new Set<number>()
+  const seed = 'seed' in layout.map ? layout.map.seed : 0
+  const heights = heightsOf(seed)
   const all = new Set<string>()
-  const paved = new Set<string>()
-  layout.land.forEach(([y, x0, x1], i) => {
-    for (let x = x0; x < x1; x++) {
-      all.add(`${x},${y}`)
-      if (island.has(i)) paved.add(`${x},${y}`)
-    }
+  layout.land.forEach(([y, x0, x1]) => {
+    for (let x = x0; x < x1; x++) all.add(`${x},${y}`)
   })
-  const green = new Set([...all].filter(c => !paved.has(c)))
-  const shape = (d: string, fill: string) => (d ? `<path d="${d}" fill="${fill}" stroke="${fill}" stroke-width=".06" stroke-linejoin="round"/>` : '')
-  let s = `<g class="shore" transform="translate(0 4)">${GRID}${shape(marching(all), '#0d1a14')}</g></g>`
-  s += GRID + shape(marching(green), '#17251d') + shape(marching(paved), '#30353f') + '</g>'
+  const at = (x: number, y: number) => all.has(`${x},${y}`)
+  const near = (r: number) => {
+    const out = new Set<string>()
+    for (const c of all) {
+      const [x, y] = c.split(',').map(Number) as [number, number]
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r + 1) out.add(`${x + dx},${y + dy}`)
+    }
+    return out
+  }
+  // The land in from the beach: every neighbour is land too.
+  const inner = new Set([...all].filter(c => {
+    const [x, y] = c.split(',').map(Number) as [number, number]
+    return at(x - 1, y) && at(x + 1, y) && at(x, y - 1) && at(x, y + 1)
+  }))
+  // Hills: the inland cells' heights in thirds of what is high on this map.
+  const hs = [...inner].map(c => {
+    const [x, y] = c.split(',').map(Number) as [number, number]
+    return heights[y]?.[x] ?? 0
+  }).sort((a, b) => a - b)
+  const q = (f: number) => hs[Math.floor(f * (hs.length - 1))] ?? Infinity
+  const band = (min: number) => new Set([...inner].filter(c => {
+    const [x, y] = c.split(',').map(Number) as [number, number]
+    return (heights[y]?.[x] ?? 0) >= min
+  }))
+  // Pavement: the zoned blocks and the buildings' ground.
+  const paved = new Set<string>()
+  for (const [x, y] of layout.zoned) for (const dx of [0, 1]) if (at(x + dx, y)) paved.add(`${x + dx},${y}`)
+  for (const b of layout.buildings) for (const [x0, y0, x1, y1] of cellsOf(b)) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (at(x, y)) paved.add(`${x},${y}`)
+  const shape = (cells: Set<string>, fill: string, extra = '') => (cells.size ? `<path d="${marching(cells)}" fill="${fill}" stroke="${fill}" stroke-width=".06" stroke-linejoin="round"${extra}/>` : '')
+  // The shallows, blurred so they fade into the deep water.
+  let s = `<filter id="shallows" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="4"/></filter>`
+  s += `<g filter="url(#shallows)">${GRID}${shape(near(3), '#0f2c55', ' opacity=".6"')}${shape(near(1), '#1b5590', ' opacity=".55"')}</g></g>`
+  s += `<g class="shore" transform="translate(0 4)">${GRID}${shape(all, '#0d1a14')}</g></g>`
+  s += GRID + shape(all, '#6f6446') + shape(inner, '#1b2e20')
+  s += shape(band(q(0.55)), '#20372a') + shape(band(q(0.8)), '#2b3e2c') + shape(band(q(0.94)), '#45493a')
+  s += shape(paved, '#30353f') + '</g>'
   return s
+}
+
+// A seed's terrain heights, kept: the drawing asks for them on each new map.
+const heightCache = new Map<number, number[][]>()
+function heightsOf(seed: number): number[][] {
+  let h = heightCache.get(seed)
+  if (!h) {
+    h = terrainOf(seed).height
+    if (heightCache.size > 8) heightCache.clear()
+    heightCache.set(seed, h)
+  }
+  return h
 }
 
 // The outline of a set of cells ("x,y") as marching squares over their

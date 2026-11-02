@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { renderFrame } from '../src/city.ts'
 import { burbAt, p, waitAt } from '../src/draw/geo.ts'
 import { lotStyle } from '../src/draw/map.ts'
-import { doorOf, manhattanLayout } from '../src/layout.ts'
+import { doorOf, landAt, manhattanLayout } from '../src/layout.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
@@ -174,9 +174,15 @@ test("a drawn borough's zoned blocks fill with brownstones, the city's with towe
   const st = l().buildings.find(b => b.kind === 'station')!
   // A borough on the island west of the station, with a street through it.
   let laid: { x: number; y: number } | undefined
-  for (let y = st.y - 8; y < st.y + 6 && !laid; y++) {
-    for (let x = st.x - 14; x < st.x - 3 && !laid; x++) {
-      if ('ok' in city.build({ op: 'borough', x, y, w: 5, h: 4, name: 'Little Italy' }, T0)) laid = { x, y }
+  // Solid land, clear of the station: every cell of the borough on the island.
+  const solid = (x: number, y: number) => {
+    for (let yy = y; yy < y + 4; yy++) for (let xx = x; xx < x + 5; xx++) if (!landAt(l(), xx, yy)) return false
+    return true
+  }
+  for (let y = st.y - 12; y < st.y + 10 && !laid; y++) {
+    for (let x = st.x - 16; x < st.x + 8 && !laid; x++) {
+      if (y + 4 > st.y - 1 && y < st.y + 3 && x + 5 > st.x - 2 && x < st.x + 7) continue
+      if (solid(x, y) && 'ok' in city.build({ op: 'borough', x, y, w: 5, h: 4, name: 'Little Italy' }, T0)) laid = { x, y }
     }
   }
   assert.ok(laid, 'room for a borough')
