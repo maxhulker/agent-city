@@ -12,6 +12,7 @@ import { burbGeo, isWaiting } from './layout.ts'
 import { HATS } from './draw/agents.ts'
 import { p, placeAt } from './draw/geo.ts'
 import { Approvals } from './approvals.ts'
+import { CensusTaker } from './census.ts'
 import { changesIn } from './changes.ts'
 import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
@@ -410,6 +411,23 @@ setInterval(() => {
     }
   }
 }, 800)
+// Each borough's repository is counted with git (src/census.ts), often while
+// its agents work, so its houses follow its folders and what is happening in them.
+const censusTaker = new CensusTaker()
+setInterval(() => {
+  const now = Date.now()
+  for (const town of towns.values()) {
+    for (const { root, census, busy } of town.city.censusWanted()) {
+      if (!censusTaker.due(root, census, busy, now)) continue
+      censusTaker
+        .take(root, now)
+        .then(c => {
+          if (c) town.city.setCensus(root, c)
+        })
+        .catch(err => console.error('agent-city: census failed for', root, err))
+    }
+  }
+}, 5_000)
 // Prunes quiet sessions, and keeps the page's clocks honest.
 setInterval(dirtyAll, 60_000)
 setInterval(forgetRoots, 10 * 60_000)

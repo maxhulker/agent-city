@@ -1,8 +1,11 @@
-import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
+import type { Burb, Census, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padFor, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
 import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
+import { houses, lotHouses, placeBlocks, signLine, slotsOf } from './blocks.ts'
+import type { Placed } from './blocks.ts'
+import { censusShape } from '../census.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
 // streets, buildings, the landmarks' bodies, bridges, trees, names), which
@@ -257,8 +260,9 @@ function lamp(gx: number, gy: number): string {
 }
 
 // Scaffolding hugging a box's two visible walls, a hoist running up its side
-// and a tower crane slewing on the roof: someone is editing in there.
-function scaffold(x0: number, y0: number, w: number, d: number, h: number): string {
+// and a tower crane slewing on the roof: someone is editing in there. Without
+// the crane, just the scaffolding: work started and not yet committed.
+function scaffold(x0: number, y0: number, w: number, d: number, h: number, crane = true): string {
   const o = 0.09
   const fy = y0 + d + o // the south wall, stood off a little
   const fx = x0 + w + o // the east wall
@@ -294,6 +298,7 @@ function scaffold(x0: number, y0: number, w: number, d: number, h: number): stri
     '#22c55e',
     ' opacity=".14"',
   )
+  if (!crane) return g
   // The hoist cage, up and down the east wall.
   const [hx, hy] = p(fx, y0 + d * 0.45)
   g += `<path d="M${n(hx)} ${n(hy)}v-${n(top)}" stroke="#94a3b8" stroke-width=".7"/>`
@@ -421,23 +426,41 @@ export function lotStyle(layout: Layout, x: number, y: number): 'towers' | 'hous
   return bo && !bo.preset ? 'houses' : 'towers'
 }
 
+// The drawn boroughs whose repository has a census: their lots stand for its
+// folders, whatever the population.
+function censused(sc: Scene): Map<Burb, Census> {
+  const out = new Map<Burb, Census>()
+  for (const [b, repo] of [...sc.vacantOf, ...sc.repoOf]) if (repo.census && !burbGeo(sc.layout, b)?.preset) out.set(b, repo.census)
+  return out
+}
+
+// A house of the census: lit windows for a folder worked on lately, dark
+// ones for a quiet folder, nothing on an empty plot.
+function censusHouse(s: Placed, keep: Keep[]): string {
+  if (s.block < 0) return ''
+  if (s.lit) return box(s.x, s.y0, s.w, s.d, s.h, s.pal)
+  const h = Math.min(s.h, Math.max(3, capFor(s.x, s.y0, s.w, s.d, keep)))
+  return slab(s.x, s.y0, s.w, s.d, h, DARK[s.pal])
+}
+
+// A palette with its windows out.
+const DARK = Object.fromEntries(Object.entries(PALETTES).map(([k, cols]) => [k, cols.map(c => mix(c, '#0b1020', 0.35))])) as Record<Pal, [string, string, string]>
+
 function fabric(items: Item[], sc: Scene) {
   const keep = keeps(sc)
   const all = lotsOf(sc.layout)
-  for (const { x, y, x0, x1 } of all.slice(0, blocksFor(sc.population, all.length))) {
+  const earned = blocksFor(sc.population, all.length)
+  const counted = censused(sc)
+  all.forEach(({ x, y, x0, x1 }, i) => {
+    if (i >= earned) return
     const q = seeded(x, y)
     const y0 = y + 0.18
     const d = 0.64
     if (lotStyle(sc.layout, x, y) === 'houses') {
-      // Three or four narrow houses, a storey or two apart, with a tall corner one now and then.
-      const count = q > 0.5 ? 4 : 3
-      const w = (x1 - x0) / count
-      for (let i = 0; i < count; i++) {
-        const qi = seeded(x + i * 0.37, y)
-        const h = i === count - 1 && q > 0.7 ? 11 : 5.5 + qi * 2.5
-        building(items, x0 + i * w, y0, w - 0.03, d, h, HOUSE_PALS[Math.floor(qi * HOUSE_PALS.length)]!, qi, keep)
-      }
-      continue
+      // A borough with a census builds its own (below).
+      if (counted.has(boroughAt(sc.layout, x, y)!.id)) return
+      for (const s of lotHouses({ x, y, x0, x1 })) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, seeded(s.x, y), keep)
+      return
     }
     // Two buildings on wide lots, for a ragged skyline.
     if (x1 - x0 > 1.2 && q > 0.6) {
@@ -450,6 +473,14 @@ function fabric(items: Item[], sc: Scene) {
     } else {
       const h = heightAt(x0, y, q)
       building(items, x0, y0, x1 - x0, d, h, palAt(y, h, q), q, keep)
+    }
+  })
+  // A drawn borough with a census: its folders on its lots.
+  for (const [b, census] of counted) {
+    for (const s of placeBlocks(slotsOf(sc.layout, b, false), census)) {
+      if (s.block < 0) continue
+      if (s.lit) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, 0, keep)
+      else items.push({ depth: s.x + s.y0 + 0.82, svg: censusHouse(s, keep) })
     }
   }
 }
@@ -702,51 +733,27 @@ function labels(sc: Scene): string {
 
 // ---- boroughs: one per other repository -----------------------------------
 
-const HOUSE_PALS: Pal[] = ['b', 'b', 'r', 'b', 'r', 's']
+// A borough's houses, as its repository's census places them (each run of
+// houses a folder, src/draw/blocks.ts), or the preset's own without one.
+function burbHouses(b: PresetBurb, census: Census | undefined): Placed[] {
+  const slots = houses(b)
+  return census ? placeBlocks(slots, census) : slots.map(s => ({ ...s, block: 0, lit: true }))
+}
 
-// A borough's houses: rows back to front, each row west to east, apartments
-// at the back, then brownstone rows back to back, the front row facing the
-// square, with the tall corner house at its east end.
-type House = { x: number; y0: number; w: number; h: number; pal: Pal; corner: boolean; ri: number }
-
-function houses(b: PresetBurb): House[] {
-  const [cx, cy] = BURBS[b].center
-  const rows: [number, number, number][] = [
-    [cy - 3.4, 12, 3],
-    [cy - 2.15, 6.4, 1.4],
-    [cy - 1.45, 6.4, 1.4],
-    [cy - 0.2, 6, 1.4],
-    [cy + 0.5, 6, 1.4],
-  ]
-  const out: House[] = []
-  rows.forEach(([y0, base, spread], ri) => {
-    let x = cx - 3.4
-    let i = 0
-    while (x < cx + 2.95) {
-      // A cross street through the back blocks.
-      if (ri < 3 && x < cx - 0.1 && x + 0.5 > cx - 0.6) {
-        x = cx - 0.1
-        continue
-      }
-      const q = seeded(x * 7 + ri, y0 * 3 + i)
-      const w = Math.min(q > 0.85 ? 0.75 : 0.5, cx + 3.0 - x)
-      if (w < 0.3) break
-      const corner = ri === 4 && x + w >= cx + 2.9
-      const h = corner ? 11 : base + q * spread
-      const pal: Pal = ri === 0 ? (q > 0.5 ? 'k' : 's') : corner ? 'k' : HOUSE_PALS[Math.floor(q * HOUSE_PALS.length)]!
-      out.push({ x, y0, w: w - 0.03, h, pal, corner, ri })
-      x += w
-      i++
-    }
-  })
-  return out
+// The first house of each folder with uncommitted changes, for its scaffolding
+// (three at most, the most changed first).
+function dirtyHouses(placed: Placed[], census: Census | undefined): Placed[] {
+  if (!census) return []
+  const dirty = census.blocks.map((b, i) => [b.dirty, i] as const).filter(([d]) => d > 0).sort((a, b) => b[0] - a[0]).slice(0, 3)
+  return dirty.flatMap(([, i]) => placed.filter(s => s.block === i).slice(0, 1))
 }
 
 // A Brooklyn-ish neighbourhood: brownstone rows back to back along their
 // streets, and a square at the front where the borough's agents gather. The
 // map draws the place itself, with the borough's name; burbLit adds the
-// repository's sign, the glow of work and the scaffolding of an edit.
-function burb(b: PresetBurb): string {
+// repository's sign, the glow of work and the scaffolding of an edit. With a
+// census, its houses are its repository's folders.
+function burb(b: PresetBurb, census?: Census): string {
   const [cx, cy] = BURBS[b].center
   // The ground: pavement, the streets between the blocks, an avenue down the
   // east side, and the square in front with a fountain behind the agents.
@@ -762,7 +769,7 @@ function burb(b: PresetBurb): string {
   g += '</g>'
   let stoops = ''
   let ri = -1
-  for (const h of houses(b)) {
+  burbHouses(b, census).forEach((h, i) => {
     if (h.ri !== ri) {
       if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
       stoops = ''
@@ -770,13 +777,18 @@ function burb(b: PresetBurb): string {
       if (ri === 2) for (const tx of [-3.0, -1.7, 0.4, 1.6, 2.7]) g += tree(cx + tx, cy - 0.74, 1.3)
       ri = h.ri
     }
-    g += box(h.x, h.y0, h.w, 0.62, h.h, h.pal)
+    // An empty plot, room to grow: a tree on every other one.
+    if (h.block < 0) {
+      if (i % 2 === 0) g += tree(h.x + h.w / 2, h.y0 + h.d / 2, 1.1)
+      return
+    }
+    g += census ? censusHouse(h, []) : box(h.x, h.y0, h.w, 0.62, h.h, h.pal)
     // A stoop up to each front door on the rows that face a street.
     if ((h.ri === 2 || h.ri === 4) && !h.corner) {
       const sx = h.x + (h.w + 0.03) * 0.3
       stoops += `M${xy(p(sx, h.y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, h.y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, h.y0 + 0.8))}L${xy(p(sx, h.y0 + 0.8))}z`
     }
-  }
+  })
   if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
   // Trees along the front, the square's lamps and its fountain.
   for (const tx of [-2.9, -1.5, 0.5, 1.9]) g += tree(cx + tx, cy + 1.5, 1.5)
@@ -790,26 +802,40 @@ function burb(b: PresetBurb): string {
   return g
 }
 
+// The line under a repository's sign, from its census: branch, sync, the
+// fortnight's commits and what is uncommitted.
+function censusSign(x: number, y: number, census: Census | undefined): string {
+  if (!census) return ''
+  const [line, dirty] = signLine(census)
+  const tail = dirty ? `<tspan style="fill:#fcd34d"> · ${esc(dirty)}</tspan>` : ''
+  return `<text class="cap" x="${n(x)}" y="${n(y)}" dy="1.6em" text-anchor="middle" style="font-size:calc(6px*var(--zt,1));stroke-width:calc(2.2px*var(--zt,1));font-weight:600;fill:#94a3b8">${esc(line)}${tail}</text>`
+}
+
 // What changes about a borough: the repository's name on the sign (none once
-// it has packed up), the glow and lit square while someone works there, and
-// scaffolding on the corner house while someone edits.
+// it has packed up) with its census line, the glow and lit square while
+// someone works there, and scaffolding while someone edits: on each folder
+// with uncommitted changes when there is a census, else on the corner house.
 function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
   const [cx, cy] = BURBS[b].center
   const here = (sc.byBurb.get(b) ?? []).filter(a => a.status !== 'done')
   const isActive = here.some(a => a.status === 'working')
   const isBuilding = here.some(a => a.at === 'workshop')
+  const census = repo?.census
   let g = ''
   if (isActive) {
     g += glow(cx - 0.6, cy + 3.4, 44)
     g += GRID + gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, 'none', ` rx=".3" stroke="#fde68a" stroke-width=".05"`) + '</g>'
   }
-  if (isBuilding) {
+  if (census) {
+    dirtyHouses(burbHouses(b, census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
+  } else if (isBuilding) {
     const corner = houses(b).find(h => h.corner)
     if (corner) g += scaffold(corner.x, corner.y0, corner.w, 0.62, corner.h)
   }
   if (repo) {
     const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
     g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
+    g += censusSign(lx, ly, census)
   }
   return g
 }
@@ -843,9 +869,15 @@ function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
     g += glow(sx, sy, 34)
     g += GRID + gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, 'none', ` rx=".25" stroke="#fde68a" stroke-width=".05"`) + '</g>'
   }
+  const census = repo?.census
+  if (census) {
+    const isBuilding = here.some(a => a.at === 'workshop')
+    dirtyHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
+  }
   if (repo) {
     const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
     g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
+    g += censusSign(lx, ly, census)
   }
   return g
 }
@@ -1871,7 +1903,9 @@ export function mapKey(sc: Scene): string {
   const built = Object.keys(sc.built).sort()
   const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].filter(b => !isWaiting(b)).sort()
   const map = 'preset' in sc.layout.map ? [] : [sc.layout.map.seed]
-  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev, ...map]))
+  // The censuses' folders, by borough (none at all keeps the hash it had before censuses).
+  const counts = [...sc.vacantOf, ...sc.repoOf].filter(([, r]) => r.census).map(([b, r]) => [b, censusShape(r.census)])
+  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev, ...map, ...(counts.length ? [counts] : [])]))
 }
 
 // The still city, back to front: everything but the agents and the overlay.
@@ -1941,8 +1975,8 @@ export function drawMap(sc: Scene): string {
   // A borough for each repository in use besides the session's own, and the
   // houses of the ones that have moved out.
   const preset = (b: Burb) => !!burbGeo(sc.layout, b)?.preset
-  for (const [b] of vacantOf) if (preset(b)) s += burb(b as PresetBurb)
-  for (const [b] of repoOf) if (preset(b)) s += burb(b as PresetBurb)
+  for (const [b, repo] of vacantOf) if (preset(b)) s += burb(b as PresetBurb, repo.census)
+  for (const [b, repo] of repoOf) if (preset(b)) s += burb(b as PresetBurb, repo.census)
   for (const bo of sc.layout.boroughs) if (!bo.preset) s += drawnBurb(bo, sc.layout)
 
   // Buildings and landmarks, back to front.

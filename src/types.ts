@@ -285,8 +285,41 @@ export type TaskTurn = {
 // A repository other than Manhattan's and the borough it lives in (or `@<root>`
 // while it waits at the station for one). One that has packed up (`left`) is
 // still known: it moves straight back in, to the same borough when nobody else
-// has, as soon as a session works there again.
-export type Repo = { root: string; name: string; burb: Burb; lastSeen: number; left?: number }
+// has, as soon as a session works there again. Its census is what its
+// borough's buildings show.
+export type Repo = { root: string; name: string; burb: Burb; lastSeen: number; left?: number; census?: Census }
+
+// What a borough's repository holds and what is going on in it, from git
+// (src/census.ts). Each block is a folder ('' for the root's own files, '…'
+// for the smallest ones together), drawn as a run of the borough's houses.
+export type Block = {
+  path: string
+  files: number
+  bytes: number
+  // Commits that touched it in the last two weeks, and the latest of them.
+  commits: number
+  lastAt?: number
+  // Files in it with uncommitted changes.
+  dirty: number
+  // Its most common file extension.
+  ext?: string
+}
+
+export type Census = {
+  at: number
+  head?: string
+  branch?: string
+  // Commits ahead of and behind the branch's upstream, when it has one.
+  ahead?: number
+  behind?: number
+  files: number
+  bytes: number
+  // Commits in the last two weeks, and files with uncommitted changes.
+  commits: number
+  dirty: number
+  last?: { at: number; who: string; subject: string }
+  blocks: Block[]
+}
 
 export type Conflict = {
   id: string

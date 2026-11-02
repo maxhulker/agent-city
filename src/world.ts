@@ -4,7 +4,8 @@ import { existsSync } from 'node:fs'
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
 import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
-import type { Agent, Burb, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
+import { sameCensus } from './census.ts'
+import type { Agent, Burb, Census, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -998,6 +999,24 @@ export class City {
     }
     repo.lastSeen = now
     return repo.burb
+  }
+
+  // A repository's census (src/census.ts) for its borough's buildings. The
+  // map redraws only when it says something new.
+  setCensus(root: string, census: Census) {
+    const repo = this.world.repos.find(r => same(r.root, root))
+    if (!repo) return
+    const changed = !sameCensus(repo.census, census)
+    repo.census = census
+    if (changed) this.isDirty = true
+  }
+
+  // The repositories whose census is wanted: those with a borough, and
+  // whether their agents are at work there now.
+  censusWanted(): { root: string; census?: Census; busy: boolean }[] {
+    return this.world.repos
+      .filter(r => !r.left && !isWaiting(r.burb))
+      .map(r => ({ root: r.root, ...(r.census ? { census: r.census } : {}), busy: this.world.agents.some(a => a.burb === r.burb && a.status === 'working') }))
   }
 
   // Moves the repository at root into a borough the person picked (the
