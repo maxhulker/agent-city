@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
-import { FIXED, applyOp, burbGeo, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
+import { FIXED, applyOp, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
+import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
 
@@ -49,6 +50,25 @@ const EDITS = /^(Edit|Write|MultiEdit|NotebookEdit)$/
 const SHELLS = /^(Bash|PowerShell)$/
 // The districts whose landmarks must all stand before the Empire State goes up.
 const DISTRICT_LANDMARKS: District[] = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
+
+// One of the first district's quests, as the Blueprints card and the
+// catalogue show it: done (with when), the suggested next, still to do, or
+// locked (the Empire State, until every district stands). `opened` is when a
+// landmark was first used.
+export type Quest = { id: string; name: string; hint: string; state: 'done' | 'next' | 'todo' | 'locked'; at?: number; opened?: number }
+
+// The landmarks' quests after the road, with what each is for.
+const QUESTS: [Kind, string][] = [
+  ['hall', 'Where your sessions think and wait for you'],
+  ['library', 'Where your sessions read files'],
+  ['workshop', 'Where your sessions edit files'],
+  ['foundry', 'Where your sessions run commands'],
+  ['observatory', 'Where your sessions search and fetch the web'],
+  ['relay', 'Where subagents set off and report back'],
+  ['harbor', 'Where commits ship out and pushes launch: on a shore'],
+  ['plaza', 'Where finished subagents come to rest'],
+  ['liberty', 'In the water; her torch lights on a push'],
+]
 
 // ---- paths and repositories -----------------------------------------------
 
@@ -268,6 +288,9 @@ export class City {
     // A city saved before layouts existed is today's Manhattan, with the
     // landmarks it has built standing and the rest still lots.
     w.layout ??= manhattanLayout(w.built)
+    // A city that has seen sessions already knows its landmarks: no burst of
+    // "opened its doors" for them.
+    w.opened ??= w.homeRoot ? { ...w.built } : {}
   }
 
   // The layout (docs/city-builder.md); the constructor makes sure there is one.
@@ -296,11 +319,25 @@ export class City {
       }
     }
     w.built ??= {}
+    // What stands for it in the city (the Statue carries the torch).
+    const here = cityBuildings(this.layout, id === 'torch' ? 'liberty' : id)
+    if (a) {
+      // Work of a kind nothing stands for changes nothing: its agents wait at
+      // the station until the person places one (docs/city-builder.md).
+      if (!here.length || (id === 'torch' && !here.some(b => b.built !== undefined))) return
+      // One placed and standing: its first use opens its doors.
+      if (w.built[id] !== undefined) {
+        this.open(id, a, now)
+        return
+      }
+    }
     if (w.built[id] !== undefined) return
     w.built[id] = now
     markBuilt(this.layout, id, now)
+    // A lot risen by its own first work is open already.
+    if (a) (w.opened ??= {})[id] = now
     const name = BLUEPRINTS[id].name
-    const text = id === 'torch' ? `${name} is lit` : id === 'plaza' ? `${name} is green` : `${name} opened`
+    const text = id === 'torch' ? `${name} is lit` : id === 'plaza' && a ? `${name} is green` : a ? `${name} opened` : `${name} went up`
     this.toasts.push(text)
     this.say(a, text, now)
     this.tick(a, text, now)
@@ -308,11 +345,84 @@ export class City {
       this.toasts.push('The city is complete')
       this.tick(undefined, 'the city is complete', now)
     } else if (DISTRICT_LANDMARKS.every(d => w.built![d] !== undefined)) {
-      this.raise('empire', a, now)
+      // The old game's Empire State lot rises after the last district; a
+      // laid-out city places its own.
+      if (cityBuildings(this.layout, 'empire').some(b => b.built === undefined)) this.raise('empire', a, now)
     }
   }
 
-  // "Rebuild the city": back to bare land and blueprints, for whoever wants to play.
+  // The first use of a landmark the person placed: the ticker says so, and
+  // the legend is learnt by watching the work.
+  private open(id: Landmark, a: Agent, now: number) {
+    const w = this.world
+    w.opened ??= {}
+    if (w.opened[id] !== undefined || id === 'torch' || id === 'empire') return
+    w.opened[id] = now
+    const text = `${BLUEPRINTS[id].name} opened its doors`
+    this.toasts.push(text)
+    this.say(a, text, now)
+    this.tick(a, text, now)
+  }
+
+  // The first district's quests (docs/city-builder.md), in their suggested
+  // order, which nothing enforces; only on a laid-out (generated) map. The
+  // next one is the first not done; the Empire State waits for every district.
+  quests(): Quest[] | undefined {
+    if ('preset' in this.layout.map) return undefined
+    const w = this.world
+    const stands = (k: Kind) => cityBuildings(this.layout, k).some(b => b.built !== undefined)
+    const allUp = DISTRICT_LANDMARKS.every(d => stands(d))
+    const list: Omit<Quest, 'state'>[] = [
+      { id: 'road', name: 'Lay a road from the station', hint: 'The Road tool: drag along a line from the station street', ...(w.firstRoad ? { at: w.firstRoad } : {}) },
+      ...QUESTS.map(([k, hint]) => {
+        const id = k === 'liberty' ? undefined : (k as Landmark)
+        const at = stands(k) ? (cityBuildings(this.layout, k).find(b => b.built !== undefined)!.built ?? 0) : undefined
+        const opened = id ? w.opened?.[id] : undefined
+        return { id: k, name: k === 'liberty' ? 'Statue of Liberty' : k === 'harbor' ? 'Seaport' : BLUEPRINTS[k as Landmark].name, hint, ...(at !== undefined ? { at } : {}), ...(opened !== undefined ? { opened } : {}) }
+      }),
+      { id: 'zone', name: 'Zone some blocks', hint: 'The Zone tool, beside a road: the population fills them in', ...(this.layout.zoned.length ? { at: 0 } : {}) },
+      { id: 'empire', name: BLUEPRINTS.empire.name, hint: 'Placeable once every district stands; it goes up with fireworks', ...(stands('empire') ? { at: w.built?.empire ?? 0 } : {}) },
+    ]
+    let next = false
+    return list.map(q => {
+      if (q.at !== undefined) return { ...q, state: 'done' as const }
+      if (q.id === 'empire' && !allUp) return { ...q, state: 'locked' as const }
+      if (!next) {
+        next = true
+        return { ...q, state: 'next' as const }
+      }
+      return { ...q, state: 'todo' as const }
+    })
+  }
+
+  // "Rebuild the city" with one of the two starts: a generated map to lay out
+  // (the seed's), or Manhattan, whole. The sessions and their agents stay;
+  // a repository whose borough has gone waits at the station for another.
+  restart(start: number | 'manhattan', now: number) {
+    const w = this.world
+    const rev = this.layout.rev + 1
+    w.built = {}
+    w.opened = {}
+    delete w.firstRoad
+    w.population = 0
+    w.layout = start === 'manhattan' ? manhattanLayout() : generateMap(start)
+    w.layout.rev = rev
+    if (start === 'manhattan') this.buildAll(now)
+    for (const repo of w.repos) {
+      if (isWaiting(repo.burb) || burbGeo(this.layout, repo.burb)) continue
+      const was = repo.burb
+      repo.burb = waitingId(repo.root)
+      for (const a of w.agents) if (a.burb === was) a.burb = repo.burb
+    }
+    for (const a of w.agents) delete a.arriving
+    const text = start === 'manhattan' ? 'Manhattan stands whole again' : 'New land: lay out your first district'
+    this.toasts.push(text)
+    this.say(undefined, text, now)
+    this.isDirty = true
+  }
+
+  // The old game's Rebuild: the preset island bare again, its landmarks
+  // rising as sessions do each kind of work.
   rebuild(now: number) {
     const w = this.world
     w.built = {}
@@ -358,6 +468,7 @@ export class City {
     const r = applyOp(this.layout, op)
     if ('error' in r) return r
     w.layout = r.layout
+    if (op.op === 'road') w.firstRoad ??= now
     if (op.op === 'place') {
       const b = r.layout.buildings[r.layout.buildings.length - 1]!
       if (!b.burb) {
@@ -389,12 +500,15 @@ export class City {
   // The welcome's map picker (docs/city-builder.md, step seven): a city that
   // has seen no session yet starts again on the map of a seed, or on the
   // hand-drawn Manhattan ('manhattan'). Once work has begun the map stays.
-  newMap(seed: unknown): { ok: true } | { error: string } {
+  newMap(seed: unknown, now: number): { ok: true } | { error: string } {
     if (!this.isNew) return { error: 'The city is under way: its map stays' }
     // The revision runs on, so every page takes the new layout.
     const rev = this.layout.rev + 1
-    if (seed === 'manhattan') this.world.layout = manhattanLayout()
-    else if (typeof seed === 'number' && Number.isInteger(seed) && seed > 0 && seed < 2 ** 31) this.world.layout = generateMap(seed)
+    if (seed === 'manhattan') {
+      // Start from Manhattan: the preset, whole.
+      this.world.layout = manhattanLayout()
+      this.buildAll(now)
+    } else if (typeof seed === 'number' && Number.isInteger(seed) && seed > 0 && seed < 2 ** 31) this.world.layout = generateMap(seed)
     else return { error: 'Not a map' }
     this.world.layout.rev = rev
     this.isDirty = true
@@ -403,6 +517,12 @@ export class City {
 
   // True while nothing is built and no session has ever been seen: the page
   // shows its welcome.
+  // The welcome shows until the first session is seen; its map picker only
+  // while the city is new.
+  get isWelcome(): boolean {
+    return !this.world.sessions.length && !this.world.homeRoot
+  }
+
   get isNew(): boolean {
     const w = this.world
     return !Object.keys(w.built ?? {}).length && !w.sessions.length && !w.homeRoot

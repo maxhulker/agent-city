@@ -43,7 +43,10 @@ function loadWorld(): World | undefined {
 
 // The page compares this to reload itself after a restart.
 const BOOT = Date.now()
-const city = new City(loadWorld())
+const saved = loadWorld()
+const city = new City(saved)
+// A brand-new city starts on land of its own to lay out; the welcome offers others.
+if (!saved) city.newMap(1 + Math.floor(Math.random() * 2147483000), Date.now())
 
 // Tasks live in the world so state.json keeps them; the list itself is Tasks'.
 const AMBER = '#fbbf24'
@@ -158,8 +161,10 @@ function game(world: World, now: number) {
   return {
     population: world.population ?? 0,
     complete: built.empire !== undefined,
-    welcome: city.isNew,
+    welcome: city.isWelcome,
+    pick: city.isNew,
     connected,
+    quests: city.quests(),
     landmarks: LANDMARKS.map(id => {
       const at = built[id]
       const state = at === undefined ? 'blueprint' : now - at < SCAFFOLD_MS ? 'building' : 'built'
@@ -413,7 +418,7 @@ const server = createServer(async (req, res) => {
       }
       // The welcome's map picker: a new city starts on a generated map, or on Manhattan.
       if (url.pathname === '/newmap') {
-        const r = city.newMap((args as { seed?: unknown }).seed)
+        const r = city.newMap((args as { seed?: unknown }).seed, Date.now())
         if ('error' in r) return reply(res, 400, JSON.stringify(r))
         save()
         return reply(res, 200, '{"ok":true}')
@@ -425,7 +430,9 @@ const server = createServer(async (req, res) => {
       if (url.pathname === '/lastcall') return reply(res, 200, JSON.stringify({ ok: true, left: city.lastCall(Date.now()) }))
       // The onboarding game: back to bare land, or everything built at once.
       if (url.pathname === '/rebuild' || url.pathname === '/buildall') {
-        if (url.pathname === '/rebuild') city.rebuild(Date.now())
+        // Rebuild offers the two starts: a fresh map to lay out, or Manhattan whole.
+        const start = (args as { start?: unknown }).start
+        if (url.pathname === '/rebuild') city.restart(start === 'manhattan' ? 'manhattan' : 1 + Math.floor(Math.random() * 2147483000), Date.now())
         else city.buildAll(Date.now())
         save()
         return reply(res, 200, '{"ok":true}')

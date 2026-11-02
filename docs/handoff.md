@@ -168,7 +168,24 @@ the view framed on the land. The welcome's picker (three seeds, Shuffle,
 Manhattan) posts `/newmap`, which `City.newMap` takes only while the city is
 new. Tests in `test/map.test.ts`. Not done yet: Build it all now on a
 generated map records the game but has no buildings to raise (step eight's
-starts take that on).
+starts take that on). Step eight is in: work of a kind with nothing placed
+for it in the city builds nothing (its agents wait at the station); a lot
+still rises by its first work (the old game on a bare preset); a landmark
+placed and standing opens its doors on its first use (`World.opened`,
+seeded from `built` for a city that has seen sessions, so no burst after
+the upgrade). `City.quests()` lists the first district's quests on a
+generated map (road via `World.firstRoad`, the landmarks, zoning, the
+Empire State locked until every district stands); the server sends them in
+`game.quests`, the page shows them as the First district card, marks the
+next one in the catalogue and lights its tool. The welcome's two starts:
+the picker, or Start from Manhattan (`newMap('manhattan')` builds it
+whole); Build it all now is gone from the welcome. Rebuild's two starts:
+`City.restart(seed | 'manhattan')` (POST `/rebuild` with `start`); the old
+`rebuild()` stays for the bare preset. A brand-new state file starts on a
+random seed. The welcome shows until the first session (`isWelcome`); its
+picker only while the city is new. Tests in `test/quests.test.ts`. Step
+nine (zoning fill, parks, the Statue in the water, player bridges) is
+next.
 
 ## Lessons from the first session, on cost
 

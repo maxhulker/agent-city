@@ -100,15 +100,13 @@ test("the map's hash changes with the seed, and a generated map draws its own la
 test('a new city picks its map in the welcome; once work has begun the map stays', () => {
   const city = new City()
   assert.ok(city.isNew)
-  assert.deepEqual(city.newMap('nowhere'), { error: 'Not a map' })
-  assert.deepEqual(city.newMap(0), { error: 'Not a map' })
+  assert.deepEqual(city.newMap('nowhere', T0), { error: 'Not a map' })
+  assert.deepEqual(city.newMap(0, T0), { error: 'Not a map' })
   const rev = city.world.layout!.rev
-  assert.ok('ok' in city.newMap(42))
+  assert.ok('ok' in city.newMap(42, T0))
   assert.deepEqual(city.world.layout!.map, { seed: 42 })
   assert.equal(city.world.layout!.rev, rev + 1, 'the revision runs on, so the pages take it')
-  assert.ok('ok' in city.newMap('manhattan'))
-  assert.ok('preset' in city.world.layout!.map)
-  assert.ok('ok' in city.newMap(7))
+  assert.ok('ok' in city.newMap(7, T0))
 
   // The first session arrives by train, onto the generated island's forecourt.
   city.apply(ev('SessionStart', 'S1'), T0)
@@ -117,6 +115,6 @@ test('a new city picks its map in the welcome; once work has begun the map stays
   const [fx, fy] = spotFor(city.world.layout!, 'relay')
   const near = (v: number, w: number) => Math.abs(v - w) < 20
   assert.ok(near(lead.x, (fx - fy) * 10) && near(lead.y, (fx + fy) * 5), `the lead at the station: ${lead.x},${lead.y}`)
-  assert.deepEqual(city.newMap(1), { error: 'The city is under way: its map stays' })
+  assert.deepEqual(city.newMap(1, T0), { error: 'The city is under way: its map stays' })
   assert.deepEqual(city.world.layout!.map, { seed: 7 })
 })

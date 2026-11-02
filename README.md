@@ -93,10 +93,18 @@ A city that existed before this version counts as built. **Rebuild the city**
 
 ## Lay it out yourself
 
-A new city first asks for its land: the welcome card shows three maps made
+A new city starts on land of its own: the welcome card shows three maps made
 from seeds (a mainland, a strait and the station's island; **Shuffle** for
-others) and the hand-drawn Manhattan. Pick one before your first session;
-after that the map stays.
+others), or **start from Manhattan**, whole, to rearrange. Your first lead
+arrives by train at the station. The **First district** card lists the
+quests in a suggested order: lay a road from the station, place City Hall,
+then the Library, the Garment District, Hudson Yards, Times Square, Grand
+Central's towers, the Seaport (on a shore), Central Park and the Statue (in
+the water), zone some blocks, and finally the Empire State Building, which
+you can place once every district stands. Each goes up as you place it;
+the first time a session uses it the ticker says it opened its doors. Work
+of a kind you have not placed waits at the station. **Rebuild** offers the
+same two starts.
 
 The build toolbar along the bottom of the map lets you shape the city
 (`docs/city-builder.md` is the plan): **Road** drags a street or avenue (over

@@ -98,6 +98,12 @@
   .bp-line.built .st { color: #4ade80; }
   .bp-line.building .st { color: var(--accent); animation: blink 1s steps(1) infinite; }
   .bp-line.built .nm { color: var(--dim); }
+  .bp-line.done .st { color: #4ade80; }
+  .bp-line.done .nm { color: var(--dim); }
+  .bp-line.next .st, .bp-line.next .nm { color: #fde68a; }
+  .bp-line.locked { opacity: .55; }
+  .bp-line .op { flex: none; font-size: 10px; color: #4ade80; }
+  #welcome .wstart { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--dim); }
   .bp-line .nm { flex: 1; min-width: 0; }
   .bp-line .hn { color: var(--dim); font-size: 11px; text-align: right; }
   .bp-line.built .hn { display: none; }
@@ -408,15 +414,15 @@
     </div>
     <div id="welcome" hidden>
       <b>WELCOME TO AGENT CITY</b>
-      <p>Every Claude Code session on this machine, drawn as agents at work in an isometric Manhattan.</p>
-      <p>The island is bare land: it builds itself as you work. Each blueprint lot says what raises it, and the Blueprints card keeps the list.</p>
+      <p>Every Claude Code session on this machine, drawn as agents at work in a city. You lay the city out; your sessions bring it to life.</p>
+      <p>Your lead arrives by train at the station. Lay a road from it, place City Hall, then the districts: the First district card keeps the list.</p>
       <p id="w-next">Next step: run <code>npm run connect</code> in the agent-city folder, then start a Claude Code session.</p>
       <div class="wstate" id="w-state"><i></i><span>Checking for the hooks…</span></div>
       <div class="wmaps" id="w-maps">
-        <div class="wm-head"><span>Pick the land your city stands on</span><button class="lnkbtn" type="button" id="wm-shuffle">Shuffle</button></div>
+        <div class="wm-head"><span>Lay it out yourself: pick the land</span><button class="lnkbtn" type="button" id="wm-shuffle">Shuffle</button></div>
         <div class="wm-row" id="wm-row"></div>
       </div>
-      <div class="wskip">Rather have the whole city now? <button class="lnkbtn" type="button" data-buildall="1">Build it all now</button></div>
+      <div class="wstart" id="w-manhattan">Or <button class="lnkbtn" type="button" id="wm-manhattan">start from Manhattan</button>, whole, and rearrange it.</div>
     </div>
     <div id="ticker"><div id="track"></div></div>
     <!-- The city builder (docs/city-builder.md): the build toolbar, the catalogue, the selection card and the borough sheet. -->
@@ -520,7 +526,7 @@
       <h2 class="fold" id="et-head" role="button" tabindex="0"><span class="chev">&#9662;</span>Earlier tasks<span class="tcount" id="et-count"></span></h2>
       <div id="tasks"></div>
     </section>
-    <h2>Blueprints</h2>
+    <h2 id="bp-title">Blueprints</h2>
     <div class="card" id="blueprints"></div>
     <h2>Boroughs</h2>
     <div id="boroughs"></div>
@@ -1495,11 +1501,14 @@
 
   // ---- the onboarding game: welcome and blueprints ---------------------------
   let gameHtml = ''
+  // The quests of the latest frame, for the catalogue and the toolbar's hint.
+  var gameQuests = null
   function drawGame(g) {
     if (!g) return
     const w = $('welcome')
     w.hidden = !g.welcome
-    if (g.welcome && typeof drawMapPicker === "function") drawMapPicker()
+    $('w-maps').hidden = $('w-manhattan').hidden = !g.pick
+    if (g.welcome && g.pick && typeof drawMapPicker === "function") drawMapPicker()
     if (g.welcome) {
       const st = $('w-state')
       st.className = 'wstate' + (g.connected ? ' on' : '')
@@ -1508,14 +1517,24 @@
         : 'Not connected yet: no Agent City hooks in ~/.claude/settings.json.'
       $('w-next').hidden = g.connected
     }
-    const MARK = { blueprint: '◻', building: '▲', built: '✓' }
-    const html = g.complete
-      ? `<div class="bp-done"><span>✓ The city is complete.</span><button class="btn sm" type="button" data-rebuild="1" style="margin-left:auto" title="Back to bare land: every landmark goes up again as you work">Rebuild the city</button></div>`
+    const MARK = { blueprint: '◻', building: '▲', built: '✓', done: '✓', next: '★', todo: '◻', locked: '🔒' }
+    // Rebuild's two starts.
+    const rebuild = `<button class="btn sm" type="button" data-rebuild="land" title="New land to lay out; sessions and agents stay">Rebuild: new land</button>
+      <button class="btn sm" type="button" data-rebuild="manhattan" title="Manhattan, whole; sessions and agents stay">Rebuild: Manhattan</button>`
+    $('bp-title').textContent = g.quests ? 'First district' : 'Blueprints'
+    const html = g.quests
+      ? g.quests.map(q => `<div class="bp-line ${esc(q.state)}" title="${esc(q.hint)}"><span class="st">${MARK[q.state] || ''}</span><span class="nm">${esc(q.name)}</span>
+          ${q.opened ? '<span class="op" title="A session has used it">open</span>' : ''}<span class="hn">${esc(q.state === 'done' ? '' : q.hint)}</span></div>`).join('') +
+        `<div class="row wrap" style="margin-top:8px"><span class="small dim">${g.quests.filter(q => q.state === 'done').length} of ${g.quests.length} done</span>${rebuild}</div>`
+      : g.complete
+      ? `<div class="bp-done"><span>✓ The city is complete.</span></div><div class="row wrap">${rebuild}</div>`
       : g.landmarks.map(l => `<div class="bp-line ${esc(l.state)}" title="${esc(l.state === 'built' ? `Built ${ago(l.at)}` : l.state === 'building' ? 'Under construction' : l.hint)}">
           <span class="st">${MARK[l.state] || ''}</span><span class="nm">${esc(l.name)}</span><span class="hn">${esc(l.state === 'building' ? 'under construction' : l.hint)}</span></div>`).join('') +
         `<div class="row" style="margin-top:8px"><span class="small dim">${g.landmarks.filter(l => l.state !== 'blueprint').length} of ${g.landmarks.length} built</span>
-          <button class="btn sm" type="button" data-rebuild="1" style="margin-left:auto" title="Back to bare land">Rebuild</button></div>`
+          </div><div class="row wrap">${rebuild}</div>`
     if (html !== gameHtml) { $('blueprints').innerHTML = html; gameHtml = html }
+    gameQuests = g.quests || null
+    if (typeof drawCatalog === 'function') drawCatalog()
   }
 
   document.addEventListener('click', e => {
@@ -1567,8 +1586,11 @@
     } else if (b.dataset.buildall) {
       post('/buildall', {}).then(r => { if (r.error) toast(r.error) })
     } else if (b.dataset.rebuild) {
-      if (confirm('Rebuild the city? The island goes back to bare land and blueprints, and every landmark goes up again the first time a session does that kind of work. Sessions and agents are untouched.')) {
-        post('/rebuild', {}).then(r => { if (r.error) toast(r.error) })
+      const land = b.dataset.rebuild !== 'manhattan'
+      if (confirm(land
+        ? 'Rebuild the city on new land? Everything you laid out goes, and you lay out a first district again. Sessions and agents stay.'
+        : 'Rebuild the city as Manhattan, whole? Everything you laid out goes. Sessions and agents stay.')) {
+        post('/rebuild', { start: land ? 'land' : 'manhattan' }).then(r => { if (r.error) toast(r.error) })
       }
     } else if (b.dataset.resolve) {
       post('/resolve', { id: b.dataset.resolve })
@@ -2570,6 +2592,8 @@
   #catalog .kind:hover { border-color: var(--line); }
   #catalog .kind.on { border-color: #b45309; background: #3a2a07; }
   #catalog .kind.locked { opacity: .5; }
+  #catalog .kind.next { border-color: #b45309; }
+  #build .tool.hint { border-color: #b45309; color: #fde68a; }
   #catalog .kind .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; background: var(--c, #94a3b8); }
   #catalog .kind .nm { flex: 1; }
   #catalog .kind .ct { color: var(--dim); font-size: 11px; white-space: nowrap; }
@@ -2660,13 +2684,18 @@
     if (!layout) return
     const standing = k => layout.buildings.filter(b => b.kind === k && !b.burb)
     const districtsUp = DISTRICT_KINDS.every(d => standing(d).some(b => b.built !== undefined))
+    const quests = gameQuests
+    const quest = k => quests && quests.find(q => q.id === k)
+    // The suggested next step lights its tool or its line.
+    const nextQ = quests && quests.find(q => q.state === 'next')
+    for (const t of buildBar.querySelectorAll('[data-tool]')) t.classList.toggle('hint', !!nextQ && (nextQ.id === 'road' ? t.dataset.tool === 'road' : nextQ.id === 'zone' ? t.dataset.tool === 'zone' : t.dataset.tool === 'place'))
     const html = KINDS.map(([k, name, c]) => {
       const n = standing(k).length
-      const locked = k === 'empire' && !districtsUp
+      const locked = k === 'empire' && (quest(k) ? quest(k).state === 'locked' : !districtsUp)
       const fp = R() ? R().FOOTPRINT[k][0] : null
       const size = fp ? `${fp[2]}×${fp[3]}` : ''
       const hint = locked ? 'Build every district first' : k === 'liberty' ? 'In the water' : k === 'harbor' ? 'On a shore' : 'On land, along a road'
-      return `<button class="kind${placeKind === k ? ' on' : ''}${locked ? ' locked' : ''}" type="button" data-kind="${k}" style="--c:${c}" title="${esc(hint)}">
+      return `<button class="kind${placeKind === k ? ' on' : ''}${locked ? ' locked' : ''}${quest(k) && quest(k).state === 'next' ? ' next' : ''}" type="button" data-kind="${k}" style="--c:${c}" title="${esc(hint)}">
         <span class="sw"></span><span class="nm">${esc(name)}</span><span class="ct">${size}${n ? ` · ${n} placed` : ''}</span></button>`
     }).join('')
     if (html !== catalogHtml) { catalog.innerHTML = html; catalogHtml = html }
@@ -2908,14 +2937,16 @@
     const key = JSON.stringify([seeds, now])
     if (row.dataset.key === key) return
     row.dataset.key = key
-    row.innerHTML = seeds.map(s => `<button class="wm${isOn(s) ? ' on' : ''}" type="button" data-seed="${s}" title="Map ${s}">${thumb(cityRules.generateMap(s))}Map ${String(s).slice(-4)}</button>`).join('') +
-      `<button class="wm${isOn('manhattan') ? ' on' : ''}" type="button" data-seed="manhattan" title="The hand-drawn island">${thumb(cityRules.manhattanLayout())}Manhattan</button>`
+    row.innerHTML = seeds.map(s => `<button class="wm${isOn(s) ? ' on' : ''}" type="button" data-seed="${s}" title="Map ${s}">${thumb(cityRules.generateMap(s))}Map ${String(s).slice(-4)}</button>`).join('')
   }
   document.getElementById('wm-row').addEventListener('click', e => {
     const b = e.target.closest('[data-seed]')
     if (!b) return
     const seed = b.dataset.seed === 'manhattan' ? 'manhattan' : Number(b.dataset.seed)
     post('/newmap', { seed }).then(r => { if (r && r.error) toast(r.error) })
+  })
+  document.getElementById('wm-manhattan').addEventListener('click', () => {
+    post('/newmap', { seed: 'manhattan' }).then(r => { if (r && r.error) toast(r.error) })
   })
   document.getElementById('wm-shuffle').addEventListener('click', () => {
     pickSeeds = pickSeeds.map(() => 1 + Math.floor(Math.random() * 2147483000))

@@ -172,7 +172,7 @@ test('the world: placing in the city builds at once; in a borough the first such
   assert.ok(lib2, 'placed')
   assert.equal(lib2.built, T0 + 100, 'stands at once')
   assert.equal(city.world.built!.library, T0 + 100, 'the game counts it')
-  assert.ok(city.toasts.includes('Public Library opened'))
+  assert.ok(city.toasts.includes('Public Library went up'))
   assert.equal(l().rev, 2)
   const refusal = city.build({ op: 'place', kind: 'library', x: 9, y: 46 }, T0 + 200)
   assert.ok('error' in refusal && refusal.error)

@@ -270,6 +270,10 @@ export type World = {
   // The onboarding game: when each landmark went up. Absent in a city saved
   // before the game existed, which counts as fully built.
   built?: Partial<Record<Landmark, number>>
+  // When each landmark was first used after it went up ("opened its doors"),
+  // and when the person laid their first road: the quests read them.
+  opened?: Partial<Record<Landmark, number>>
+  firstRoad?: number
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts
