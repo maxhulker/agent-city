@@ -151,6 +151,9 @@ export type Pending = {
   questions?: { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean }[]
   // For ExitPlanMode: the plan, in Markdown.
   plan?: string
+  // For a permission Claude Code offers to remember: what "Always allow"
+  // would add ("Bash(npm test:*) in this project"). Absent, only Allow.
+  always?: string
   at: number
   // After this the hook gives up and the session asks in its own window.
   expiresAt: number
@@ -163,6 +166,8 @@ export type Decision = {
   message?: string
   // For a question: question text → the chosen label(s), joined with ", ".
   answers?: Record<string, string>
+  // With an allow: also apply the prompt's "always allow" suggestions.
+  always?: boolean
 }
 
 // One line of a session's conversation, read from its transcript.

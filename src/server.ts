@@ -408,6 +408,7 @@ const server = createServer(async (req, res) => {
             Object.entries(args.answers as Record<string, unknown>).map(([q, a]) => [q, String(a).slice(0, 2000)]),
           )
         }
+        if (behavior === 'allow' && args.always === true) decision.always = true
         const id = String(args.id)
         // Look before deciding: an approved plan is posted at City Hall.
         const asked = [...approvals.list(), ...appSessions.pending()].find(p => p.id === id)

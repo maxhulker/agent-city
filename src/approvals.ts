@@ -14,7 +14,13 @@ const HOLD_MS = 540_000
 const INPUT_BUDGET = 2000
 const DECLINED = 'The user declined this in Agent City.'
 
-type Held = { pending: Pending; toolInput: Record<string, unknown>; resolve: (reply: HookReply) => void; timer: ReturnType<typeof setTimeout> }
+type Held = {
+  pending: Pending
+  toolInput: Record<string, unknown>
+  suggestions: Record<string, unknown>[]
+  resolve: (reply: HookReply) => void
+  timer: ReturnType<typeof setTimeout>
+}
 
 function oneLine(text: string, n = 200): string {
   const t = text.replace(/\s+/g, ' ').trim()
@@ -74,6 +80,40 @@ function questionsOf(input: Record<string, unknown>): Pending['questions'] {
     }))
 }
 
+// Claude Code's "always allow" choices for a prompt (permission_suggestions:
+// add a rule, accept edits for the session, open a directory…), passed back
+// as updatedPermissions when the page picks "Always allow". Kept only when
+// each one is something we can name on the button.
+export function suggestionsOf(v: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((s): s is Record<string, unknown> => !!s && typeof s === 'object' && typeof s.type === 'string')
+}
+
+const WHERE: Record<string, string> = {
+  session: 'this session',
+  localSettings: 'this project',
+  projectSettings: 'this project (shared)',
+  userSettings: 'all projects',
+}
+
+// One line for the button's tooltip: "Bash(git status:*) in this project".
+export function alwaysLabel(suggestions: Record<string, unknown>[]): string | undefined {
+  const parts = suggestions.map(s => {
+    const where = WHERE[str(s.destination)] ?? str(s.destination)
+    if (s.type === 'addRules' && s.behavior === 'allow' && Array.isArray(s.rules)) {
+      const rules = s.rules
+        .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+        .map(r => (str(r.ruleContent) ? `${str(r.toolName)}(${str(r.ruleContent)})` : str(r.toolName)))
+      return rules.length ? `${rules.join(', ')} in ${where}` : ''
+    }
+    if (s.type === 'setMode' && s.mode === 'acceptEdits') return `Accept edits in ${where}`
+    if (s.type === 'setMode') return `${str(s.mode)} mode in ${where}`
+    if (s.type === 'addDirectories' && Array.isArray(s.directories)) return `Access to ${s.directories.map(str).join(', ')} in ${where}`
+    return ''
+  })
+  return parts.length && parts.every(Boolean) ? oneLine(parts.join('; ')) : undefined
+}
+
 function reply(decision: Record<string, unknown>): HookReply {
   return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }
 }
@@ -104,6 +144,9 @@ export class Approvals {
       at: now,
       expiresAt: now + HOLD_MS,
     }
+    const suggestions = kind === 'permission' ? suggestionsOf(ev.permission_suggestions) : []
+    const always = alwaysLabel(suggestions)
+    if (always) pending.always = always
     if (kind === 'question') {
       pending.questions = questionsOf(toolInput)
       const first = pending.questions?.[0]?.question
@@ -121,7 +164,7 @@ export class Approvals {
 
     return new Promise(resolve => {
       const timer = setTimeout(() => this.settle(pending.id, {}), Math.max(0, pending.expiresAt - Date.now()))
-      this.held.set(pending.id, { pending, toolInput, resolve, timer })
+      this.held.set(pending.id, { pending, toolInput, suggestions, resolve, timer })
       signal?.addEventListener('abort', () => this.settle(pending.id, {}), { once: true })
       this.onChange()
     })
@@ -140,6 +183,9 @@ export class Approvals {
       // plus question text → chosen label(s).
       const answers = decision.answers ?? {}
       return this.settle(id, reply({ behavior: 'allow', updatedInput: { ...h.toolInput, answers } }))
+    }
+    if (decision.always && h.pending.always) {
+      return this.settle(id, reply({ behavior: 'allow', updatedInput: h.toolInput, updatedPermissions: h.suggestions }))
     }
     return this.settle(id, reply({ behavior: 'allow', updatedInput: h.toolInput }))
   }

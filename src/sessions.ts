@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
+import { alwaysLabel, suggestionsOf } from './approvals.ts'
 import { HATS } from './draw/agents.ts'
 import type { AppSession, Decision, Hat, Look, Pending, TaskEffort, TaskLevel, TaskModel } from './types.ts'
 import { norm } from './world.ts'
@@ -64,7 +65,7 @@ const EFFORTS: TaskEffort[] = ['default', 'low', 'medium', 'high', 'xhigh', 'max
 // Claude Code session ids are UUIDs; checked by shape, since they reach a shell on Windows.
 const SESSION_ID = /^[A-Za-z0-9-]{8,100}$/
 
-type Held = { pending: Pending; toolInput: Record<string, unknown>; requestId: string; owner: string }
+type Held = { pending: Pending; toolInput: Record<string, unknown>; suggestions: Record<string, unknown>[]; requestId: string; owner: string }
 
 // What we keep beside each AppSession while it has a process.
 type Proc = {
@@ -357,6 +358,8 @@ export class AppSessions {
     } else if (h.pending.kind === 'question') {
       // The tool reads the answers from its own input: question text → chosen label(s).
       response = { behavior: 'allow', updatedInput: { ...h.toolInput, answers: decision.answers ?? {} } }
+    } else if (decision.always && h.pending.always) {
+      response = { behavior: 'allow', updatedInput: h.toolInput, updatedPermissions: h.suggestions, decisionClassification: 'user_permanent' }
     } else {
       response = { behavior: 'allow', updatedInput: h.toolInput }
     }
@@ -604,6 +607,9 @@ export class AppSessions {
       expiresAt: 0,
     }
     if (typeof req.agent_id === 'string') pending.agentId = req.agent_id
+    const suggestions = kind === 'permission' ? suggestionsOf(req.permission_suggestions) : []
+    const always = alwaysLabel(suggestions)
+    if (always) pending.always = always
     if (kind === 'question') {
       pending.questions = questionsOf(toolInput)
       const first = pending.questions?.[0]?.question
@@ -616,7 +622,7 @@ export class AppSessions {
       if (title) pending.summary = oneLine(title.replace(/^#+\s*/, ''))
       delete pending.input.plan
     }
-    this.held.set(pending.id, { pending, toolInput, requestId, owner: s.id })
+    this.held.set(pending.id, { pending, toolInput, suggestions, requestId, owner: s.id })
     s.lastAt = now
     this.onChange(s, 'pending')
   }

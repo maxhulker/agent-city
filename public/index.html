@@ -2524,8 +2524,11 @@
       acts = '<button class="btn primary" type="button" data-pact="allow">Approve plan</button><button class="btn" type="button" data-pact="deny-open">Keep planning</button>'
       ph = 'What should change? (optional)'
     } else {
-      body = `<div class="pintro">Wants to use a tool:</div><div class="pcode"><b>${esc(p.tool)}</b>${esc(p.summary)}</div>`
-      acts = '<button class="btn primary" type="button" data-pact="allow">Allow</button><button class="btn" type="button" data-pact="deny-open">Deny</button>'
+      body = `<div class="pintro">Wants to use a tool:</div><div class="pcode"><b>${esc(p.tool)}</b>${esc(p.summary)}</div>` +
+        (p.always ? `<div class="pintro">Always allow adds: ${esc(p.always)}</div>` : '')
+      acts = '<button class="btn primary" type="button" data-pact="allow">Allow</button>' +
+        (p.always ? `<button class="btn" type="button" data-pact="always" title="${esc('Don’t ask again: ' + p.always)}">Always allow</button>` : '') +
+        '<button class="btn" type="button" data-pact="deny-open">Deny</button>'
       ph = 'Why not, or what to do instead (optional)'
     }
     const sendLabel = p.kind === 'plan' ? 'Keep planning' : p.kind === 'question' ? 'Skip' : 'Deny'
@@ -2621,6 +2624,7 @@
     if (!id) return
     const box = el.querySelector('.denybox'), act = b.dataset.pact
     if (act === 'allow') decide(id, { behavior: 'allow' })
+    else if (act === 'always') decide(id, { behavior: 'allow', always: true })
     else if (act === 'deny-open') { box.hidden = false; box.querySelector('input').focus() }
     else if (act === 'deny-cancel') box.hidden = true
     else if (act === 'deny') { const msg = box.querySelector('input').value.trim(); decide(id, msg ? { behavior: 'deny', message: msg } : { behavior: 'deny' }) }
