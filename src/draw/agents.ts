@@ -97,16 +97,21 @@ function inkOn(color: string): string {
   return lum > 0.6 ? INK : '#fff'
 }
 
+// How big a figure stands against the city: below the scene's scale, so a
+// crowd leaves the streets visible. Names keep their size and stagger.
+const SIZE = 0.7
+
 function figure(a: Agent, label: boolean, lift: number, k: number, session?: Session, note = ''): string {
-  const s = (a.isMain ? 1.3 : 1) * k
+  const u = k * SIZE
+  const s = (a.isMain ? 1.3 : 1) * u
   const isWorking = a.status === 'working'
-  let body = `<ellipse class="ring" cx="0" cy="0" rx="${n(9 * s)}" ry="${n(4.5 * s)}" fill="none" stroke="#fde047" stroke-width="${n(1.6 * k)}"/>`
+  let body = `<ellipse class="ring" cx="0" cy="0" rx="${n(9 * s)}" ry="${n(4.5 * s)}" fill="none" stroke="#fde047" stroke-width="${n(1.6 * u)}"/>`
   body += `<ellipse cx="0" cy="0" rx="${n(5 * s)}" ry="${n(2.5 * s)}" fill="#000" opacity=".4"/><g>`
   if (isWorking) {
     body += `<animateTransform attributeName="transform" type="translate" values="0,0;0,${n(-2.4 * s)};0,0" dur=".55s" repeatCount="indefinite"/>`
   }
-  body += `<rect x="${n(-4 * s)}" y="${n(-13 * s)}" width="${n(8 * s)}" height="${n(10.5 * s)}" rx="${n(3.6 * s)}" fill="${a.color}" stroke="#0b1224" stroke-width="${n(0.8 * k)}"/>`
-  body += `<circle cx="0" cy="${n(-16 * s)}" r="${n(3.7 * s)}" fill="#fef3c7" stroke="#0b1224" stroke-width="${n(0.8 * k)}"/>`
+  body += `<rect x="${n(-4 * s)}" y="${n(-13 * s)}" width="${n(8 * s)}" height="${n(10.5 * s)}" rx="${n(3.6 * s)}" fill="${a.color}" stroke="#0b1224" stroke-width="${n(0.8 * u)}"/>`
+  body += `<circle cx="0" cy="${n(-16 * s)}" r="${n(3.7 * s)}" fill="#fef3c7" stroke="#0b1224" stroke-width="${n(0.8 * u)}"/>`
   // A lead wears its hat: the crown, or what the person picked for it.
   const hat = a.isMain ? HATS[session?.hat ?? 'crown']?.svg : ''
   if (hat) body += `<g transform="translate(0,${n(-16 * s)}) scale(${n(s)})">${hat}</g>`
@@ -115,12 +120,12 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
     body += `<g transform="translate(${n(7.4 * s)},${n(-6.5 * s)}) scale(${n(s)})">${PROPS[a.at] ?? ''}</g>`
   }
   const badge = (fill: string, mark: string, ink: string, pulse: boolean) =>
-    `<g>${pulse ? '<animate attributeName="opacity" values="1;.35;1" dur="1s" repeatCount="indefinite"/>' : ''}<circle cx="${n(8 * s)}" cy="${n(-26 * s)}" r="${n(5.5 * s)}" fill="${fill}" stroke="#fff" stroke-width="${n(1.2 * k)}"/><text x="${n(8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(8 * s)}" font-weight="800" fill="${ink}">${mark}</text></g>`
+    `<g>${pulse ? '<animate attributeName="opacity" values="1;.35;1" dur="1s" repeatCount="indefinite"/>' : ''}<circle cx="${n(8 * s)}" cy="${n(-26 * s)}" r="${n(5.5 * s)}" fill="${fill}" stroke="#fff" stroke-width="${n(1.2 * u)}"/><text x="${n(8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(8 * s)}" font-weight="800" fill="${ink}">${mark}</text></g>`
   if (a.status === 'waiting') body += badge('#fbbf24', '?', '#111827', true)
   else if (a.status === 'failed') body += badge('#ef4444', '!', '#fff', false)
   // The session's subway bullet, left of the badge.
   if (session?.bullet) {
-    body += `<circle cx="${n(-8 * s)}" cy="${n(-26 * s)}" r="${n(5 * s)}" fill="${esc(session.color)}" stroke="#fff" stroke-width="${n(1 * k)}"/><text x="${n(-8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(7.6 * s)}" font-weight="800" fill="${inkOn(session.color)}">${esc(session.bullet.slice(0, 1))}</text>`
+    body += `<circle cx="${n(-8 * s)}" cy="${n(-26 * s)}" r="${n(5 * s)}" fill="${esc(session.color)}" stroke="#fff" stroke-width="${n(1 * u)}"/><text x="${n(-8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(7.6 * s)}" font-weight="800" fill="${inkOn(session.color)}">${esc(session.bullet.slice(0, 1))}</text>`
   }
   // A lead with a site plan stands by its hoarding: the checklist's progress.
   const plan = a.isMain ? session?.plan ?? [] : []
