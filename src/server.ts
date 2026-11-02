@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { BLUEPRINTS, LABELS, LANDMARKS, renderFrame } from './city.ts'
 import { burbGeo, isWaiting } from './layout.ts'
+import { p, placeAt } from './draw/geo.ts'
 import { Approvals } from './approvals.ts'
 import { changesIn } from './changes.ts'
 import { hooksInstalled } from './install.ts'
@@ -155,6 +156,17 @@ function tickerNow(world: World, now: number): TickerItem[] {
   return [...live.sort((a, b) => b.at - a.at), ...recent]
 }
 
+// An agent's last stops for its route line: where each was, by name, when,
+// and the point on the map (the place's first standing spot).
+function routeOf(world: World, a: Agent) {
+  return (a.stops ?? []).map(st => {
+    const place = st.burb ? { at: st.at, burb: st.burb } : { at: st.at }
+    const name = !st.burb ? LABELS[st.at] : isWaiting(st.burb) ? 'Grand Central' : `${burbGeo(world.layout, st.burb)?.name ?? 'a borough'}`
+    const [x, y] = p(...placeAt(place, 0, world.layout))
+    return { name, t: st.t, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }
+  })
+}
+
 // The onboarding game, for the Blueprints card, the welcome and the header.
 function game(world: World, now: number) {
   const built = world.built ?? {}
@@ -199,6 +211,8 @@ function meta(world: World) {
           where: a.burb
             ? `${burbGeo(world.layout, a.burb)?.name ?? 'Grand Central'} (${world.repos.find(r => r.burb === a.burb && !r.left)?.name ?? 'another repo'})`
             : LABELS[a.at],
+          ...(a.order ? { order: a.order } : {}),
+          route: routeOf(world, a),
         })),
     })),
     ticker: tickerNow(world, Date.now()),

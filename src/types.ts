@@ -62,7 +62,15 @@ export type Agent = {
   leaving?: number
   // When it steps off the train it arrived on (a brand-new city's first lead).
   arriving?: number
+  // A subagent's work order: the brief its lead gave it (the Agent tool's
+  // prompt, cut to 2 KB), numbered by session, with who issued it and when.
+  order?: WorkOrder
+  // Its last eight stops, oldest first, for its route line.
+  stops?: Stop[]
 }
+
+export type WorkOrder = { no: string; title: string; brief: string; issuedBy: string; at: number }
+export type Stop = { at: District; burb?: Burb; t: number }
 
 // A train at Grand Central. Departing: it waits while its passengers walk
 // over, pulls out at leaveAt, and is gone a few seconds later. Arriving: it
@@ -88,6 +96,8 @@ export type Session = {
   color: string
   // Its subway bullet: a letter in a circle of its color, shared by its agents.
   bullet?: string
+  // How many work orders its lead has issued (subagents started).
+  orders?: number
   startedAt: number
   updatedAt: number
   // What the person typed for it in the page: queued until its next hook event

@@ -105,7 +105,17 @@ borough is never given up until all four are taken.
    SubagentStop).
 
 Order: A, then B1 and B2 together (mostly world.ts bookkeeping plus drawing),
-then B3 once the task hooks are verified. The smoothness rebuild
+then B3 once the task hooks are verified.
+
+B1 and B2 are in: `Agent.order` (the Agent tool's prompt cut to 2 KB,
+numbered by the session's bullet, with who issued it and when) and
+`Agent.stops` (the last eight, recorded in `flush()` as each walk starts);
+the server sends them as `order` and `route` (named stops with map points);
+clicking an agent opens its session's drawer with its work order and the
+stops' legend, and draws its route as a dotted line with numbered stops
+(`drawRoute` in the page). A subagent carries a clipboard on its first walk.
+Tests in `test/orders.test.ts`. B3 (site plans) still waits on verifying
+the task hooks, and B4's small touches are not done. The smoothness rebuild
 (`docs/frames.md`) is done.
 
 A is done (commit d318388). Section C, the onboarding game where the city is

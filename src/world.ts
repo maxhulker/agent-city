@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
 import { FIXED, applyOp, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
-import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
+import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -74,6 +74,11 @@ const QUESTS: [Kind, string][] = [
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+// A long text cut to n characters, marked where it was cut.
+function cut(text: string, n: number): string {
+  return text.length > n ? text.slice(0, n - 1) + '…' : text
 }
 
 function short(text: string, n = 48): string {
@@ -256,8 +261,8 @@ export class City {
   isDirty = true
   toasts: string[] = []
   log: LogLine[] = []
-  // Per session, descriptions of Agent calls not yet matched to a SubagentStart.
-  private spawns = new Map<string, string[]>()
+  // Per session, the work orders of Agent calls not yet matched to a SubagentStart.
+  private spawns = new Map<string, WorkOrder[]>()
   // Tool-call times per repository root (lower-cased), for the last ten minutes. Not saved.
   private activity = new Map<string, number[]>()
   private activityRoots = new Map<string, string>()
@@ -802,10 +807,13 @@ export class City {
     if (!a) {
       const pending = this.spawns.get(s.id) ?? []
       const subs = this.world.agents.filter(one => !one.isMain).length
+      const order = pending.shift()
       a = {
         id,
         session: s.id,
-        name: short(pending.shift() ?? str(ev.agent_type) ?? 'Subagent', 28) || 'Subagent',
+        name: short(order?.title ?? str(ev.agent_type) ?? 'Subagent', 28) || 'Subagent',
+        ...(order ? { order } : {}),
+        stops: [{ at: 'relay', ...(lead.burb ? { burb: lead.burb } : {}), t: now }],
         kind: str(ev.agent_type) || 'subagent',
         color: AGENT_COLORS[subs % AGENT_COLORS.length]!,
         isMain: false,
@@ -899,8 +907,16 @@ export class City {
           this.ride(before, peer ? placeOf(peer) : a.burb ? { at: 'relay', burb: a.burb } : { at: 'relay' }, a.color, 'message', now)
         }
         if (SPAWNS.test(tool)) {
+          // A work order: the brief, numbered by the session's bullet.
+          s.orders = (s.orders ?? 0) + 1
           const list = this.spawns.get(s.id) ?? []
-          list.push(str(input.description) || str(input.subagent_type) || 'Subagent')
+          list.push({
+            no: `${s.bullet ?? 'S'}-${s.orders}`,
+            title: str(input.description) || str(input.subagent_type) || 'Subagent',
+            brief: cut(str(input.prompt), 2048),
+            issuedBy: a.name,
+            at: now,
+          })
           this.spawns.set(s.id, list.slice(-10))
         }
         // The game: the first of each kind of work raises its landmark, and
@@ -1287,7 +1303,13 @@ export class City {
       a.walkFrom = moved ? a.shown : undefined
       // A move starts a walk, which the frames carry until it is over (the
       // longest walk is 4.5 s); a move mid-walk starts a new one from here.
-      if (moved) a.walk = { from: a.shown, at: now }
+      if (moved) {
+        a.walk = { from: a.shown, at: now }
+        // A new stop on its route; the first is where it was first drawn.
+        const stops = a.stops ?? [{ ...a.shown, t: a.startedAt }]
+        stops.push({ at: a.at, ...(a.burb ? { burb: a.burb } : {}), t: now })
+        a.stops = stops.slice(-8)
+      }
       else if (a.walk && now - a.walk.at > WALK_MS) delete a.walk
       a.shown = a.burb ? { at: a.at, burb: a.burb } : { at: a.at }
       if (a.arriving && now >= a.arriving) delete a.arriving

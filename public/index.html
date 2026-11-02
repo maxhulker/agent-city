@@ -106,6 +106,12 @@
   #welcome .wstart { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--dim); }
   .bp-line .nm { flex: 1; min-width: 0; }
   .bp-line .hn { color: var(--dim); font-size: 11px; text-align: right; }
+  /* A subagent's work order and an agent's route, in the drawer's head. */
+  .order { margin-top: 6px; border: 1px solid #a16207; border-radius: 8px; background: #1c1608; padding: 6px 8px; }
+  .order .oh { font-size: 10px; letter-spacing: .08em; color: #fbbf24; font-weight: 700; }
+  .order .ob { margin-top: 4px; font-size: 12px; white-space: pre-wrap; max-height: 9em; overflow: auto; color: #e2e8f0; }
+  .route { margin-top: 6px; color: var(--dim); line-height: 1.6; }
+  .route b { display: inline-block; min-width: 14px; text-align: center; border-radius: 50%; background: #0b1224; border: 1px solid #64748b; color: #e2e8f0; font-size: 10px; }
   /* A quest: its name on one line; only the next one says how, underneath. */
   .bp-line.q { flex-wrap: wrap; }
   .bp-line.q .hn { flex-basis: 100%; text-align: left; padding-left: 22px; }
@@ -543,6 +549,8 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
   let selected = ''
   try { selected = localStorage.getItem('agent-city-selected') || '' } catch {}
+  // The agent picked on the map, for its work order and route line (handoff B2).
+  let selAgent = '', routeKey = ''
   let boot = null
   let source
 
@@ -558,7 +566,7 @@
   overlay.setAttribute('class', 'city overlay')
   overlay.setAttribute('preserveAspectRatio', 'xMidYMid meet')
   const layer = cls => { const g = document.createElementNS(SVGNS, 'g'); g.setAttribute('class', cls); overlay.append(g); return g }
-  const ovUnder = layer('ov-items'), agentLayer = layer('ov-agents'), ovTop = layer('ov-top')
+  const ovUnder = layer('ov-items'), routeLayer = layer('ov-route'), agentLayer = layer('ov-agents'), ovTop = layer('ov-top')
   cityEl.append(overlay)
 
   // Overlay markup carries SMIL begin offsets meant from "now" (a taxi mid-trip,
@@ -950,6 +958,8 @@
   const claudeSid = key => key && key.startsWith(APP) ? (appOf(lastMeta, key)?.sessionId || cv.lastApp?.sessionId || '') : key
 
   function applySel(scroll) {
+    // The picked agent's route follows the selection.
+    if (lastMeta) drawRoute(lastMeta)
     for (const g of document.querySelectorAll('#map .sel')) g.classList.remove('sel')
     for (const c of document.querySelectorAll('[data-session-card].selected, .appcard.selected')) c.classList.remove('selected')
     if (!selected) return
@@ -1470,6 +1480,7 @@
     drawTasks(m)
     drawPending(m)
     if (cv.open) drawPanel(m)
+    drawRoute(m)
     watch(m)
     setTitle(m)
 
@@ -1552,7 +1563,17 @@
       if (card) { select(card.dataset.sessionCard, false); return }
       if (e.target.closest('#map')) {
         const g = e.target.closest('[data-session]')
-        if (g) select(g.dataset.session, true)
+        if (g) {
+          // An agent of the session already open: show its work order and route.
+          const ag = g.dataset.agent || ''
+          if (cv.open && keyFor(lastMeta, g.dataset.session) === selected && ag !== selAgent) {
+            selAgent = ag
+            if (lastMeta) { drawPanel(lastMeta); drawRoute(lastMeta) }
+          } else {
+            selAgent = ag
+            select(g.dataset.session, true)
+          }
+        }
         else if (selected) select('', false)
       }
       return
@@ -1821,6 +1842,24 @@
     }
   }
 
+  // ---- route lines (handoff B2): the picked agent's last stops ----------
+  function drawRoute(m) {
+    const s = selected && sessOf(m, selected)
+    const a = s && ((s.agents || []).find(x => x.id === selAgent) || leadOf(s))
+    const r = (a && a.route) || []
+    const key = a && r.length > 1 ? a.id + JSON.stringify(r) : ''
+    if (key === routeKey) return
+    routeKey = key
+    if (!key) { routeLayer.innerHTML = ''; return }
+    const pts = r.map(q => `${q.x},${q.y}`).join(' ')
+    let g = `<polyline points="${pts}" fill="none" stroke="#0b1224" stroke-width="5" stroke-linejoin="round" opacity=".7"/>` +
+      `<polyline points="${pts}" fill="none" stroke="${esc(a.color)}" stroke-width="2.6" stroke-dasharray="1 4" stroke-linecap="round" stroke-linejoin="round"/>`
+    r.forEach((q, i) => {
+      g += `<g transform="translate(${q.x} ${q.y - 4})"><circle r="5" fill="#0b1224" stroke="${esc(a.color)}" stroke-width="1.4"/><text y="2.5" text-anchor="middle" font-size="7" font-weight="700" fill="#e2e8f0">${i + 1}</text></g>`
+    })
+    routeLayer.innerHTML = g
+  }
+
   function drawPanel(m) {
     if (isAppKey(cv.sid)) { drawAppPanel(m); return }
     CV.tail.hidden = true
@@ -1828,11 +1867,18 @@
     if (live) cv.lastS = live
     const s = cv.lastS
     const lead = leadOf(live)
+    // The agent picked on the map (the lead by default): its work order and its route.
+    const ag = (live?.agents || []).find(a => a.id === selAgent) || lead
+    const hhmm = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const who = ag && ag !== lead ? `<div class="small"><b>${esc(ag.name)}</b> <span class="dim">· ${esc(ag.where)} · ${esc(ag.activity)}</span></div>` : ''
+    const order = ag?.order ? `<div class="order"><div class="oh">WORK ORDER ${esc(ag.order.no)} · issued by ${esc(ag.order.issuedBy)} at ${hhmm(ag.order.at)} · reports to Grand Central</div>
+        <div class="ob">${esc(ag.order.brief || ag.order.title)}</div></div>` : ''
+    const route = ag?.route?.length > 1 ? `<div class="route small">${ag.route.map((q, i) => `<span><b>${i + 1}</b> ${esc(q.name)}</span>`).join(' → ')}</div>` : ''
     const head = s
       ? `<div class="row">${dotOrBullet(s)}<span class="name">${esc(leadOf(s)?.name ?? s.name)}</span>
           ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
         <div class="path">${esc(s.cwd)}</div>
-        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}`
+        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}${who}${order}${route}`
       : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
     if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
     drawAgentPicker(s)
