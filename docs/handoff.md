@@ -133,8 +133,9 @@ site plans commit missed them.)
 
 Generated maps were reworked after the person found them unnatural:
 `terrainOf(seed)` in `src/layout.ts` builds a heightmap from domain-warped
-noise (five octaves), the mainland rising inland along a direction that
-varies by seed, a tilted island with a strongly warped outline and a solid
+noise (five octaves), the island in the middle, the mainland rising inland
+in any direction (and, on about half the maps, a second shore across the
+water on the other side), a tilted island with a strongly warped outline and a solid
 core, one or two rivers meandering from the mainland's far side to the sea
 and widening to their mouths, and small islets and puddles swept away.
 `generatedLand` in map.ts draws blurred shallows round the coasts and up

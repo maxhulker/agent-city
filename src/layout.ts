@@ -1000,19 +1000,20 @@ function warped(seed: number, x: number, y: number, by = 12): number {
 }
 
 // The shape of a seed's map: the island's middle and half-sizes, how wide
-// the strait round it runs, and which way the mainland lies (a unit vector
-// pointing inland, always towards the back of the view).
-export function mapShape(seed: number): { cx: number; cy: number; a: number; b: number; strait: number; inland: [number, number]; tilt: number } {
+// the strait round it runs, which way the mainland lies (a unit vector
+// pointing inland, any way round), and whether a second, smaller shore lies
+// across the water on the other side.
+export function mapShape(seed: number): { cx: number; cy: number; a: number; b: number; strait: number; inland: [number, number]; tilt: number; across: boolean } {
   const r = (k: number) => rnd(seed, 1000 + k, 7)
-  const turn = (r(5) - 0.5) * 1.2
-  const inland: [number, number] = [-Math.cos(Math.PI / 4 + turn), -Math.sin(Math.PI / 4 + turn)]
-  return { cx: 32 + (r(0) - 0.5) * 8, cy: 38 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 12 + r(3) * 4, strait: 0.25 + r(4) * 0.25, inland, tilt: (r(6) - 0.5) * 0.9 }
+  const turn = r(5) * Math.PI * 2
+  const inland: [number, number] = [Math.cos(turn), Math.sin(turn)]
+  return { cx: 32 + (r(0) - 0.5) * 6, cy: 32 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 12 + r(3) * 4, strait: 0.25 + r(4) * 0.25, inland, tilt: (r(6) - 0.5) * 0.9, across: r(7) > 0.45 }
 }
 
 // A seed's terrain: which cells are land, and how high each stands (0 at the
 // sea, rising inland), for the generator and for the drawing's hills.
 export function terrainOf(seed: number): { land: boolean[][]; height: number[][] } {
-  const { cx, cy, a, b, strait, inland, tilt } = mapShape(seed)
+  const { cx, cy, a, b, strait, inland, tilt, across } = mapShape(seed)
   const land: boolean[][] = []
   const height: number[][] = []
   // How far inland a point lies along the mainland's direction, 0 at the
@@ -1037,7 +1038,9 @@ export function terrainOf(seed: number): { land: boolean[][]; height: number[][]
       const isl = islandAt(px, py)
       // The mainland: rising inland, its coast thrown about by the noise.
       const main = (t - 0.5) * 3.2 + (depth(px, py) - 0.45) * 1.2
-      let h = main
+      // The far shore, on some maps: lower, and further off.
+      const far = across ? (warped(seed + 70, px, py) - 0.5) * 3.2 + (-depth(px, py) - 0.7) * 1.2 : -1
+      let h = Math.max(main, far)
       let on = h > 0
       // The strait keeps the island apart; the island has a solid core.
       if (isl.warped < 1 + strait) on = false
