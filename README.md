@@ -254,6 +254,41 @@ node src/install.ts --print --settings hooks.json
 claude --settings hooks.json
 ```
 
+## A city for each Claude
+
+Signed in to Claude as more than one account, say a personal one and a
+work one? Each can have a city of its own, with a tab for each in the header.
+
+The hooks tell Agent City which account each session is signed in as: a
+session the Claude desktop app starts says so itself, and one in a terminal
+is whichever account the CLI is signed into (`~/.claude.json`). Run
+`npm run connect` again once to get hooks that say so (they share
+`~/.claude/settings.json`, whatever the account). When sessions from a second
+account arrive, a card at the top of the panel lists the accounts reporting
+to this city: name a city for one and click **Own city**. Its sessions move
+there from their next step. Or from the terminal:
+
+```bash
+npm run connect -- --city work --account you@company.com --name Work
+```
+
+`--account` also takes `@company.com` for every address there, or an
+organization's UUID. The cities are listed in `~/.agent-city/cities.json`,
+and the server picks up a change within seconds, no restart needed.
+
+Click a tab, or press `Alt+1`, `Alt+2`, to switch. Each city has its own
+map, sessions, Treasury and state file (`~/.agent-city/cities/work.json`).
+A tab's badge counts what is waiting for you there, and with the bell on, a
+prompt in the other city notifies you too. A session started with
+`AGENT_CITY=work` in its environment goes to that city whatever its
+account; the sessions and tasks you start from a city's page are given
+their city that way. They still run as the account the CLI is signed into.
+
+A Claude Code with a config folder of its own (`CLAUDE_CONFIG_DIR`) can
+have a city too: `npm run connect -- --city side --config <folder>` puts
+hooks in that folder that post to `/hook?city=side`, and the sessions
+started from its page run with that folder.
+
 ## Good to know
 
 - Everything stays on this machine. The server listens on 127.0.0.1 only,

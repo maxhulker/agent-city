@@ -2,10 +2,11 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import * as nodeModule from 'node:module'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { cityFor, citiesOf, defaultConfig, HOME, idFor, register, stateDir, stateFile, whoOf } from './cities.ts'
+import type { CityConf, Who } from './cities.ts'
 import { BLUEPRINTS, LABELS, LANDMARKS, renderFrame } from './city.ts'
 import { burbGeo, isWaiting } from './layout.ts'
 import { HATS } from './draw/agents.ts'
@@ -24,11 +25,12 @@ import type { HookEvent, TickerItem } from './world.ts'
 
 // Agent City: a local server Claude Code sessions post their hook events to,
 // and a page that draws every session at work in one isometric Manhattan.
+// One city per Claude Code config folder (src/cities.ts): the page shows one
+// at a time, with a tab for each.
 
 export const PORT = Number(process.env.AGENT_CITY_PORT ?? 4777)
 const HOST = '127.0.0.1'
-const STATE_DIR = join(homedir(), '.agent-city')
-const STATE_FILE = join(STATE_DIR, 'state.json')
+const STATE_DIR = stateDir()
 const PAGE = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'index.html')
 const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_FILES: Record<string, [string, string]> = {
@@ -43,9 +45,9 @@ const RULES = join(dirname(fileURLToPath(import.meta.url)), 'layout.ts')
 const { stripTypeScriptTypes } = nodeModule as unknown as { stripTypeScriptTypes(code: string): string }
 const ORIGINS = new Set([`http://${HOST}:${PORT}`, `http://localhost:${PORT}`])
 
-function loadWorld(): World | undefined {
+function loadWorld(file: string): World | undefined {
   try {
-    const saved = JSON.parse(readFileSync(STATE_FILE, 'utf8')) as World
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as World
     return Array.isArray(saved.sessions) && Array.isArray(saved.agents) ? saved : undefined
   } catch {
     return undefined
@@ -54,81 +56,170 @@ function loadWorld(): World | undefined {
 
 // The page compares this to reload itself after a restart.
 const BOOT = Date.now()
-const saved = loadWorld()
-const city = new City(saved)
-// A brand-new city starts on land of its own to lay out; the welcome offers others.
-if (!saved) city.newMap(1 + Math.floor(Math.random() * 2147483000), Date.now())
-
-// Tasks live in the world so state.json keeps them; the list itself is Tasks'.
 const AMBER = '#fbbf24'
 const ENDS = { done: 'FINISHED', failed: 'FAILED', stopped: 'STOPPED' } as const
-const tasks = new Tasks(city.world.tasks, (task, what) => {
-  city.world.tasks = tasks.list
-  // The Treasury: each turn of a task is its own claude process, its own running total.
-  if (task.sessionId) city.spend(`task:${task.id}:${task.turns?.length ?? 0}`, task.costUsd, Date.now(), task.sessionId)
-  const folder = base(task.cwd)
-  const text = what === 'start' ? `STARTED A TASK IN ${folder}` : `TASK IN ${folder} ${ENDS[what]}`
-  city.announce('YOU', text, '★', AMBER, Date.now())
-  // A finished task is worth keeping straight away, not at the next five-second save.
-  if (what !== 'start') save()
-})
-city.world.tasks = tasks.list
-
-// Permission prompts, questions and plans waiting on the page; any change redraws.
-const approvals = new Approvals(() => {
-  city.isDirty = true
-})
-
-// Sessions that live in the app: one streaming claude process each.
-const appSessions = new AppSessions(city.world.appSessions, (s, what) => {
-  city.world.appSessions = appSessions.list()
-  // The Treasury: an app session's cost runs on across its processes.
-  if (s.sessionId) city.spend(`app:${s.id}`, s.costUsd, Date.now(), s.sessionId)
-  // Its look goes on once Claude Code names the session (again after a fork).
-  if (what === 'session' && s.sessionId && s.look) city.dress(s.sessionId, s.look)
-  city.isDirty = true
-  // Worth keeping straight away when a turn ends or a session starts or ends.
-  if (what === 'result' || what === 'start' || what === 'ended' || what === 'failed') save()
-})
-city.world.appSessions = appSessions.list()
-for (const s of appSessions.list()) if (s.sessionId && s.look) city.dress(s.sessionId, s.look)
-
-// New versions on GitHub's main: the page's Update button.
-const updates = new Updates(
-  join(dirname(fileURLToPath(import.meta.url)), '..'),
-  () => {
-    city.isDirty = true
-  },
-  // A desktop notification, even with no window open; clicking it opens the city.
-  (title, body) => toast(title, body, `http://localhost:${PORT}/`),
-)
-
-// Whether Claude Code's settings carry our hooks: the welcome card says so,
-// and the rails into Grand Central are laid when they do.
-let connected = hooksInstalled()
-setInterval(() => {
-  const now = hooksInstalled()
-  if (now !== connected) {
-    connected = now
-    city.isDirty = true
-  }
-}, 5_000)
-
-function save() {
-  try {
-    mkdirSync(STATE_DIR, { recursive: true })
-    writeFileSync(STATE_FILE, JSON.stringify(city.world))
-  } catch (err) {
-    console.error('agent-city: could not save state:', err)
-  }
-}
-
-// ---- streaming frames to the page -----------------------------------------
 
 // Each client remembers which map it has, so the map goes out only when it
 // changes (docs/frames.md).
 type Client = { res: ServerResponse; mapHash?: string; rev?: number }
-const clients = new Set<Client>()
+
+// One city and everything it keeps: its world, the tasks, prompts and app
+// sessions of its Claude Code, and the pages watching it.
+type Town = {
+  conf: CityConf
+  city: City
+  tasks: Tasks
+  approvals: Approvals
+  appSessions: AppSessions
+  // Whether its Claude Code's settings carry our hooks: the welcome card says
+  // so, and the rails into Grand Central are laid when they do.
+  connected: boolean
+  // The accounts its sessions have come from lately (email, else
+  // organization), for the card that offers one a city of its own.
+  accounts: Map<string, { email?: string; org?: string; sessions: Set<string>; lastAt: number }>
+  clients: Set<Client>
+  lastSave: number
+  save(): void
+}
+
+const settingsOf = (conf: CityConf) => join(conf.config, 'settings.json')
+// A city with a folder of its own has hooks of its own; the rest share the
+// folder's plain ones, which must say who their session is for a city that
+// claims an account to hear anything.
+const isConnected = (conf: CityConf) =>
+  hooksInstalled(settingsOf(conf), conf.ownFolder ? conf.id : HOME, !conf.ownFolder && conf.accounts.length > 0)
+
+function openTown(conf: CityConf): Town {
+  const file = stateFile(conf.id)
+  const saved = loadWorld(file)
+  const city = new City(saved)
+  // A brand-new city starts on land of its own to lay out; the welcome offers others.
+  if (!saved) city.newMap(1 + Math.floor(Math.random() * 2147483000), Date.now())
+  // The tasks and app sessions started here report here, whatever their
+  // account; with a config folder of its own, they run with it.
+  const env: Record<string, string> = { AGENT_CITY: conf.id }
+  if (conf.ownFolder) env.CLAUDE_CONFIG_DIR = conf.config
+
+  const save = () => {
+    try {
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, JSON.stringify(city.world))
+    } catch (err) {
+      console.error('agent-city: could not save state:', err)
+    }
+  }
+
+  // Tasks live in the world so state.json keeps them; the list itself is Tasks'.
+  const tasks = new Tasks(
+    city.world.tasks,
+    (task, what) => {
+      city.world.tasks = tasks.list
+      // The Treasury: each turn of a task is its own claude process, its own running total.
+      if (task.sessionId) city.spend(`task:${task.id}:${task.turns?.length ?? 0}`, task.costUsd, Date.now(), task.sessionId)
+      const folder = base(task.cwd)
+      const text = what === 'start' ? `STARTED A TASK IN ${folder}` : `TASK IN ${folder} ${ENDS[what]}`
+      city.announce('YOU', text, '★', AMBER, Date.now())
+      // A finished task is worth keeping straight away, not at the next five-second save.
+      if (what !== 'start') save()
+    },
+    env,
+  )
+  city.world.tasks = tasks.list
+
+  // Permission prompts, questions and plans waiting on the page; any change redraws.
+  const approvals = new Approvals(() => {
+    city.isDirty = true
+  })
+
+  // Sessions that live in the app: one streaming claude process each.
+  const appSessions = new AppSessions(
+    city.world.appSessions,
+    (s, what) => {
+      city.world.appSessions = appSessions.list()
+      // The Treasury: an app session's cost runs on across its processes.
+      if (s.sessionId) city.spend(`app:${s.id}`, s.costUsd, Date.now(), s.sessionId)
+      // Its look goes on once Claude Code names the session (again after a fork).
+      if (what === 'session' && s.sessionId && s.look) city.dress(s.sessionId, s.look)
+      city.isDirty = true
+      // Worth keeping straight away when a turn ends or a session starts or ends.
+      if (what === 'result' || what === 'start' || what === 'ended' || what === 'failed') save()
+    },
+    env,
+  )
+  city.world.appSessions = appSessions.list()
+  for (const s of appSessions.list()) if (s.sessionId && s.look) city.dress(s.sessionId, s.look)
+
+  return { conf, city, tasks, approvals, appSessions, connected: isConnected(conf), accounts: new Map(), clients: new Set(), lastSave: 0, save }
+}
+
+// Every city, home first. One added to ~/.agent-city/cities.json opens
+// without a restart; one taken out stays until the next (but hears nothing
+// routed by account).
+const towns = new Map<string, Town>()
+let listed: CityConf[] = []
+function syncTowns() {
+  listed = citiesOf()
+  for (const conf of listed) {
+    const town = towns.get(conf.id)
+    if (!town) {
+      towns.set(conf.id, openTown(conf))
+      continue
+    }
+    if (JSON.stringify(town.conf) !== JSON.stringify(conf)) {
+      town.conf = conf
+      for (const t of towns.values()) t.city.isDirty = true
+    }
+  }
+}
+syncTowns()
+const dirtyAll = () => {
+  for (const t of towns.values()) t.city.isDirty = true
+}
+
+// New versions on GitHub's main: the page's Update button.
+const updates = new Updates(
+  join(dirname(fileURLToPath(import.meta.url)), '..'),
+  dirtyAll,
+  // A desktop notification, even with no window open; clicking it opens the city.
+  (title, body) => toast(title, body, `http://localhost:${PORT}/`),
+)
+
+setInterval(() => {
+  syncTowns()
+  for (const town of towns.values()) {
+    const now = isConnected(town.conf)
+    if (now !== town.connected) {
+      town.connected = now
+      town.city.isDirty = true
+    }
+  }
+}, 5_000)
+
+// ---- streaming frames to the page -----------------------------------------
+
+// What a city has waiting for you, for its tab's badge: prompts, questions,
+// plans, agents asking, merge conflicts.
+function needsOf(town: Town): number {
+  const w = town.city.world
+  return town.approvals.list().length + town.appSessions.pending().length + w.asks.length + w.conflicts.length
+}
+
+// The tabs: every city listed, with what it has waiting.
+function cityTabs(here: Town) {
+  return listed.flatMap(conf => {
+    const t = towns.get(conf.id)
+    return t ? [{ id: conf.id, name: conf.name, color: conf.color, needs: needsOf(t), here: t === here }] : []
+  })
+}
+
+// When sessions signed in as more than one account have come here in the
+// last two hours, the page offers each a city of its own.
+const ACCOUNTS_MS = 2 * 60 * 60_000
+function accountsHere(town: Town, now: number) {
+  const recent = [...town.accounts.entries()].filter(([, a]) => now - a.lastAt < ACCOUNTS_MS)
+  if (recent.length < 2) return []
+  return recent.sort((a, b) => b[1].lastAt - a[1].lastAt).map(([key, a]) => ({ key, email: a.email, org: a.org, sessions: a.sessions.size, lastAt: a.lastAt }))
+}
 
 // Folders the page offers for a new task: Manhattan, the boroughs, and wherever sessions run.
 function places(world: World): { path: string; name: string }[] {
@@ -162,7 +253,8 @@ const ROUTINE = /^(READ|EDITED|RAN|SEARCHED|BROWSED|SENT A MESSAGE|DISPATCHED)\b
 
 // The ticker is the news as it happens: each working agent's current action,
 // then whatever happened in the last minute. Nothing older.
-function tickerNow(world: World, now: number): TickerItem[] {
+function tickerNow(city: City, now: number): TickerItem[] {
+  const world = city.world
   const live: TickerItem[] = []
   for (const a of world.agents) {
     if (a.status !== 'working' && a.status !== 'waiting') continue
@@ -190,7 +282,8 @@ function routeOf(world: World, a: Agent) {
 }
 
 // The onboarding game, for the Blueprints card, the welcome and the header.
-function game(world: World, now: number) {
+function game({ city, connected }: Town, now: number) {
+  const world = city.world
   const built = world.built ?? {}
   return {
     population: world.population ?? 0,
@@ -210,8 +303,13 @@ function game(world: World, now: number) {
   }
 }
 
-function meta(world: World) {
+function meta(town: Town) {
+  const { city, tasks, approvals, appSessions } = town
+  const world = city.world
   return {
+    city: { id: town.conf.id, name: town.conf.name, color: town.conf.color, ownFolder: town.conf.ownFolder, accounts: town.conf.accounts },
+    cities: cityTabs(town),
+    accounts: accountsHere(town, Date.now()),
     home: world.home,
     homeRoot: world.homeRoot,
     homePinned: !!world.homePinned,
@@ -240,7 +338,7 @@ function meta(world: World) {
           route: routeOf(world, a),
         })),
     })),
-    ticker: tickerNow(world, Date.now()),
+    ticker: tickerNow(city, Date.now()),
     counts: {
       sessions: world.sessions.length,
       working: world.agents.filter(a => a.status === 'working').length,
@@ -255,14 +353,15 @@ function meta(world: World) {
     pending: [...approvals.list(), ...appSessions.pending()],
     appSessions: appSessions.list(),
     update: updates.state,
-    game: game(world, Date.now()),
+    game: game(town, Date.now()),
   }
 }
 
-// One frame for everyone: {map?, overlay, agents, meta}. The map rides along
-// only for clients that don't have this one yet.
-function broadcast(only?: Client) {
-  const info = meta(city.world)
+// One frame for everyone watching a city: {map?, overlay, agents, meta}. The
+// map rides along only for clients that don't have this one yet.
+function broadcast(town: Town, only?: Client) {
+  const { city, connected, clients } = town
+  const info = meta(town)
   const u = updates.state
   const blocked = !u.available ? undefined : u.dirty ? 'this copy has local changes' : u.ahead > 0 ? "this copy has commits that aren't on main yet" : undefined
   // A pull from main, or (when only this folder moved on) a restart to apply what is here.
@@ -289,23 +388,30 @@ function broadcast(only?: Client) {
   }
 }
 
-let lastSave = 0
+// What every city has waiting, as last sent: a change in one city's count
+// redraws the others too, for the badge on its tab.
+let lastNeeds = ''
 setInterval(() => {
   const now = Date.now()
-  // A train due to leave, or to be gone, is a change too.
-  if (city.isDirty || city.due(now)) {
+  const needs = [...towns.values()].map(needsOf).join()
+  if (needs !== lastNeeds) {
+    lastNeeds = needs
+    dirtyAll()
+  }
+  for (const town of towns.values()) {
+    const { city } = town
+    // A train due to leave, or to be gone, is a change too.
+    if (!city.isDirty && !city.due(now)) continue
     city.flush(now)
-    broadcast()
-    if (now - lastSave > 5000) {
-      save()
-      lastSave = now
+    broadcast(town)
+    if (now - town.lastSave > 5000) {
+      town.save()
+      town.lastSave = now
     }
   }
 }, 800)
 // Prunes quiet sessions, and keeps the page's clocks honest.
-setInterval(() => {
-  city.isDirty = true
-}, 60_000)
+setInterval(dirtyAll, 60_000)
 setInterval(forgetRoots, 10 * 60_000)
 
 // ---- http -----------------------------------------------------------------
@@ -339,6 +445,28 @@ const server = createServer(async (req, res) => {
   const host = (req.headers.host ?? '').toLowerCase()
   if (host !== `${HOST}:${PORT}` && host !== `localhost:${PORT}`) return reply(res, 403, '{}')
   const origin = req.headers.origin
+  // Which city (src/cities.ts). A hook's: the one its session names, its URL
+  // names, or its account belongs to. The page's: ?city=<id>, home without one.
+  const query = url.searchParams.get('city')
+  let who: Who = {}
+  let id: string | undefined = query || HOME
+  if (url.pathname === '/hook' || url.pathname === '/statusline') {
+    who = whoOf(req.headers, listed.find(c => c.id === query)?.config ?? defaultConfig())
+    id = cityFor(listed, query, who)
+  }
+  const town = id ? towns.get(id) : undefined
+  if (!town) {
+    // A session of a city no longer listed carries on unheard; a page of one goes home.
+    if (url.pathname === '/hook') return reply(res, 200, '{}')
+    if (url.pathname === '/statusline') return reply(res, 200, '', 'text/plain; charset=utf-8')
+    if (req.method === 'GET' && url.pathname === '/') {
+      res.writeHead(302, { location: '/' })
+      return res.end()
+    }
+    return reply(res, 404, JSON.stringify({ error: 'No such city' }))
+  }
+  const { city, tasks, approvals, appSessions } = town
+  const save = () => town.save()
 
   try {
     // The status line Agent City installs posts what Claude Code gives it (the
@@ -358,8 +486,18 @@ const server = createServer(async (req, res) => {
       if (origin) return reply(res, 403, '{}')
       const text = await body(req)
       // AGENT_CITY_DEBUG=1 keeps every event as it came, for checking what a session sends.
-      if (process.env.AGENT_CITY_DEBUG) appendFileSync(join(STATE_DIR, 'events.log'), text.replace(/\n/g, ' ') + '\n')
+      if (process.env.AGENT_CITY_DEBUG) {
+        appendFileSync(join(STATE_DIR, 'events.log'), (town.conf.id === HOME ? '' : `[${town.conf.id}] `) + text.replace(/\n/g, ' ') + '\n')
+      }
       const ev = JSON.parse(text) as HookEvent
+      // The accounts its sessions come from, unless one was placed here by name.
+      const account = who.email ?? who.org
+      if (account && !who.city && typeof ev.session_id === 'string') {
+        const seen = town.accounts.get(account) ?? { ...(who.email ? { email: who.email } : {}), ...(who.org ? { org: who.org } : {}), sessions: new Set<string>(), lastAt: 0 }
+        seen.sessions.add(ev.session_id)
+        seen.lastAt = Date.now()
+        town.accounts.set(account, seen)
+      }
       // A prompt answered in the session's own window leaves its card here: clear it.
       approvals.seen(ev)
       if (ev.hook_event_name === 'PermissionRequest') {
@@ -473,6 +611,28 @@ const server = createServer(async (req, res) => {
       }, 300)
       return
     }
+    // Another account's sessions get a city of their own: listed in
+    // cities.json, they go there from their next event, and their agents
+    // here take the train home.
+    if (req.method === 'POST' && url.pathname === '/cities/split') {
+      if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
+      const args = JSON.parse((await body(req, 16 * 1024)) || '{}') as { account?: unknown; name?: unknown }
+      const account = typeof args.account === 'string' ? args.account : ''
+      const seen = town.accounts.get(account)
+      if (!seen) return reply(res, 400, JSON.stringify({ error: 'No sessions from that account here lately' }))
+      const name = typeof args.name === 'string' && args.name.trim() ? args.name.trim().slice(0, 24) : 'Work'
+      try {
+        const conf = register(idFor(name, listed), { account, name })
+        syncTowns()
+        const now = Date.now()
+        for (const sid of seen.sessions) city.sendHome(sid, now)
+        town.accounts.delete(account)
+        save()
+        return reply(res, 200, JSON.stringify({ ok: true, id: conf.id }))
+      } catch (err) {
+        return reply(res, 400, JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
+      }
+    }
     if (
       req.method === 'POST' &&
       (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap')
@@ -519,12 +679,12 @@ const server = createServer(async (req, res) => {
         connection: 'keep-alive',
       })
       const client: Client = { res }
-      clients.add(client)
-      broadcast(client)
+      town.clients.add(client)
+      broadcast(town, client)
       const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
       req.on('close', () => {
         clearInterval(ping)
-        clients.delete(client)
+        town.clients.delete(client)
       })
       return
     }
@@ -582,15 +742,18 @@ server.on('error', (err: Error & { code?: string }) => {
 server.listen(PORT, HOST, () => {
   mkdirSync(STATE_DIR, { recursive: true })
   console.log(`Agent City is running: http://localhost:${PORT}`)
-  if (!existsSync(STATE_FILE)) console.log('Waiting for the first Claude Code session to post an event.')
+  if (towns.size > 1) console.log(`Cities: ${[...towns.values()].map(t => `${t.conf.name} (${t.conf.config})`).join(', ')}`)
+  if (!existsSync(stateFile(HOME))) console.log('Waiting for the first Claude Code session to post an event.')
 })
 
 function shutdown() {
-  tasks.stopAll()
-  // App sessions go to sleep; the next message wakes them with their history.
-  appSessions.shutdown()
-  city.world.appSessions = appSessions.list()
-  save()
+  for (const { tasks, appSessions, city, save } of towns.values()) {
+    tasks.stopAll()
+    // App sessions go to sleep; the next message wakes them with their history.
+    appSessions.shutdown()
+    city.world.appSessions = appSessions.list()
+    save()
+  }
 }
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
