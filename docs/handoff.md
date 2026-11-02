@@ -230,5 +230,3 @@ takes it off the record, and Build it all now raises only what is placed.
   when the app is closed.
 - The interactive-window fallback for an unanswered permission card (the card
   says it falls back after nine minutes) was never tested in a real terminal.
-- The conversation drawer keeps polling `/conversation` for a session that
-  has left (one 404 a second while it stays open on a departed session).

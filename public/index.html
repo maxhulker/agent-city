@@ -2107,12 +2107,25 @@
     // An app session has no conversation to read until its Claude session starts.
     const csid = claudeSid(cv.sid)
     if (!csid) return
+    // A session that has left the city has no conversation to fetch: the
+    // drawer keeps the last one it showed, and asks again only if the
+    // session comes back.
+    if (cv.gone === csid) {
+      if (!(lastMeta && sessOf(lastMeta, cv.sid))) return
+      cv.gone = null
+    }
     cv.busy = true
     const seq = ++cv.seq, sid = cv.sid, agent = cv.agent
     let j
     try {
       const r = await fetch(`/conversation?session=${encodeURIComponent(csid)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`, { cache: 'no-store' })
       j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
+      if (r.status === 404) {
+        cv.gone = csid
+        if (seq === cv.seq) cv.busy = false
+        // Keep what is on screen; say so only if there is nothing to keep.
+        if ([...CV.log.children].some(c => c !== CV.tail && !c.classList.contains('cv-status'))) return
+      }
     } catch (e) {
       j = { error: String(e?.message || e) }
     }
