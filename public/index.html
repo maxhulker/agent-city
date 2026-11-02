@@ -38,6 +38,15 @@
     border-bottom: 1px solid var(--line);
   }
   header h1 { font-size: 12px; letter-spacing: .14em; margin: 0 8px 0 0; }
+  /* A tab for each city (src/cities.ts), when there is more than one; the
+     header's underline takes the colour of the one shown. */
+  #cities { display: flex; gap: 2px; margin-right: 6px; }
+  #cities a { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; color: var(--dim); text-decoration: none; font-size: 12px; white-space: nowrap; }
+  #cities a:hover { color: var(--text); border-color: var(--line); }
+  #cities a.on { color: var(--text); background: var(--panel); border-color: var(--line); box-shadow: inset 0 -2px 0 var(--c); }
+  #cities a i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+  #cities a b { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #b45309; color: #fde68a; font-size: 10px; line-height: 16px; text-align: center; }
+  body.multi header { box-shadow: inset 0 -2px 0 var(--city); }
   .btn {
     background: var(--panel);
     color: var(--text);
@@ -167,6 +176,11 @@
   h2:first-child { margin-top: 4px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
   .card.arrival { border-color: #fbbf24; }
+  /* Sessions from more than one account in this city: give one its own. */
+  #accounts .acct { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; margin-top: 8px; border-top: 1px solid var(--line); }
+  #accounts .acct .who { font-size: 12px; overflow-wrap: anywhere; }
+  #accounts .acct .row { gap: 6px; }
+  #accounts .acct .field { flex: 1; min-width: 0; margin: 0; }
   .row.wrap { flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .card.alert { border-color: #7f1d1d; background: #1f0f14; }
   .card.ask { border-color: #713f12; background: #1c1508; }
@@ -441,6 +455,7 @@
 <body>
 <header>
   <h1>AGENT CITY</h1>
+  <nav id="cities" aria-label="Cities" hidden></nav>
   <button class="btn" id="fit" title="Reset zoom (0)">Fit</button>
   <button class="btn" id="lastcall" type="button" title="Everyone idle takes the last train home now">Last call</button>
   <span id="link"><i></i><span>Connecting…</span></span>
@@ -518,6 +533,7 @@
     <div id="float" hidden><div class="fhead" id="float-head" role="button" tabindex="0"><span id="float-n"></span><span class="xbtn" id="float-tog">Hide</span></div><div class="flist" id="float-list"></div></div>
   </div>
   <aside id="side">
+    <section id="accounts" hidden></section>
     <section id="newtask">
       <h2 class="fold" id="nt-head" role="button" tabindex="0"><span class="chev">&#9662;</span>New session<span class="tcount" id="nt-count"></span></h2>
       <div id="nt-body">
@@ -596,8 +612,17 @@
 <script>
   const $ = id => document.getElementById(id)
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+  // Which city this page shows (src/cities.ts): ?city=<id>, home without one.
+  // Every request names it; the view, selection and open drawer are its own.
+  const CITY = new URLSearchParams(location.search).get('city') || ''
+  const inCity = path => CITY ? `${path}${path.includes('?') ? '&' : '?'}city=${encodeURIComponent(CITY)}` : path
+  const own = key => CITY ? `${key}@${CITY}` : key
+  const cityHref = id => id === 'home' ? '/' : `/?city=${encodeURIComponent(id)}`
+  // What connects this city's Claude Code: its own hooks for a config folder
+  // of its own, else the shared ones (set from the first frame).
+  let CONNECT = 'npm run connect'
   let selected = ''
-  try { selected = localStorage.getItem('agent-city-selected') || '' } catch {}
+  try { selected = localStorage.getItem(own('agent-city-selected')) || '' } catch {}
   // The agent picked on the map, for its work order and route line (handoff B2).
   let selAgent = '', routeKey = ''
   let boot = null
@@ -791,7 +816,7 @@
   // Whether this page had a view of its own to come back to.
   let viewSaved = false
   try {
-    const v = JSON.parse(localStorage.getItem('agent-city-zoom') || 'null')
+    const v = JSON.parse(localStorage.getItem(own('agent-city-zoom')) || 'null')
     if (v && isFinite(v.z) && isFinite(v.u) && isFinite(v.v)) { view = { z: Math.max(1, v.z), u: v.u, v: v.v }; viewSaved = true }
   } catch {}
   let shown = null
@@ -866,7 +891,7 @@
   }
 
   function saveView() {
-    try { localStorage.setItem('agent-city-zoom', JSON.stringify(view)) } catch {}
+    try { localStorage.setItem(own('agent-city-zoom'), JSON.stringify(view)) } catch {}
   }
 
   function zoomAt(factor, cx, cy, now) {
@@ -987,7 +1012,7 @@
   // ---- connection -------------------------------------------------------
   function connect() {
     source?.close()
-    source = new EventSource('/stream')
+    source = new EventSource(inCity('/stream'))
     source.onopen = () => { $('link').className = 'on'; $('link').lastChild.textContent = 'Live' }
     source.onerror = () => { $('link').className = ''; $('link').lastChild.textContent = 'Reconnecting…' }
     source.onmessage = e => {
@@ -1016,7 +1041,7 @@
 
   async function post(path, args) {
     try {
-      const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
+      const r = await fetch(inCity(path), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
       return await r.json().catch(() => ({ error: r.ok ? '' : `HTTP ${r.status}` }))
     } catch (e) {
       return { error: String(e?.message || e) }
@@ -1066,7 +1091,7 @@
     id = keyFor(lastMeta, id)
     if (id && id === selected && !cv.open) { openPanel(id); applySel(scroll); return }
     selected = id && id !== selected ? id : ''
-    try { localStorage.setItem('agent-city-selected', selected) } catch {}
+    try { localStorage.setItem(own('agent-city-selected'), selected) } catch {}
     applySel(scroll)
     if (selected) openPanel(selected); else closePanel()
   }
@@ -1623,6 +1648,8 @@
     drawRoute(m)
     watch(m)
     setTitle(m)
+    drawCities(m)
+    drawAccounts(m)
 
     $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">Manhattan</span>
         <span class="dim">${esc(m.home || 'the first repository seen')}</span>
@@ -1669,7 +1696,7 @@
       ? t.limits.map(l => `<div class="lim"><div class="row"><span>${esc(l.name === '5h' ? '5-hour limit' : l.name === '7d' ? '7-day limit' : `Spend limit (${l.name})`)}</span><span style="margin-left:auto"><b>${Math.round(l.left)}%</b> left</span></div>
           <div class="bar"><i style="width:${Math.min(100, l.used).toFixed(0)}%;background:${l.left < 15 ? 'var(--red)' : l.left < 40 ? '#fbbf24' : '#4ade80'}"></i></div>
           <div class="small dim">resets ${esc(when(l.resetsAt))}${l.limitUsd !== undefined ? ` · ${money(l.usedUsd ?? 0)} of ${money(l.limitUsd)}` : ''}</div></div>`).join('')
-      : '<div class="small dim">No plan limits reported yet. They come from the status line on Pro, Max and Ultra plans: run <code>npm run connect</code> again.</div>'
+      : `<div class="small dim">No plan limits reported yet. They come from the status line on Pro, Max and Ultra plans: run <code>${CONNECT}</code> again.</div>`
     const sessions = t.sessions.length
       ? t.sessions.slice(0, 6).map(s => `<div class="row small"><span>${esc(s.name)}</span><span class="dim">${s.agents} agent${s.agents === 1 ? '' : 's'}</span><span style="margin-left:auto">${money(s.usd)}</span></div>`).join('')
       : '<div class="small dim">No spend reported by the sessions here yet.</div>'
@@ -1957,7 +1984,7 @@
     cv.open = true
     CV.panel.hidden = false
     document.body.classList.add('panel-open')
-    try { localStorage.setItem('agent-city-panel', '1') } catch {}
+    try { localStorage.setItem(own('agent-city-panel'), '1') } catch {}
     if (lastMeta) { drawPanel(lastMeta); drawPending(lastMeta) }
     showTab(cv.tab)
   }
@@ -1967,7 +1994,7 @@
     cv.open = false
     CV.panel.hidden = true
     document.body.classList.remove('panel-open')
-    try { localStorage.setItem('agent-city-panel', '0') } catch {}
+    try { localStorage.setItem(own('agent-city-panel'), '0') } catch {}
   }
 
   // From a notification, a needs-you card or a new session: select it and show its conversation.
@@ -1976,7 +2003,7 @@
     sid = keyFor(lastMeta, sid)
     if (selected !== sid) {
       selected = sid
-      try { localStorage.setItem('agent-city-selected', selected) } catch {}
+      try { localStorage.setItem(own('agent-city-selected'), selected) } catch {}
     }
     applySel(true)
     openPanel(sid)
@@ -2288,7 +2315,7 @@
     const seq = ++cv.seq, sid = cv.sid, agent = cv.agent
     let j
     try {
-      const r = await fetch(`/conversation?session=${encodeURIComponent(csid)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`, { cache: 'no-store' })
+      const r = await fetch(inCity(`/conversation?session=${encodeURIComponent(csid)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`), { cache: 'no-store' })
       j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
       if (r.status === 404) {
         cv.gone = csid
@@ -2414,7 +2441,7 @@
     CV.chBody.innerHTML = '<div class="cv-status">Reading the changes…</div>'
     let j
     try {
-      const r = await fetch(`/changes?session=${encodeURIComponent(csid)}`, { cache: 'no-store' })
+      const r = await fetch(inCity(`/changes?session=${encodeURIComponent(csid)}`), { cache: 'no-store' })
       j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
     } catch (e) {
       j = { error: String(e?.message || e) }
@@ -2717,7 +2744,12 @@
     if (N && N.permission === 'granted' && away) {
       try {
         const n = new N(ev.title, { body: ev.body || '', tag: ev.tag, silent: soundOn })
-        n.onclick = () => { window.focus(); n.close(); openSession(ev.sid) }
+        n.onclick = () => {
+          window.focus()
+          n.close()
+          if (ev.city) location.href = cityHref(ev.city)
+          else openSession(ev.sid)
+        }
       } catch { toast(`${ev.title}${ev.body ? ': ' + ev.body : ''}`) }
     } else {
       toast(`${ev.title}${ev.body ? ': ' + ev.body : ''}`)
@@ -2732,6 +2764,7 @@
       leads: new Map(m.sessions.map(s => [s.id, leadOf(s)?.status || ''])),
       tasks: new Map((m.tasks || []).map(t => [t.id, taskBusy(t)])),
       apps: new Map(appsOf(m).map(a => [a.id, a.status])),
+      cities: new Map((m.cities || []).map(c => [c.id, c.needs])),
     }
   }
 
@@ -2742,7 +2775,7 @@
   // Its last reply from the conversation, when none streamed past the page.
   async function lastReply(sid) {
     try {
-      const j = await (await fetch(`/conversation?session=${encodeURIComponent(sid)}`, { cache: 'no-store' })).json()
+      const j = await (await fetch(inCity(`/conversation?session=${encodeURIComponent(sid)}`), { cache: 'no-store' })).json()
       const e = (j.entries || []).filter(x => x.kind === 'assistant').pop()
       return e?.text || ''
     } catch { return '' }
@@ -2794,18 +2827,94 @@
         evs.push({ title: `${sessName(m, s.id)} finished its turn`, body: leadOf(s)?.activity || '', sid: s.id, tag: `s-${s.id}` })
       }
     }
+    // The other cities: only what waits for you there; clicking goes to it.
+    for (const c of m.cities || []) {
+      if (c.here || c.needs <= (was.cities.get(c.id) ?? 0)) continue
+      evs.push({ title: `${c.name} needs you`, body: `${c.needs} waiting in the ${c.name} city`, city: c.id, tag: `city-${c.id}` })
+    }
     if (evs.length && notifyOn) chime()
     for (const ev of evs) fire(ev)
   }
 
+  const isMulti = m => (m.cities || []).length > 1
+
   function setTitle(m) {
-    const n = (m.pending || []).length + visibleAsks(m).length + (m.conflicts || []).length
-    const t = n ? `(${n}) Agent City` : 'Agent City'
+    const away = (m.cities || []).reduce((n, c) => n + (c.here ? 0 : c.needs), 0)
+    const n = (m.pending || []).length + visibleAsks(m).length + (m.conflicts || []).length + away
+    const name = isMulti(m) ? `Agent City · ${m.city.name}` : 'Agent City'
+    const t = n ? `(${n}) ${name}` : name
     if (document.title !== t) document.title = t
   }
 
+  // A tab for each city, when there is more than one: what waits there on its badge.
+  let citiesKey = ''
+  function drawCities(m) {
+    const list = m.cities || []
+    const key = JSON.stringify(list)
+    if (key === citiesKey) return
+    citiesKey = key
+    const multi = isMulti(m)
+    if (m.city?.ownFolder) {
+      CONNECT = `npm run connect -- --city ${esc(m.city.id)}`
+      $('w-next').innerHTML = `Next step: run <code>${CONNECT}</code> in the agent-city folder, then start a Claude Code session that uses this city's config folder.`
+    } else if (m.city && m.city.id !== 'home') {
+      $('w-next').innerHTML = `Next step: run <code>${CONNECT}</code> in the agent-city folder, then start a Claude Code session signed in as ${esc(m.city.accounts.join(' or '))}.`
+    }
+    $('cities').hidden = !multi
+    document.body.classList.toggle('multi', multi)
+    if (m.city) document.body.style.setProperty('--city', m.city.color)
+    $('cities').innerHTML = list.map((c, i) => `<a href="${cityHref(c.id)}" class="${c.here ? 'on' : ''}" style="--c:${esc(c.color)}"${c.here ? ' aria-current="page"' : ''}
+        title="${esc(c.name)}${i < 9 ? ` (Alt+${i + 1})` : ''}"><i></i>${esc(c.name)}${!c.here && c.needs ? `<b title="${c.needs} waiting">${c.needs}</b>` : ''}</a>`).join('')
+  }
+  // Sessions signed in as more than one account report here: each can have
+  // a city of its own. Drawn only when the list changes, so typing a name
+  // isn't interrupted.
+  let accountsKey = ''
+  const PERSONAL_MAIL = /^(gmail|googlemail|outlook|hotmail|live|icloud|me|yahoo|proton|protonmail|fastmail|hey|aol)\./
+  function cityNameFor(a) {
+    const domain = (a.email || '').split('@')[1] || ''
+    if (!domain) return 'Work'
+    if (PERSONAL_MAIL.test(domain)) return 'Personal'
+    const word = domain.split('.').slice(-2, -1)[0] || domain
+    return (word.charAt(0).toUpperCase() + word.slice(1)).slice(0, 24)
+  }
+  function drawAccounts(m) {
+    const list = m.accounts || []
+    const key = JSON.stringify(list.map(a => [a.key, a.sessions]))
+    if (key === accountsKey) return
+    accountsKey = key
+    $('accounts').hidden = !list.length
+    if (!list.length) { $('accounts').innerHTML = ''; return }
+    $('accounts').innerHTML = `<div class="card arrival"><div class="row"><span class="name">${list.length} accounts report here</span></div>
+      <div class="small dim">Sessions signed in as each of these land in ${esc(m.city?.name || 'this city')}. Give one a city of its own, with its own tab.</div>
+      ${list.map(a => `<div class="acct"><div class="who"><b>${esc(a.email || a.org)}</b> <span class="dim">· ${a.sessions} session${a.sessions === 1 ? '' : 's'}</span></div>
+        <div class="row"><input class="field" data-acct-name="${esc(a.key)}" maxlength="24" value="${esc(cityNameFor(a))}" aria-label="Name for its city" spellcheck="false">
+        <button class="btn sm" type="button" data-split="${esc(a.key)}">Own city</button></div></div>`).join('')}</div>`
+  }
+  $('accounts').addEventListener('click', async e => {
+    const b = e.target.closest('[data-split]')
+    if (!b) return
+    const account = b.dataset.split
+    const input = [...$('accounts').querySelectorAll('[data-acct-name]')].find(i => i.dataset.acctName === account)
+    b.disabled = true
+    const r = await post('/cities/split', { account, name: input?.value || '' })
+    b.disabled = false
+    if (r.error) { toast(r.error); return }
+    toast(`${account} has a city of its own; its sessions go there from their next step.`)
+    setTimeout(() => { location.href = cityHref(r.id) }, 900)
+  })
+
+  // Alt+1, Alt+2…: the cities in order.
+  window.addEventListener('keydown', e => {
+    if (!e.altKey || e.ctrlKey || e.metaKey || !/^[1-9]$/.test(e.key) || !lastMeta) return
+    const c = (lastMeta.cities || [])[Number(e.key) - 1]
+    if (!c || c.here || !isMulti(lastMeta)) return
+    e.preventDefault()
+    location.href = cityHref(c.id)
+  })
+
   // Reopen the conversation that was open before a reload.
-  try { if (selected && localStorage.getItem('agent-city-panel') === '1') openPanel(selected) } catch {}
+  try { if (selected && localStorage.getItem(own('agent-city-panel')) === '1') openPanel(selected) } catch {}
 
   connect()
 </script>

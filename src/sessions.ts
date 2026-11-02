@@ -177,9 +177,9 @@ function questionsOf(input: Record<string, unknown>): Pending['questions'] {
 
 // The cost Claude restores when it resumes a session: the last cost-state
 // record in its transcript. 0 when there is none.
-export function restoredCost(cwd: string, sessionId: string): number {
+export function restoredCost(cwd: string, sessionId: string, configDir?: string): number {
   try {
-    const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects')
+    const projects = join(configDir || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects')
     const name = sessionId + '.jsonl'
     let file = join(projects, cwd.replace(/[^A-Za-z0-9]/g, '-'), name)
     if (!existsSync(file)) {
@@ -215,9 +215,13 @@ export class AppSessions {
   private procs = new Map<string, Proc>()
   private held = new Map<string, Held>()
   private onChange: (s: AppSession, what: string) => void
+  // What a city adds to its sessions' environment (src/cities.ts): AGENT_CITY,
+  // so their hooks report to it, and a config folder of its own if it has one.
+  private env: Record<string, string>
 
-  constructor(saved: AppSession[] | undefined, onChange: (s: AppSession, what: string) => void) {
+  constructor(saved: AppSession[] | undefined, onChange: (s: AppSession, what: string) => void, env: Record<string, string> = {}) {
     this.onChange = onChange
+    this.env = env
     // Their processes went with the server; each wakes on its next message.
     this.sessions = (saved ?? []).map(s => {
       const out: AppSession = { ...s }
@@ -406,6 +410,7 @@ export class AppSessions {
     // CLAUDECODE marks a shell inside a session; a server started from one shouldn't pass it on.
     const env = { ...process.env }
     delete env.CLAUDECODE
+    Object.assign(env, this.env)
     const child = spawn('claude', argv, { cwd: s.cwd, env, shell: IS_WINDOWS, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     const resumed = how[0] === '--resume' ? how[1] : undefined
     const p: Proc = {
@@ -414,7 +419,7 @@ export class AppSessions {
       err: '',
       unread: new Map(),
       costBase: s.costUsd ?? 0,
-      restored: resumed ? restoredCost(s.cwd, resumed) : 0,
+      restored: resumed ? restoredCost(s.cwd, resumed, this.env.CLAUDE_CONFIG_DIR) : 0,
       gotInit: false, interrupted: false, stopping: false }
     this.procs.set(s.id, p)
     child.stdin!.on('error', () => {})

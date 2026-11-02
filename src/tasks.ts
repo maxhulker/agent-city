@@ -51,9 +51,13 @@ export class Tasks {
   list: Task[]
   private procs = new Map<string, ChildProcess>()
   private changed: (task: Task, what: TaskEnd) => void
+  // What a city adds to its tasks' environment (src/cities.ts): AGENT_CITY,
+  // so their hooks report to it, and a config folder of its own if it has one.
+  private env: Record<string, string>
 
-  constructor(saved: Task[] | undefined, changed: (task: Task, what: TaskEnd) => void) {
+  constructor(saved: Task[] | undefined, changed: (task: Task, what: TaskEnd) => void, env: Record<string, string> = {}) {
     this.changed = changed
+    this.env = env
     // A task saved as running lost its watcher when the server stopped.
     this.list = (saved ?? []).slice(-KEPT).map(t =>
       t.status === 'running'
@@ -101,6 +105,7 @@ export class Tasks {
     // CLAUDECODE marks a shell inside a session; a server started from one shouldn't pass it on.
     const env = { ...process.env }
     delete env.CLAUDECODE
+    Object.assign(env, this.env)
     const child = spawn('claude', argv, { cwd, env, shell: IS_WINDOWS, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     this.procs.set(task.id, child)
     this.list = [...this.list, task].slice(-KEPT)
@@ -174,6 +179,7 @@ export class Tasks {
     ]
     const env = { ...process.env }
     delete env.CLAUDECODE
+    Object.assign(env, this.env)
     const child = spawn('claude', argv, { cwd: task.cwd, env, shell: IS_WINDOWS, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     task.turns = [...(task.turns ?? []), turn]
     task.status = 'running'
