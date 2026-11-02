@@ -146,6 +146,22 @@ room for many boroughs, with two to four rivers. Its frame is all the land;
 the page opens on the station's island (`fitIsland`, also on Rebuild and a
 new pick) and may zoom in further on a bigger map (`maxZ`).
 
+### F. Agent City as an app
+
+`public/manifest.webmanifest` and `public/sw.js` (served with the icons from
+`assets/`, which `npm run icon` now also writes as PNGs) make the page
+installable from Edge or Chrome. `scripts/autostart.ps1` (`npm run
+autostart`) puts a Startup shortcut that runs `launch.ps1 -Background`: the
+server, hidden, no window. `src/updates.ts` remembers the commit the server
+started on and checks the folder every 30 s: commits made here since then
+set `restart` (the Empire State offers a restart instead of a pull, and
+`/update` restarts without pulling). Both a new main and a local restart are
+announced once by a Windows toast from the server (`src/notify.ts`, through
+PowerShell's own notifier; `AGENT_CITY_NO_TOAST` turns it off). Tests in
+`test/updates.test.ts`. The service worker would not register inside the
+desktop app's built-in browser pane, so installing was not checked there;
+Edge and Chrome install from the manifest.
+
 ### E. The City Treasury
 
 A civic building (`treasury` in `FOOTPRINT` and `FIXED`: it stands at once

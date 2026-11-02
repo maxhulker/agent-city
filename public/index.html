@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent City</title>
+<!-- Installable as an app: Edge or Chrome's "Install Agent City" (manifest + service worker). -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.ico">
+<meta name="theme-color" content="#0b1224">
 <style>
   :root {
     --bg: #070d1c;
@@ -561,6 +565,10 @@
   </aside>
 </main>
 <div id="toasts"></div>
+<script>
+  // The service worker that makes the page installable as an app.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+</script>
 <script>
   const $ = id => document.getElementById(id)
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
@@ -1484,10 +1492,15 @@
     e.preventDefault()
     if (updating) return
     const u = lastUpdate || {}
-    const what = u.latest ? `\n\nNewest on main: ${u.latest}` : ''
-    if (!confirm(`Update Agent City to the latest version on main (${u.behind || 'some'} new)?${what}\n\nIt restarts, and your app sessions pick up where they left off.`)) return
+    // Only this copy moved on (commits made here): a restart applies them.
+    const local = !u.available && u.restart
+    const what = local ? (u.restart.latest ? `\n\nNewest here: ${u.restart.latest}` : '') : u.latest ? `\n\nNewest on main: ${u.latest}` : ''
+    const ask = local
+      ? `Restart Agent City to apply ${u.restart.count} new commit${u.restart.count === 1 ? '' : 's'} in this copy?${what}`
+      : `Update Agent City to the latest version on main (${u.behind || 'some'} new)?${what}`
+    if (!confirm(`${ask}\n\nIt restarts, and your app sessions pick up where they left off.`)) return
     updating = true
-    toast('Updating Agent City…')
+    toast(local ? 'Restarting Agent City…' : 'Updating Agent City…')
     const r = await post('/update', {})
     if (r.error || r.ok === false) {
       updating = false

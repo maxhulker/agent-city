@@ -118,8 +118,10 @@ export function drawPlaces(world: World, sc: Scene): string {
                 ...tag,
                 box,
                 height,
-                title: 'An update is ready: click the Empire State',
-                text: `${up.behind} new on main${up.latest ? `: "${up.latest}"` : ''}. Clicking updates Agent City and restarts it; your app sessions pick up where they left off.`,
+                title: up.local ? 'New code in this copy: click the Empire State to restart' : 'An update is ready: click the Empire State',
+                text: up.local
+                  ? `${up.behind} new commit${up.behind === 1 ? '' : 's'} in this copy since it started${up.latest ? `: "${up.latest}"` : ''}. Clicking restarts Agent City to apply ${up.behind === 1 ? 'it' : 'them'}; your app sessions pick up where they left off.`
+                  : `${up.behind} new on main${up.latest ? `: "${up.latest}"` : ''}. Clicking updates Agent City and restarts it; your app sessions pick up where they left off.`,
                 color: '#fbbf24',
                 extra: up.blocked ? `It can't update cleanly yet: ${up.blocked}.` : undefined,
                 isUpdate: true,

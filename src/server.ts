@@ -16,6 +16,7 @@ import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { readConversation } from './transcripts.ts'
 import { Updates } from './updates.ts'
+import { toast } from './notify.ts'
 import type { Agent, Decision, District, Task, World } from './types.ts'
 import { base, City, forgetRoots, SCAFFOLD_MS } from './world.ts'
 import type { HookEvent, TickerItem } from './world.ts'
@@ -28,6 +29,14 @@ const HOST = '127.0.0.1'
 const STATE_DIR = join(homedir(), '.agent-city')
 const STATE_FILE = join(STATE_DIR, 'state.json')
 const PAGE = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'index.html')
+const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const APP_FILES: Record<string, [string, string]> = {
+  '/manifest.webmanifest': [join(APP_ROOT, 'public', 'manifest.webmanifest'), 'application/manifest+json'],
+  '/sw.js': [join(APP_ROOT, 'public', 'sw.js'), 'text/javascript; charset=utf-8'],
+  '/icon-192.png': [join(APP_ROOT, 'assets', 'icon-192.png'), 'image/png'],
+  '/icon-512.png': [join(APP_ROOT, 'assets', 'icon-512.png'), 'image/png'],
+  '/favicon.ico': [join(APP_ROOT, 'assets', 'agent-city.ico'), 'image/x-icon'],
+}
 const RULES = join(dirname(fileURLToPath(import.meta.url)), 'layout.ts')
 // Node 22.13 and later strips types at runtime; the typings lag behind it.
 const { stripTypeScriptTypes } = nodeModule as unknown as { stripTypeScriptTypes(code: string): string }
@@ -81,9 +90,14 @@ const appSessions = new AppSessions(city.world.appSessions, (s, what) => {
 city.world.appSessions = appSessions.list()
 
 // New versions on GitHub's main: the page's Update button.
-const updates = new Updates(join(dirname(fileURLToPath(import.meta.url)), '..'), () => {
-  city.isDirty = true
-})
+const updates = new Updates(
+  join(dirname(fileURLToPath(import.meta.url)), '..'),
+  () => {
+    city.isDirty = true
+  },
+  // A desktop notification, even with no window open; clicking it opens the city.
+  (title, body) => toast(title, body, `http://localhost:${PORT}/`),
+)
 
 // Whether Claude Code's settings carry our hooks: the welcome card says so,
 // and the rails into Grand Central are laid when they do.
@@ -246,8 +260,17 @@ function meta(world: World) {
 function broadcast(only?: Client) {
   const info = meta(city.world)
   const u = updates.state
-  const blocked = u.dirty ? 'this copy has local changes' : u.ahead > 0 ? "this copy has commits that aren't on main yet" : undefined
-  const update = { available: u.available, behind: u.behind, ...(u.latest ? { latest: u.latest } : {}), ...(blocked ? { blocked } : {}) }
+  const blocked = !u.available ? undefined : u.dirty ? 'this copy has local changes' : u.ahead > 0 ? "this copy has commits that aren't on main yet" : undefined
+  // A pull from main, or (when only this folder moved on) a restart to apply what is here.
+  const local = !u.available && !!u.restart
+  const latest = u.latest ?? u.restart?.latest
+  const update = {
+    available: u.available || local,
+    behind: u.available ? u.behind : (u.restart?.count ?? 0),
+    ...(latest ? { latest } : {}),
+    ...(blocked ? { blocked } : {}),
+    ...(local ? { local } : {}),
+  }
   const frame = renderFrame(city.world, Date.now(), { update, connected })
   const rest = `"overlay":${JSON.stringify(frame.overlay)},"agents":${JSON.stringify(frame.agents)},"meta":${JSON.stringify(info)}}\n\n`
   const map = `"map":${JSON.stringify(frame.map)},`
@@ -522,6 +545,12 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/') {
       return reply(res, 200, readFileSync(PAGE, 'utf8'), 'text/html; charset=utf-8')
+    }
+    // What makes the page an installable app: its manifest, service worker and icons.
+    const asset = APP_FILES[url.pathname]
+    if (req.method === 'GET' && asset) {
+      res.writeHead(200, { 'content-type': asset[1], 'cache-control': 'no-cache' })
+      return res.end(readFileSync(asset[0]))
     }
     // The layout's rules, for the page's build cursor: the same file the
     // server checks placements with, as JavaScript (docs/city-builder.md).

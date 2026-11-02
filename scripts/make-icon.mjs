@@ -1,6 +1,9 @@
 // Draws the Agent City icon (an isometric tower and a brick block at night)
-// and writes it as a multi-size .ico, with no dependencies.
+// and writes it as a multi-size .ico, with no dependencies; given a folder as
+// a third argument, also the PNGs the installable app's manifest names.
 import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { deflateSync } from 'node:zlib'
 
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
 
@@ -147,3 +150,37 @@ const info = Buffer.from(prev.subarray(0, 40))
 info.writeInt32LE(256, 8)
 writeFileSync(process.argv[3], Buffer.concat([file, info, prev.subarray(40, 40 + 256 * 256 * 4)]))
 console.log('wrote', process.argv[2])
+
+// A PNG: RGBA rows, each with filter 0, deflated; chunks with their CRCs.
+const CRC = new Uint32Array(256).map((_, n) => {
+  let c = n
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+  return c >>> 0
+})
+const crc = buf => {
+  let c = 0xffffffff
+  for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+function chunk(type, data) {
+  const head = Buffer.alloc(8)
+  head.writeUInt32BE(data.length, 0)
+  head.write(type, 4, 'ascii')
+  const tail = Buffer.alloc(4)
+  tail.writeUInt32BE(crc(Buffer.concat([head.subarray(4), data])), 0)
+  return Buffer.concat([head, data, tail])
+}
+function png(size, px) {
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(size, 0)
+  ihdr.writeUInt32BE(size, 4)
+  ihdr[8] = 8
+  ihdr[9] = 6
+  const raw = Buffer.alloc(size * (size * 4 + 1))
+  for (let y = 0; y < size; y++) Buffer.from(px.subarray(y * size * 4, (y + 1) * size * 4)).copy(raw, y * (size * 4 + 1) + 1)
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+}
+if (process.argv[4]) {
+  for (const size of [192, 512]) writeFileSync(join(process.argv[4], `icon-${size}.png`), png(size, render(size)))
+  console.log('wrote the app icons to', process.argv[4])
+}

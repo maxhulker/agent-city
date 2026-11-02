@@ -1,6 +1,9 @@
 # Opens Agent City in its own window, starting the server first when it isn't
 # running. The server runs in a minimized window titled "Agent City": close
-# that window to stop it.
+# that window to stop it. With -Background (how it starts at login, see
+# autostart.ps1) it only starts the server, out of sight, and opens nothing:
+# the city keeps its records and its notifications come through.
+param([switch]$Background)
 
 $port = if ($env:AGENT_CITY_PORT) { $env:AGENT_CITY_PORT } else { 4777 }
 $url = "http://localhost:$port"
@@ -23,9 +26,11 @@ if (-not (Test-City)) {
     exit 1
   }
   $server = Join-Path $root 'src\server.ts'
-  Start-Process -FilePath $env:ComSpec -ArgumentList '/c', "title Agent City & node `"$server`"" -WorkingDirectory $root -WindowStyle Minimized
+  $style = if ($Background) { 'Hidden' } else { 'Minimized' }
+  Start-Process -FilePath $env:ComSpec -ArgumentList '/c', "title Agent City & node `"$server`"" -WorkingDirectory $root -WindowStyle $style
   for ($i = 0; $i -lt 40 -and -not (Test-City); $i++) { Start-Sleep -Milliseconds 250 }
 }
+if ($Background) { exit 0 }
 
 # Its own window where Edge is installed, else the default browser.
 $edge = @(

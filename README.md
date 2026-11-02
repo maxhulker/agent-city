@@ -195,6 +195,21 @@ that window to stop the server), and opens the city in its own Edge app window,
 or in the default browser where Edge isn't installed. Opening it again while
 the server runs just opens another window.
 
+### As an app, with update notifications
+
+- **Install it.** Open http://localhost:4777 in Edge or Chrome and choose
+  *Install Agent City* (the install icon in the address bar, or the menu's
+  *Apps*). It gets its own window, taskbar icon and Start menu entry.
+- **Start it at login.** `npm run autostart` starts the server, out of
+  sight, whenever you sign in to Windows, so the city keeps its records and
+  its notifications reach you with no window open. `npm run autostart --
+  -Remove` takes that away.
+- **Notifications.** When main on GitHub has something new, or this copy has
+  new commits since the server started (you or Claude committed here),
+  Windows shows a notification once; clicking it opens the city, and the
+  lit Empire State updates or restarts it in one click. Set
+  `AGENT_CITY_NO_TOAST=1` to turn the notifications off.
+
 ## Connect Claude Code
 
 ```bash
