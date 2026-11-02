@@ -99,6 +99,13 @@ export type Train = {
   who: string
 }
 
+// What a lead wears on its head (src/draw/agents.ts draws each); 'crown' unless picked.
+export type Hat = 'crown' | 'none' | 'tophat' | 'cap' | 'hardhat' | 'beanie' | 'wizard' | 'cowboy' | 'party' | 'chef'
+
+// How a session started from the page looks, as the person chose it: its
+// name, colour and hat. Anything left out is the city's usual pick.
+export type Look = { name?: string; color?: string; hat?: Hat }
+
 export type Session = {
   id: string
   name: string
@@ -106,6 +113,8 @@ export type Session = {
   // The repository root it started in, or its folder when that is none.
   root: string
   color: string
+  // Its lead's hat, when the person picked one (else the crown).
+  hat?: Hat
   // Its subway bullet: a letter in a circle of its color, shared by its agents.
   bullet?: string
   // How many work orders its lead has issued (subagents started).
@@ -222,6 +231,8 @@ export type AppSession = {
   cwd: string
   // What the page shows: the first prompt, cut, or the folder.
   title: string
+  // The name, colour and hat picked for it in the New session form.
+  look?: Look
   level: TaskLevel
   model: TaskModel
   effort?: TaskEffort

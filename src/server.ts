@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { BLUEPRINTS, LABELS, LANDMARKS, renderFrame } from './city.ts'
 import { burbGeo, isWaiting } from './layout.ts'
+import { HATS } from './draw/agents.ts'
 import { p, placeAt } from './draw/geo.ts'
 import { Approvals } from './approvals.ts'
 import { changesIn } from './changes.ts'
@@ -83,11 +84,14 @@ const appSessions = new AppSessions(city.world.appSessions, (s, what) => {
   city.world.appSessions = appSessions.list()
   // The Treasury: an app session's cost runs on across its processes.
   if (s.sessionId) city.spend(`app:${s.id}`, s.costUsd, Date.now(), s.sessionId)
+  // Its look goes on once Claude Code names the session (again after a fork).
+  if (what === 'session' && s.sessionId && s.look) city.dress(s.sessionId, s.look)
   city.isDirty = true
   // Worth keeping straight away when a turn ends or a session starts or ends.
   if (what === 'result' || what === 'start' || what === 'ended' || what === 'failed') save()
 })
 city.world.appSessions = appSessions.list()
+for (const s of appSessions.list()) if (s.sessionId && s.look) city.dress(s.sessionId, s.look)
 
 // New versions on GitHub's main: the page's Update button.
 const updates = new Updates(
@@ -539,6 +543,10 @@ const server = createServer(async (req, res) => {
       const s = city.world.sessions.find(one => one.id === url.searchParams.get('session'))
       if (!s) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
       return reply(res, 200, JSON.stringify(await changesIn(s.root)))
+    }
+    // The hats a new session's lead can wear, for the form's picker.
+    if (req.method === 'GET' && url.pathname === '/hats') {
+      return reply(res, 200, JSON.stringify(Object.entries(HATS).map(([id, h]) => ({ id, ...h }))))
     }
     if (req.method === 'GET' && url.pathname === '/state.json') {
       return reply(res, 200, JSON.stringify(city.world, null, 2))

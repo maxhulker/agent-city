@@ -1,4 +1,4 @@
-import type { Agent, District, Session, World } from '../types.ts'
+import type { Agent, District, Hat, Session, World } from '../types.ts'
 import { LABELS, TRAIN_MS, esc, hash, isWaiting, keyed, n, p, placeAt, standAt, waitAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
 import { roomOf, siteFor, spotFor, trackOf } from '../layout.ts'
@@ -45,6 +45,49 @@ const PROPS: Record<District, string> = {
     `<path d="M-2.2 -1.6H2.2L1.6 3H-1.6z" fill="#f8fafc" stroke="${INK}" stroke-width=".5"/><path d="M-2 0H2" stroke="#b45309" stroke-width="1.2"/><path d="M-.6 -2.2Q-1.2 -3.4 -.2 -4.2M.8 -2.2Q.2 -3.4 1.2 -4.2" fill="none" stroke="#cbd5e1" stroke-width=".5"/>`,
 }
 
+// What a lead can wear, drawn about the head's centre (its radius is 3.7).
+// The crown is the default; the New session form offers the rest.
+const HAT_INK = ` stroke="${INK}" stroke-width=".5" stroke-linejoin="round"`
+export const HATS: Record<Hat, { label: string; svg: string }> = {
+  crown: {
+    label: 'Crown',
+    svg: `<path d="M-3.5 -3v-4.5l1.75 2.5l1.75 -3.5l1.75 3.5l1.75 -2.5v4.5z" fill="#fde047"${HAT_INK}/>`,
+  },
+  none: { label: 'No hat', svg: '' },
+  tophat: {
+    label: 'Top hat',
+    svg: `<rect x="-3.2" y="-11" width="6.4" height="8" rx=".4" fill="#1f2937"${HAT_INK}/><rect x="-3.2" y="-5.4" width="6.4" height="1.4" fill="#dc2626"/><rect x="-5.2" y="-3.6" width="10.4" height="1.4" rx=".7" fill="#1f2937"${HAT_INK}/>`,
+  },
+  cap: {
+    label: 'Cap',
+    svg: `<path d="M2.4 -2.6L7.4 -1.9L7 -1L2.4 -1.6z" fill="#1d4ed8"${HAT_INK}/><path d="M-3.9 -1.4A3.9 4.2 0 0 1 3.9 -1.4z" fill="#2563eb"${HAT_INK}/><circle cy="-5.6" r=".7" fill="#1d4ed8"/>`,
+  },
+  hardhat: {
+    label: 'Hard hat',
+    svg: `<path d="M-3.9 -1.8A3.9 4.2 0 0 1 3.9 -1.8z" fill="#facc15"${HAT_INK}/><path d="M0 -6V-1.8" stroke="#ca8a04" stroke-width=".9"/><rect x="-5.4" y="-2.4" width="10.8" height="1.3" rx=".6" fill="#facc15"${HAT_INK}/>`,
+  },
+  beanie: {
+    label: 'Beanie',
+    svg: `<path d="M-3.8 -1.4Q-4 -6.6 0 -6.8Q4 -6.6 3.8 -1.4z" fill="#22c55e"${HAT_INK}/><rect x="-4.2" y="-2.6" width="8.4" height="1.9" rx=".7" fill="#15803d"${HAT_INK}/><circle cy="-7.4" r="1.4" fill="#f8fafc"${HAT_INK}/>`,
+  },
+  wizard: {
+    label: 'Wizard',
+    svg: `<path d="M-3.4 -2.8L1.4 -13L3.4 -2.8z" fill="#7c3aed"${HAT_INK}/><ellipse cy="-2.6" rx="5.8" ry="1.3" fill="#6d28d9"${HAT_INK}/><path d="M0 -8.4l.45 .9l1 .15l-.72 .7l.17 1l-.9 -.47l-.9 .47l.17 -1l-.72 -.7l1 -.15z" fill="#fde047"/>`,
+  },
+  cowboy: {
+    label: 'Cowboy',
+    svg: `<path d="M-3 -2.6L-2.7 -7.2Q-1.4 -6.4 0 -7Q1.4 -6.4 2.7 -7.2L3 -2.6z" fill="#b45309"${HAT_INK}/><rect x="-3" y="-4" width="6" height="1" fill="#78350f"/><path d="M-6.6 -3.8Q-5 -1.2 0 -1.4Q5 -1.2 6.6 -3.8Q5.4 -2.4 0 -2.6Q-5.4 -2.4 -6.6 -3.8z" fill="#ca8a04"${HAT_INK}/>`,
+  },
+  party: {
+    label: 'Party hat',
+    svg: `<path d="M-3 -2.6L0 -11L3 -2.6z" fill="#f472b6"${HAT_INK}/><path d="M-2.1 -5.2L1.9 -4.2M-1.1 -7.8L1 -7.2" stroke="#fde047" stroke-width=".9"/><circle cy="-11.2" r="1.2" fill="#fde047"${HAT_INK}/>`,
+  },
+  chef: {
+    label: 'Chef',
+    svg: `<rect x="-3" y="-6" width="6" height="3.6" fill="#f8fafc"${HAT_INK}/><circle cx="-2.4" cy="-7" r="2" fill="#f8fafc"${HAT_INK}/><circle cx="2.4" cy="-7" r="2" fill="#f8fafc"${HAT_INK}/><circle cy="-8.2" r="2.4" fill="#f8fafc"${HAT_INK}/><path d="M-1.6 -6.2V-3.6M1.6 -6.2V-3.6" stroke="#cbd5e1" stroke-width=".5"/>`,
+  },
+}
+
 // White or dark ink, whichever reads on the bullet's colour.
 function inkOn(color: string): string {
   const m = /^#([0-9a-f]{6})$/i.exec(color)
@@ -64,9 +107,9 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
   }
   body += `<rect x="${n(-4 * s)}" y="${n(-13 * s)}" width="${n(8 * s)}" height="${n(10.5 * s)}" rx="${n(3.6 * s)}" fill="${a.color}" stroke="#0b1224" stroke-width="${n(0.8 * k)}"/>`
   body += `<circle cx="0" cy="${n(-16 * s)}" r="${n(3.7 * s)}" fill="#fef3c7" stroke="#0b1224" stroke-width="${n(0.8 * k)}"/>`
-  if (a.isMain) {
-    body += `<path d="M${n(-3.5 * s)} ${n(-19 * s)}v${n(-4.5 * s)}l${n(1.75 * s)} ${n(2.5 * s)}l${n(1.75 * s)} ${n(-3.5 * s)}l${n(1.75 * s)} ${n(3.5 * s)}l${n(1.75 * s)} ${n(-2.5 * s)}v${n(4.5 * s)}z" fill="#fde047" stroke="#0b1224" stroke-width="${n(0.6 * k)}"/>`
-  }
+  // A lead wears its hat: the crown, or what the person picked for it.
+  const hat = a.isMain ? HATS[session?.hat ?? 'crown']?.svg : ''
+  if (hat) body += `<g transform="translate(0,${n(-16 * s)}) scale(${n(s)})">${hat}</g>`
   // The tool in hand, by where the agent is.
   if (a.status === 'working' || a.status === 'waiting') {
     body += `<g transform="translate(${n(7.4 * s)},${n(-6.5 * s)}) scale(${n(s)})">${PROPS[a.at] ?? ''}</g>`

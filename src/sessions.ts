@@ -5,7 +5,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
-import type { AppSession, Decision, Pending, TaskEffort, TaskLevel, TaskModel } from './types.ts'
+import { HATS } from './draw/agents.ts'
+import type { AppSession, Decision, Hat, Look, Pending, TaskEffort, TaskLevel, TaskModel } from './types.ts'
 import { norm } from './world.ts'
 
 // Claude Code sessions that live in the app: one long-running `claude -p` per
@@ -83,7 +84,34 @@ type Proc = {
   killTimer?: ReturnType<typeof setTimeout>
 }
 
-export type StartArgs = { cwd?: unknown; prompt?: unknown; level?: unknown; model?: unknown; effort?: unknown; resume?: unknown }
+export type StartArgs = { cwd?: unknown; prompt?: unknown; level?: unknown; model?: unknown; effort?: unknown; resume?: unknown; look?: unknown }
+
+const NAME_MAX = 24
+
+// The look picked in the New session form, checked: a name (one line, no
+// control characters), a #rrggbb colour and a hat the city can draw. Empty
+// fields are left to the city; undefined when nothing was picked.
+export function lookOf(v: unknown): Look | undefined {
+  if (v == null) return undefined
+  if (typeof v !== 'object') throw new Error('look must be an object')
+  const { name, color, hat } = v as Record<string, unknown>
+  const look: Look = {}
+  if (name != null && name !== '') {
+    if (typeof name !== 'string') throw new Error('name must be text')
+    const t = name.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
+    if (t.length > NAME_MAX) throw new Error(`The name is longer than ${NAME_MAX} characters`)
+    if (t) look.name = t
+  }
+  if (color != null && color !== '') {
+    if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) throw new Error('color must look like #38bdf8')
+    look.color = color.toLowerCase()
+  }
+  if (hat != null && hat !== '') {
+    if (typeof hat !== 'string' || !Object.hasOwn(HATS, hat)) throw new Error(`hat must be one of ${Object.keys(HATS).join(', ')}`)
+    look.hat = hat as Hat
+  }
+  return Object.keys(look).length ? look : undefined
+}
 
 function oneLine(text: string, n = 200): string {
   const t = text.replace(/\s+/g, ' ').trim()
@@ -233,6 +261,7 @@ export class AppSessions {
       if (typeof args.resume !== 'string' || !SESSION_ID.test(args.resume)) throw new Error('resume must be a Claude Code session id')
       resume = args.resume
     }
+    const look = lookOf(args.look)
     if (typeof args.cwd !== 'string' || !args.cwd.trim()) throw new Error('No folder given')
     const cwd = norm(resolve(args.cwd.trim()))
     let isDir = false
@@ -254,6 +283,7 @@ export class AppSessions {
       lastAt: now,
     }
     if (resume) s.forkedFrom = resume
+    if (look) s.look = look
     this.sessions.push(s)
     this.prune()
     this.spawn(s, resume ? ['--resume', resume, '--fork-session'] : [])

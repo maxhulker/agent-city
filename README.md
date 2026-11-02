@@ -63,7 +63,9 @@ The idea: you never need the terminal or the Claude window.
   task, and choose what it may do (read only; ask me in the app, where every
   edit or command becomes an Allow/Deny card; edit files; or edit and run
   commands), a model and version (the latest, a pinned one, or any model ID)
-  and an effort level. It runs as a headless Claude Code session, shows up in
+  and an effort level. Give it a name, a colour and a hat (crown, top hat,
+  wizard, chef…) if you like; its lead wears them in the city, on its card and
+  on its subway bullet. It runs as a headless Claude Code session, shows up in
   the city like any other, and its answer lands in the task list. Reply to it
   from its conversation and it carries on in the same session, with memory.
   Stop ends it and everything it started. (Headless tasks can't ask

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
 import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
-import type { Agent, Burb, District, Feat, Landmark, LimitWindow, Limits, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
+import type { Agent, Burb, District, Feat, Landmark, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -288,6 +288,31 @@ export class City {
   private lastFollow = 0
   // The last 40 ticker items, oldest first. Not saved.
   ticker: TickerItem[] = []
+  // What the person picked for sessions started in the app, by Claude Code
+  // session id; worn as soon as the session turns up. Not saved: the server
+  // dresses them again from the app sessions it loads.
+  private looks = new Map<string, Look>()
+
+  // A session started from the page wears its name, colour and hat: on its
+  // card, its bullet, its trains and its lead. One not seen yet wears them
+  // when it arrives.
+  dress(sessionId: string, look: Look) {
+    this.looks.set(sessionId, look)
+    const s = this.world.sessions.find(one => one.id === sessionId)
+    if (s) this.wear(s, look)
+  }
+
+  private wear(s: Session, look: Look) {
+    if (look.name) s.name = look.name
+    if (look.color) s.color = look.color
+    if (look.hat) s.hat = look.hat
+    const lead = this.world.agents.find(a => a.id === `lead:${s.id}`)
+    if (lead) {
+      lead.name = s.name
+      lead.color = s.color
+    }
+    this.isDirty = true
+  }
 
   private touch(root: string | undefined, now: number) {
     if (!root) return
@@ -969,6 +994,8 @@ export class City {
         updatedAt: now,
       }
       w.sessions.push(s)
+      const look = this.looks.get(s.id)
+      if (look) this.wear(s, look)
     }
     // Sessions saved before bullets existed get one now.
     if (!s.bullet) s.bullet = this.bulletFor()

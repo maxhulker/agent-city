@@ -205,6 +205,21 @@
   #newform label { display: block; font-size: 11px; color: var(--dim); margin: 8px 0 3px; }
   #newform label:first-child { margin-top: 0; }
   #newform .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #newform .look { display: flex; gap: 10px; align-items: center; }
+  #newform .lookset { flex: 1; min-width: 0; }
+  #nt-preview { flex: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+  #newform .swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .swatch { position: relative; width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 2px solid transparent; outline: 1px solid var(--line); cursor: pointer; background: var(--sw); }
+  .swatch.on { border-color: var(--bg); outline: 2px solid var(--text); }
+  .swatch.auto { background: conic-gradient(#fbbf24, #f472b6, #38bdf8, #a3e635, #fbbf24); }
+  .swatch.custom { display: inline-flex; align-items: center; justify-content: center; background: var(--sw, var(--bg)); color: var(--dim); font-size: 12px; line-height: 1; outline-style: dashed; outline-color: var(--dim); }
+  .swatch.custom.on { outline-style: solid; outline-color: var(--text); }
+  .swatch.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; padding: 0; }
+  #newform .hats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 8px; }
+  .hatbtn { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px 0 1px; cursor: pointer; color: var(--dim); font: inherit; font-size: 9px; line-height: 1.2; }
+  .hatbtn:hover { border-color: var(--dim); }
+  .hatbtn.on { border-color: var(--accent); color: var(--text); }
+  .hatbtn svg { display: block; margin: 0 auto; }
   [hidden] { display: none !important; }
   .warn { color: #fbbf24; font-size: 11px; margin-top: 4px; }
   .err { color: var(--red); font-size: 12px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
@@ -510,6 +525,15 @@
           <label for="nt-folder">Folder</label>
           <select class="field" id="nt-folder"><option value="__other">Other folder...</option></select>
           <input class="field" id="nt-other" placeholder="Full path to a folder" style="margin-top:6px" spellcheck="false">
+          <label for="nt-name">Name and look <span class="opt-tag">optional</span></label>
+          <div class="look">
+            <svg id="nt-preview" viewBox="-12 -40 24 43" width="46" height="82" aria-hidden="true"></svg>
+            <div class="lookset">
+              <input class="field" id="nt-name" maxlength="24" placeholder="Named after its folder" spellcheck="false" autocomplete="off">
+              <div class="swatches" id="nt-colors" role="radiogroup" aria-label="Colour"></div>
+            </div>
+          </div>
+          <div class="hats" id="nt-hats" role="radiogroup" aria-label="Hat"></div>
           <label for="nt-prompt">What should it do? <span class="opt-tag">optional</span></label>
           <textarea class="field" id="nt-prompt" rows="3" placeholder="Describe the work, or leave empty and say it in the conversation…"></textarea>
           <div class="two">
@@ -1254,6 +1278,55 @@
   syncOther(); syncWarn()
   $('nt-prompt').addEventListener('input', e => growTa(e.target))
 
+  // The look: a colour and a hat for the new session's lead, shown on a figure
+  // as it will stand in the city. Auto leaves the colour to the city; the
+  // hats (and how to draw them) come from the server.
+  const LOOK_COLORS = ['#fbbf24', '#f472b6', '#38bdf8', '#a3e635', '#fb7185', '#c084fc', '#2dd4bf', '#fdba74']
+  const look = { color: '', hat: 'crown' }
+  let hats = [{ id: 'crown', label: 'Crown', svg: '' }]
+  $('nt-colors').innerHTML =
+    '<button type="button" class="swatch auto" data-color="" role="radio" title="Auto: the city picks"></button>' +
+    LOOK_COLORS.map(c => `<button type="button" class="swatch" style="--sw:${c}" data-color="${c}" role="radio" title="${c}"></button>`).join('') +
+    '<label class="swatch custom" title="Any colour"><span>+</span><input type="color" id="nt-color" value="#38bdf8"></label>'
+  function syncLook() {
+    for (const b of document.querySelectorAll('#nt-colors [data-color], #nt-hats [data-hat]')) {
+      const on = 'hat' in b.dataset ? b.dataset.hat === look.hat : b.dataset.color === look.color
+      b.classList.toggle('on', on)
+      b.setAttribute('aria-checked', String(on))
+    }
+    const custom = !!look.color && !LOOK_COLORS.includes(look.color), cu = $('nt-colors').querySelector('.custom')
+    cu.classList.toggle('on', custom)
+    cu.style.setProperty('--sw', custom ? look.color : '')
+    cu.firstChild.hidden = custom
+    const hat = hats.find(h => h.id === look.hat)?.svg || ''
+    $('nt-preview').innerHTML = '<ellipse rx="6.5" ry="3.2" fill="#000" opacity=".4"/>' +
+      `<rect x="-5.2" y="-16.9" width="10.4" height="13.6" rx="4.7" fill="${esc(look.color || '#64748b')}" stroke="#0b1224" stroke-width="1"/>` +
+      '<circle cy="-20.8" r="4.8" fill="#fef3c7" stroke="#0b1224" stroke-width="1"/>' +
+      `<g transform="translate(0,-20.8) scale(1.3)">${hat}</g>`
+  }
+  function drawHats() {
+    $('nt-hats').innerHTML = hats.map(h => `<button type="button" class="hatbtn" data-hat="${esc(h.id)}" role="radio" title="${esc(h.label)}">` +
+      `<svg viewBox="-8 -14 16 19" width="26" height="31" aria-hidden="true"><circle r="3.7" fill="#fef3c7" stroke="#0b1224" stroke-width=".6"/>${h.svg}</svg>${esc(h.label)}</button>`).join('')
+    syncLook()
+  }
+  function resetLook() {
+    look.color = ''
+    look.hat = 'crown'
+    $('nt-name').value = ''
+    syncLook()
+  }
+  $('nt-colors').addEventListener('click', e => {
+    const b = e.target.closest('[data-color]')
+    if (b) { look.color = b.dataset.color; syncLook() }
+  })
+  $('nt-color').addEventListener('input', e => { look.color = e.target.value.toLowerCase(); syncLook() })
+  $('nt-hats').addEventListener('click', e => {
+    const b = e.target.closest('[data-hat]')
+    if (b) { look.hat = b.dataset.hat; syncLook() }
+  })
+  drawHats()
+  fetch('/hats').then(r => r.json()).then(list => { if (Array.isArray(list) && list.length) { hats = list; drawHats() } }).catch(() => {})
+
   let placesKey = ''
   function drawPlaces(places) {
     const key = JSON.stringify(places)
@@ -1274,12 +1347,15 @@
     if (!cwd) { err.textContent = 'Pick a folder.'; return }
     const model = $('nt-version').value === '__id' ? $('nt-id').value.trim() : $('nt-version').value
     if (!model) { err.textContent = 'Enter a model ID.'; return }
+    const name = $('nt-name').value.trim()
+    const picked = { ...(name ? { name } : {}), ...(look.color ? { color: look.color } : {}), ...(look.hat !== 'crown' ? { hat: look.hat } : {}) }
     err.textContent = ''
     btn.disabled = true
-    const r = await post('/app/start', { cwd, prompt, level: $('nt-level').value, model, effort: $('nt-effort').value })
+    const r = await post('/app/start', { cwd, prompt, level: $('nt-level').value, model, effort: $('nt-effort').value, look: picked })
     btn.disabled = false
     if (r.error || r.ok === false || !r.id) { err.textContent = r.error || 'The session was not started.'; return }
     if ($('nt-prompt').value.trim() === prompt) { $('nt-prompt').value = ''; growTa($('nt-prompt')) }
+    resetLook()
     if (prompt) firstPrompts.set(r.id, prompt)
     if (prompt) outbox.set(r.id, [{ text: prompt, at: Date.now(), base: 0, sent: true, after: false }])
     openSession(APP + r.id)
@@ -1309,7 +1385,8 @@
   const APP_LABEL = { starting: 'starting', working: 'working', idle: 'idle', asleep: 'asleep', ended: 'ended', failed: 'failed' }
   const appBusy = a => a && (a.status === 'working' || a.status === 'starting')
   const appDone = a => a && (a.status === 'ended' || a.status === 'failed')
-  const appColor = (m, a) => sessOf(m, a?.sessionId)?.color || '#fbbf24'
+  const appColor = (m, a) => sessOf(m, a?.sessionId)?.color || a?.look?.color || '#fbbf24'
+  const appName = a => a.look?.name || a.title || baseName(a.cwd)
   const normText = s => String(s ?? '').replace(/\s+/g, ' ').trim()
 
   function appChip(a) {
@@ -1330,7 +1407,7 @@
       : a.status === 'asleep' ? '<div class="note">Asleep: wakes on your next message</div>'
         : a.status === 'starting' ? '<div class="note">Starting…</div>'
           : a.queued ? `<div class="note">${a.queued} message${a.queued === 1 ? '' : 's'} queued</div>` : ''
-    return `<div class="row"><span class="dot" style="background:${esc(appColor(lastMeta, a))}"></span><span class="name" title="${esc(a.title)}">${esc(a.title || baseName(a.cwd))}</span>${appChip(a)}</div>
+    return `<div class="row"><span class="dot" style="background:${esc(appColor(lastMeta, a))}"></span><span class="name" title="${esc(a.title)}">${esc(appName(a))}</span>${appChip(a)}</div>
       <div class="path" style="margin-left:17px">${esc(a.cwd)}</div>
       <div class="small dim" style="margin-left:17px">${esc(appMeta(a))} · ${esc(coarseAgo(a.lastAt || a.startedAt))}</div>
       ${note ? `<div style="margin-left:17px">${note}</div>` : ''}
@@ -1726,7 +1803,7 @@
   const sessName = (m, sid) => {
     const s = sessOf(m, sid)
     const a = appBySid(m, sid) || appOf(m, sid) || appsOf(m).find(x => x.id === sid)
-    return leadOf(s)?.name ?? (a ? a.title || baseName(a.cwd) : null) ?? s?.name ?? 'A session'
+    return leadOf(s)?.name ?? (a ? appName(a) : null) ?? s?.name ?? 'A session'
   }
   const agentSession = (m, aid) => (m?.sessions || []).find(s => s.agents.some(a => a.id === aid))?.id || ''
   // A task runs again for each follow-up turn, so its status says whether a turn is under way.
@@ -2026,7 +2103,7 @@
 
     const ending = a && confirmEnd.id === a.id && Date.now() < confirmEnd.until
     const head = a
-      ? `<div class="row"><span class="dot" style="background:${esc(appColor(m, a))}"></span><span class="name" title="${esc(a.title)}">${esc(a.title || baseName(a.cwd))}</span>${appChip(a)}
+      ? `<div class="row"><span class="dot" style="background:${esc(appColor(m, a))}"></span><span class="name" title="${esc(a.title)}">${esc(appName(a))}</span>${appChip(a)}
           ${!appDone(a) ? `<button class="btn sm${ending ? ' danger' : ''}" type="button" data-app-end="${esc(a.id)}" style="margin-left:auto">${ending ? 'Really end?' : 'End session'}</button>` : ''}</div>
         <div class="path">${esc(a.cwd)}</div>
         <div class="small dim">${esc(appMeta(a))}</div>
@@ -2677,7 +2754,7 @@
     for (const a of appsOf(m)) {
       if (a.sessionId) ended.add(a.sessionId) // its lead's own idle doesn't notify twice
       if (was.apps.get(a.id) !== 'working' || a.status === 'working') continue
-      const title = a.title || baseName(a.cwd)
+      const title = appName(a)
       const live = lastLive.get(a.id)
       lastLive.delete(a.id)
       if (Date.now() - (recentInterrupt.get(a.id) || 0) < 15000) continue
