@@ -71,6 +71,7 @@ test('the map changes when something still changes: a landmark, a borough, the r
   city.apply(ev('SessionStart', 'S2', { cwd: OTHER }), T0 + 1000)
   city.apply(ev('UserPromptSubmit', 'S2', { cwd: OTHER, prompt: 'hi' }), T0 + 1000)
   tool(city, 'S2', 'Read', { file_path: `${OTHER}/a.ts` }, T0 + 1000, OTHER)
+  assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0 + 1000))
   city.flush(T0 + 1000)
   const borough = renderFrame(city.world, T0 + 1100, { connected: true })
   assert.notEqual(borough.map.hash, hall.map.hash, 'a borough moved in')

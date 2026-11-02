@@ -1,7 +1,7 @@
 import { LANDMARKS, frame, item, n } from './draw/geo.ts'
 import type { OverlayItem, Scene, Sprite } from './draw/geo.ts'
 import { AGENT_CSS, drawRides, drawSprites, drawTrains } from './draw/agents.ts'
-import { defs, drawMap, drawOverlay, mapKey } from './draw/map.ts'
+import { defs, drawMap, drawOverlay, framed, mapKey } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import { manhattanLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
@@ -74,7 +74,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
 
   const key = mapKey(sc)
   if (!lastMap || lastMap.hash !== key) {
-    const vb = frame([...repoOf.keys(), ...vacantOf.keys()])
+    const vb = frame(framed(sc), layout)
     let s = `<svg xmlns="http://www.w3.org/2000/svg" class="city map" viewBox="${n(vb.x)} ${n(vb.y)} ${n(vb.w)} ${n(vb.h)}" preserveAspectRatio="xMidYMid meet" font-family="ui-sans-serif, system-ui, Segoe UI, sans-serif">`
     s += defs()
     // The styles apply to the whole page, the overlay's SVG included.

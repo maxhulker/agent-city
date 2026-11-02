@@ -1,5 +1,5 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
-import { BLOCK_EVERY, BURBS, PROFILE, SITES, deltaOf, edges, lots, route, siteFor, spotFor } from '../layout.ts'
+import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, deltaOf, doorOf, edges, isWaiting, lots, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
@@ -7,7 +7,7 @@ import type { Layout } from '../layout.ts'
 // island, the sites, the boroughs and the lots are the Manhattan preset's,
 // kept in src/layout.ts (docs/city-builder.md) and re-exported here.
 
-export { BLOCK_EVERY, BURBS, BURB_ORDER, PROFILE, RESERVED, SITES, edges, isReserved, lots, seeded } from '../layout.ts'
+export { BLOCK_EVERY, BURBS, BURB_ORDER, PROFILE, RESERVED, SITES, burbGeo, edges, isReserved, isWaiting, lots, seeded } from '../layout.ts'
 export type { Lot, Site } from '../layout.ts'
 
 export const LABELS: Record<District, string> = {
@@ -207,16 +207,34 @@ export function standAt(d: District, i: number, [sx, sy]: [number, number] = SIT
 
 // ---- boroughs: one per other repository -----------------------------------
 
-// Rows along the borough's front edge, facing the viewer, a body's width apart.
-export function burbAt(b: Burb, i: number): [number, number] {
-  const [cx, cy] = BURBS[b].center
+// Rows along the borough's front edge, facing the viewer, a body's width
+// apart: on a preset borough's square in front of its houses, on a drawn one
+// along the middle of its front edge, rows stepping back into it. A
+// repository with no borough waits on the station's forecourt.
+export function burbAt(b: Burb, i: number, layout?: Layout): [number, number] {
+  const g = burbGeo(layout, b)
+  if (!g) return waitAt(layout, i)
+  const [cx, cy] = g.square
   const col = i % 3
   const row = Math.floor(i / 3)
-  return [cx - 2.8 + col * 2 + (row % 2) * 1, cy + 3 + row * 1.4]
+  if (g.preset) return [cx - 2.8 + col * 2 + (row % 2) * 1, cy + 3 + row * 1.4]
+  const step = Math.min(1.6, (g.rect[2] - g.rect[0] - 1) / 3)
+  return [cx - step + col * step + (row % 2) * (step / 2), cy - row * 0.9]
 }
 
+// The forecourt, east of the station's door, where the agents of a
+// repository with no borough wait (counted across all such repositories).
+export function waitAt(layout: Layout | undefined, i: number): [number, number] {
+  const [sx, sy] = layout ? spotFor(layout, 'relay') : SITES.relay.spot
+  return [sx + 1.6 + (i % 4) * 0.45, sy + 0.25 + Math.floor(i / 4) * 0.3]
+}
+
+// Where an agent stands: in Manhattan at its district's door; in a borough
+// at the building of its kind the person placed there, else on the square.
 export function placeAt(place: Place, i: number, layout?: Layout): [number, number] {
-  return place.burb ? burbAt(place.burb, i) : standAt(place.at, i, layout ? spotFor(layout, place.at) : undefined)
+  if (!place.burb) return standAt(place.at, i, layout ? spotFor(layout, place.at) : undefined)
+  const inside = burbGeo(layout, place.burb) && burbBuilding(layout, place.burb, place.at)
+  return inside ? standAt(place.at, i, doorOf(inside)) : burbAt(place.burb, i, layout)
 }
 
 // How long the train home takes to pull out of Grand Central and be gone, and
@@ -269,17 +287,19 @@ export function blocksFor(population: number, all = lots().length): number {
 export function walk(from: Place, to: Place, end: [number, number], layout?: Layout): { path: string; dur: number; pts: Pt[] } {
   const via: [number, number][] = [placeAt(from, 0, layout)]
   let a = via[0]!
-  if (from.burb) {
-    const b = BURBS[from.burb]
-    via.push(b.far, b.near)
-    a = b.near
+  const fromGeo = from.burb ? burbGeo(layout, from.burb) : undefined
+  if (fromGeo) {
+    // Out to the square, then over the bridge (a drawn borough: its front edge).
+    if (burbBuilding(layout, from.burb!, from.at)) via.push(fromGeo.square)
+    via.push(fromGeo.far, fromGeo.near)
+    a = fromGeo.near
   }
-  const target: [number, number] = to.burb ? BURBS[to.burb].near : layout ? spotFor(layout, to.at) : SITES[to.at].spot
+  const toGeo = to.burb ? burbGeo(layout, to.burb) : undefined
+  const target: [number, number] = toGeo ? toGeo.near : isWaiting(to.burb) ? waitAt(layout, 0) : layout ? spotFor(layout, to.at) : SITES[to.at].spot
   const road = layout && route(layout, a, target)
   if (road) via.push(...road.slice(1))
   else via.push(target)
-  if (to.burb) via.push(BURBS[to.burb].far)
-  via.push(end)
+  if (toGeo) via.push(toGeo.far)
   // No point twice in a row (the stand point is often the door itself).
   for (let i = via.length - 1; i > 0; i--) if (via[i]![0] === via[i - 1]![0] && via[i]![1] === via[i - 1]![1]) via.splice(i, 1)
   let dist = 0
@@ -297,7 +317,7 @@ export function walk(from: Place, to: Place, end: [number, number], layout?: Lay
 export type Frame = { x: number; y: number; w: number; h: number }
 
 // The whole map: the island, the bay and Liberty Island, and every borough in use.
-export function frame(burbs: Burb[]): Frame {
+export function frame(burbs: Burb[], layout?: Layout): Frame {
   let x0 = Infinity
   let x1 = -Infinity
   let y0 = Infinity
@@ -321,10 +341,12 @@ export function frame(burbs: Burb[]): Frame {
     [-3, 70],
   ] as const) take(gx, gy)
   for (const b of burbs) {
-    const [cx, cy] = BURBS[b].center
-    take(cx - 3.5, cy + 3.5)
-    take(cx + 3.5, cy - 3.5)
-    take(cx + 3.5, cy + 3.5)
+    const g = burbGeo(layout, b)
+    if (!g) continue
+    const [x0, y0, x1, y1] = g.rect
+    take(x0, y1)
+    take(x1, y0)
+    take(x1, y1)
   }
   // Room above the northern tip for the moon and the tallest spires.
   const head = 46

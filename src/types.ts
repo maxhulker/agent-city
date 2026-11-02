@@ -14,8 +14,14 @@ export type District =
 // torch, and the Empire State Building as the capstone.
 export type Landmark = District | 'torch' | 'empire'
 
-// The boroughs a repository other than Manhattan's moves into.
-export type Burb = 'brooklyn' | 'queens' | 'bronx' | 'jersey'
+// The Manhattan preset's four hand-drawn boroughs.
+export type PresetBurb = 'brooklyn' | 'queens' | 'bronx' | 'jersey'
+
+// Where a repository other than Manhattan's lives: a borough's id in the
+// layout (the preset's four keep their names as ids), or, while it has none,
+// `@<root>`: its agents wait on Grand Central's forecourt (`waitingId` in
+// src/layout.ts).
+export type Burb = string
 
 export type View = 'island' | 'uptown' | 'midtown' | 'downtown'
 
@@ -217,9 +223,10 @@ export type TaskTurn = {
   costUsd?: number
 }
 
-// A repository other than Manhattan's and the borough it lives in. One that
-// has packed up (`left`) is still known: it moves straight back in, to the
-// same borough when that is free, as soon as a session works there again.
+// A repository other than Manhattan's and the borough it lives in (or `@<root>`
+// while it waits at the station for one). One that has packed up (`left`) is
+// still known: it moves straight back in, to the same borough when nobody else
+// has, as soon as a session works there again.
 export type Repo = { root: string; name: string; burb: Burb; lastSeen: number; left?: number }
 
 export type Conflict = {

@@ -180,9 +180,11 @@ test('the world: placing in the city builds at once; in a borough the first such
   assert.deepEqual(city.build({ op: 'nonsense' }, T0), { error: 'Not a placement' })
   assert.deepEqual(city.build({ op: 'place', kind: 'empire', x: 9, y: 48 }, T0), { error: 'Build every district first' })
 
-  // A borough: api moves into Brooklyn (a preset borough, on the mainland).
+  // A borough: api arrives, waits at the station, and moves into Brooklyn (a preset borough, on the mainland).
   city.apply(ev('SessionStart', 'S2', { cwd: OTHER }), T0 + 300)
   read(city, 'S2', OTHER, T0 + 400)
+  assert.ok(city.world.repos[0]?.burb.startsWith('@'), 'waiting for a borough')
+  assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0 + 450))
   assert.equal(city.world.repos[0]?.burb, 'brooklyn')
   assert.ok('ok' in city.build({ op: 'road', x: 21, y: 54, dir: 1, len: 4 }, T0 + 500))
   const placed = city.build({ op: 'place', kind: 'library', x: 22, y: 53 }, T0 + 600)

@@ -1,5 +1,5 @@
 import type { Agent, District, Session, World } from '../types.ts'
-import { LABELS, TRAIN_MS, burbAt, esc, hash, keyed, n, p, placeAt, standAt, walk } from './geo.ts'
+import { LABELS, TRAIN_MS, esc, hash, isWaiting, keyed, n, p, placeAt, standAt, waitAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
 import { siteFor, spotFor, trackOf } from '../layout.ts'
 
@@ -123,7 +123,9 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
   const out: Sprite[] = []
   const placed: { a: Agent; at: [number, number]; i: number }[] = []
   for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i, spotFor(sc.layout, d)), i }))
-  for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: burbAt(b, i), i }))
+  // The repositories with no borough wait together on the station's forecourt.
+  let waiting = 0
+  for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: isWaiting(b) ? waitAt(sc.layout, waiting++) : placeAt({ at: a.at, burb: b }, i, sc.layout), i }))
   placed.sort((x, y) => x.at[0] + x.at[1] - (y.at[0] + y.at[1]))
   const round = (v: number) => Math.round(v * 10) / 10
   for (const { a, at, i } of placed) {
@@ -134,7 +136,11 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
     const label = !dup || alert
     const lift = (i % 2) * 9
     // Nothing of its kind placed yet: it waits on the station's forecourt, and says so.
-    const forecourt = !a.burb && a.at !== 'relay' && !siteFor(sc.layout, a.at) ? `waiting at Grand Central: no ${LABELS[a.at]} yet` : ''
+    const forecourt = isWaiting(a.burb)
+      ? `waiting at Grand Central: ${repoOf.get(a.burb!)?.name ?? 'its repository'} has no borough yet`
+      : !a.burb && a.at !== 'relay' && !siteFor(sc.layout, a.at)
+        ? `waiting at Grand Central: no ${LABELS[a.at]} yet`
+        : ''
     let fig = figure(a, label, lift, k, sessions.get(a.session), forecourt)
     if (a.arriving && a.arriving > sc.now) {
       // Still aboard: it steps onto the platform once its train is in.

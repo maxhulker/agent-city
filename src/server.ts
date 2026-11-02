@@ -6,7 +6,8 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BLUEPRINTS, BURBS, LABELS, LANDMARKS, renderFrame } from './city.ts'
+import { BLUEPRINTS, LABELS, LANDMARKS, renderFrame } from './city.ts'
+import { burbGeo, isWaiting } from './layout.ts'
 import { Approvals } from './approvals.ts'
 import { changesIn } from './changes.ts'
 import { hooksInstalled } from './install.ts'
@@ -173,7 +174,10 @@ function meta(world: World) {
     homeRoot: world.homeRoot,
     homePinned: !!world.homePinned,
     boot: BOOT,
-    repos: world.repos.map(r => ({ ...r, borough: BURBS[r.burb].name })),
+    // A repository waiting at the station for a borough gets the page's New arrival card.
+    repos: world.repos.map(r => ({ ...r, borough: burbGeo(world.layout, r.burb)?.name ?? 'Grand Central', waiting: isWaiting(r.burb) })),
+    // The boroughs nobody lives in now, which the card offers to move into.
+    free: (world.layout?.boroughs ?? []).filter(b => !world.repos.some(r => r.burb === b.id && !r.left)).map(b => ({ id: b.id, name: b.name })),
     sessions: world.sessions.map(s => ({
       ...s,
       agents: world.agents
@@ -188,7 +192,7 @@ function meta(world: World) {
           tools: a.tools,
           activity: a.activity,
           where: a.burb
-            ? `${BURBS[a.burb].name} (${world.repos.find(r => r.burb === a.burb)?.name ?? 'another repo'})`
+            ? `${burbGeo(world.layout, a.burb)?.name ?? 'Grand Central'} (${world.repos.find(r => r.burb === a.burb && !r.left)?.name ?? 'another repo'})`
             : LABELS[a.at],
         })),
     })),

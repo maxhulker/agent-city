@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
-import { AGENT_COLORS, BURBS, BURB_ORDER, districtFor } from './city.ts'
+import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
-import { FIXED, applyOp, clearBuilt, manhattanLayout, markBuilt, parseOp } from './layout.ts'
+import { FIXED, applyOp, burbGeo, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -343,8 +343,15 @@ export class City {
   // Statue stands once the Seaport does.
   build(raw: unknown, now: number): { ok: true } | { error: string } {
     const w = this.world
+    if (raw && typeof raw === 'object' && (raw as { op?: unknown }).op === 'movein') {
+      const { id, root } = raw as { id?: unknown; root?: unknown }
+      if (typeof id !== 'string' || typeof root !== 'string' || !root.trim()) return { error: 'Not a placement' }
+      return this.moveIn(root.trim(), id, now)
+    }
     const op = parseOp(raw)
     if (!op) return { error: 'Not a placement' }
+    if (op.op === 'borough' && op.root && w.homeRoot && same(op.root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
+    const bulldozed = op.op === 'remove' ? this.layout.boroughs.find(bo => bo.id === op.id) : undefined
     if (op.op === 'place' && op.kind === 'empire' && DISTRICT_LANDMARKS.some(d => w.built?.[d] === undefined)) {
       return { error: 'Build every district first' }
     }
@@ -360,6 +367,18 @@ export class City {
           // What is left is a landmark of the game's.
           this.raise(b.kind as Landmark, undefined, now)
           markBuilt(r.layout, b.kind as Landmark, now)
+        }
+      }
+    }
+    // The sheet's repository moves into the borough just drawn.
+    if (op.op === 'borough' && op.root) this.moveIn(op.root, r.layout.boroughs[r.layout.boroughs.length - 1]!.id, now)
+    // A bulldozed borough frees its repository, which waits at the station again.
+    if (bulldozed) {
+      for (const repo of w.repos.filter(one => one.burb === bulldozed.id)) {
+        if (repo.left) repo.burb = waitingId(repo.root)
+        else {
+          this.waitForBorough(repo, now)
+          for (const a of w.agents) if (a.burb === bulldozed.id) a.burb = repo.burb
         }
       }
     }
@@ -493,20 +512,34 @@ export class City {
     return this.world.repos.find(r => r.burb === b && !r.left)
   }
 
-  // A borough for a repository moving in: the one it asks for when that is
-  // free, else any free one, else the one whose repository was seen longest
-  // ago, which packs up (and stays known).
-  private freeBurb(prefer: Burb | undefined, now: number): Burb {
-    if (prefer && !this.holder(prefer)) return prefer
-    const free = BURB_ORDER.find(b => !this.holder(b))
-    if (free) return free
-    const oldest = this.world.repos.filter(r => !r.left).sort((a, b) => a.lastSeen - b.lastSeen)[0]!
-    oldest.left = now
-    this.say(undefined, `${oldest.name} moved out of ${BURBS[oldest.burb].name}`, now)
-    return oldest.burb
+  // The repository a borough's (or the forecourt's) agents work for: the one
+  // living there, else the last to have.
+  private repoAt(b: Burb | undefined): Repo | undefined {
+    if (!b) return undefined
+    return this.holder(b) ?? this.world.repos.find(r => r.burb === b)
   }
 
-  // The borough of the repository at root, moving it in if it is new or had packed up.
+  // A borough's name, or Grand Central's for a repository waiting for one.
+  burbName(b: Burb): string {
+    return burbGeo(this.layout, b)?.name ?? 'Grand Central'
+  }
+
+  private news(text: string, now: number) {
+    this.toasts.push(text)
+    this.say(undefined, text, now)
+    this.tick(undefined, text, now)
+  }
+
+  // A repository with no borough: its agents wait on the station's forecourt
+  // while the page's New arrival card asks for one (docs/city-builder.md).
+  private waitForBorough(repo: Repo, now: number) {
+    repo.burb = waitingId(repo.root)
+    this.news(`${repo.name} arrived at Grand Central. Lay out a borough for it.`, now)
+  }
+
+  // The borough of the repository at root. A new one waits at the station; one
+  // that had packed up moves straight back into its borough if nobody else
+  // has, and waits otherwise, as does one whose borough was bulldozed.
   private burbFor(root: string | null, now: number): Burb | undefined {
     const w = this.world
     if (!root) return undefined
@@ -516,23 +549,45 @@ export class City {
     }
     if (same(root, w.homeRoot)) return undefined
     let repo = w.repos.find(r => same(r.root, root))
-    if (!repo || repo.left) {
-      const back = !!repo
-      const burb = this.freeBurb(repo?.burb, now)
-      if (repo) {
-        repo.burb = burb
-        delete repo.left
-      } else {
-        repo = { root, name: base(root), burb, lastSeen: now }
-        w.repos.push(repo)
-      }
-      const text = `${repo.name} moved ${back ? 'back ' : ''}into ${BURBS[burb].name}`
-      this.toasts.push(text)
-      this.say(undefined, text, now)
-      this.tick(undefined, text, now)
+    if (!repo) {
+      repo = { root, name: base(root), burb: waitingId(root), lastSeen: now }
+      w.repos.push(repo)
+      this.waitForBorough(repo, now)
+    } else if (repo.left) {
+      const geo = burbGeo(this.layout, repo.burb)
+      const free = !!geo && !this.holder(repo.burb)
+      delete repo.left
+      if (free) this.news(`${repo.name} moved back into ${geo!.name}`, now)
+      else this.waitForBorough(repo, now)
+    } else if (!isWaiting(repo.burb) && !burbGeo(this.layout, repo.burb)) {
+      this.waitForBorough(repo, now)
     }
     repo.lastSeen = now
     return repo.burb
+  }
+
+  // Moves the repository at root into a borough the person picked (the
+  // arrival card, or the Borough tool's sheet); its agents walk over.
+  moveIn(root: string, id: Burb, now: number): { ok: true } | { error: string } {
+    const w = this.world
+    const geo = burbGeo(this.layout, id)
+    if (!geo) return { error: 'No such borough' }
+    if (w.homeRoot && same(root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
+    const there = this.holder(id)
+    if (there && !same(there.root, root)) return { error: `${geo.name} is ${there.name}'s` }
+    let repo = w.repos.find(r => same(r.root, root))
+    if (!repo) {
+      repo = { root, name: base(root), burb: id, lastSeen: now }
+      w.repos.push(repo)
+    }
+    const was = repo.burb
+    const moving = was !== id || !!repo.left
+    repo.burb = id
+    delete repo.left
+    if (was !== id) for (const a of w.agents) if (a.burb === was) a.burb = id
+    if (moving) this.news(`${repo.name} moved into ${geo.name}`, now)
+    this.isDirty = true
+    return { ok: true }
   }
 
   private session(ev: HookEvent, now: number): Session {
@@ -681,7 +736,7 @@ export class City {
           worked = repoRoot(path) ?? s.root
           burb = this.burbFor(worked, now)
         } else {
-          worked = a.burb ? w.repos.find(r => r.burb === a.burb)?.root : w.homeRoot
+          worked = a.burb ? this.repoAt(a.burb)?.root : w.homeRoot
         }
         this.touch(worked, now)
         const before = placeOf(a)
@@ -739,7 +794,7 @@ export class City {
                 [...text.matchAll(/(?:Merge conflict in |CONFLICT \([^)]*\): (?:Merge conflict in )?)([^\s"\\]+)/g)].map(m => m[1] ?? ''),
               ),
             ].slice(0, 12)
-            const where = a.burb ? w.repos.find(r => r.burb === a.burb)?.name : w.home
+            const where = a.burb ? this.repoAt(a.burb)?.name : w.home
             w.conflicts = w.conflicts.filter(c => c.agentId !== a.id)
             w.conflicts.push({
               id: str(ev.tool_use_id) || `${a.id}:${now}`,
@@ -761,7 +816,7 @@ export class City {
         const code = shellCode(command)
         const kind = PUSH.test(code) ? 'push' : COMMIT.test(code) ? 'commit' : undefined
         if (kind && ev.hook_event_name === 'PostToolUse' && (tool === 'Bash' || tool === 'PowerShell')) {
-          const repo = (a.burb ? w.repos.find(r => r.burb === a.burb)?.name : w.home) ?? ''
+          const repo = (a.burb ? this.repoAt(a.burb)?.name : w.home) ?? ''
           w.launch = { kind, at: now, who: a.name, repo }
           this.say(a, `${kind === 'push' ? 'pushed' : 'committed'}${repo ? ` in ${repo}` : ''}`, now)
           this.tick(a, kind === 'push' ? `🚀 pushed${repo ? ` ${repo}` : ''}` : `committed${repo ? ` in ${repo}` : ''}`, now)
@@ -855,7 +910,9 @@ export class City {
     w.homeRoot = repo.root
     w.home = repo.name
     w.repos = w.repos.filter(r => r !== repo)
-    const burb = repo.left ? this.freeBurb(repo.burb, now) : repo.burb
+    // The old home takes the borough the new one leaves, or waits at the station.
+    const theirs = !repo.left && !isWaiting(repo.burb) && burbGeo(this.layout, repo.burb) ? repo.burb : undefined
+    const burb = theirs ?? waitingId(old.root ?? '')
     if (old.root) w.repos.push({ root: old.root, name: old.name, burb, lastSeen: now })
     for (const a of w.agents) {
       if (a.burb === repo.burb && !repo.left) delete a.burb
@@ -1008,10 +1065,8 @@ export class City {
       if (repo.left || now - repo.lastSeen < BURB_LEAVE) continue
       if (w.agents.some(a => a.burb === repo.burb && a.status !== 'leaving')) continue
       repo.left = now
-      const text = `${repo.name} moved out of ${BURBS[repo.burb].name}`
-      this.toasts.push(text)
-      this.say(undefined, text, now)
-      this.tick(undefined, text, now)
+      // One that never had a borough just stops waiting.
+      if (!isWaiting(repo.burb)) this.news(`${repo.name} moved out of ${this.burbName(repo.burb)}`, now)
     }
   }
 

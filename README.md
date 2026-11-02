@@ -22,8 +22,11 @@ being edited goes up in scaffolding, the Statue of Liberty hops on a commit and
 launches on a push, and a Times Square news ticker runs along the bottom.
 
 Manhattan is the busiest repository. Every other repository a session works in
-moves into Brooklyn, Queens, the Bronx or Jersey City, and agents cross the
-bridges to reach it. Use **Make Manhattan** in the sidebar to pick home
+arrives at Grand Central: its agents wait on the station's forecourt under a
+sign, and a **New arrival** card in the sidebar offers to lay out a borough
+for it or to move it into a free one (Brooklyn, Queens, the Bronx, Jersey
+City, or any you drew). Then its agents cross over and gather on the
+borough's square. Use **Make Manhattan** in the sidebar to pick home
 yourself, and **Pick automatically** to hand it back.
 
 When a newer version is on GitHub's `main`, the Empire State Building lights up
@@ -104,7 +107,8 @@ a building for its card and Bulldoze. The right mouse button always pans;
 
 In the city a placed landmark goes up at once. In a borough it is a
 blueprint lot until that repository's agents first do that kind of work
-there. Manhattan's blocks are all zoned, so to place something on the island
+there, and from then on that work happens at its door. Bulldozing a borough
+sends its repository back to Grand Central to wait for another. Manhattan's blocks are all zoned, so to place something on the island
 bulldoze a lot first.
 
 ## The last train home

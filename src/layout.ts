@@ -1,4 +1,4 @@
-import type { Burb, District, Landmark } from './types.ts'
+import type { Burb, District, Landmark, PresetBurb } from './types.ts'
 
 // The city's layout (docs/city-builder.md): what stands where, on one grid of
 // unit cells, with roads along the cells' edges. Pure, and it imports nothing
@@ -204,14 +204,46 @@ export function isReserved(x: number, y: number): boolean {
   return RESERVED.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1)
 }
 
-export const BURBS: Record<Burb, { name: string; center: [number, number]; near: [number, number]; far: [number, number] }> = {
+export const BURBS: Record<PresetBurb, { name: string; center: [number, number]; near: [number, number]; far: [number, number] }> = {
   brooklyn: { name: 'Brooklyn', center: [24, 55.5], near: [14.4, 56], far: [19.8, 56.2] },
   queens: { name: 'Queens', center: [24, 32.5], near: [16, 34.5], far: [19.2, 34.5] },
   bronx: { name: 'The Bronx', center: [19.5, 8], near: [12.9, 11], far: [14.6, 11] },
   jersey: { name: 'Jersey City', center: [-8.5, 40], near: [0.4, 39], far: [-4.8, 39] },
 }
 
-export const BURB_ORDER: Burb[] = ['brooklyn', 'queens', 'bronx', 'jersey']
+export const BURB_ORDER: PresetBurb[] = ['brooklyn', 'queens', 'bronx', 'jersey']
+
+// ---- where a repository lives -------------------------------------------------
+
+// A repository with no borough waits at the station under this id, which no
+// borough's id can be (theirs are slugs).
+export const waitingId = (root: string): Burb => '@' + root.split('\\').join('/').toLowerCase()
+export const isWaiting = (id: string | undefined): boolean => !!id && id.startsWith('@')
+
+// A borough as the walks and the drawing need it: its name, the square where
+// its agents gather, the edge they come in by (`near`, where the road meets
+// it) and the point inside it they cross to (`far`), and the rectangle it
+// covers. The preset's four keep their hand-drawn places; a drawn one gathers
+// its agents along the middle of its front (south) edge, facing the viewer.
+export type BurbGeo = { name: string; square: Pt2; near: Pt2; far: Pt2; rect: Rect; preset: boolean }
+
+export function burbGeo(layout: Layout | undefined, id: Burb): BurbGeo | undefined {
+  const bo = layout?.boroughs.find(b => b.id === id)
+  if (id in BURBS && (layout ? bo?.preset : true)) {
+    const b = BURBS[id as PresetBurb]
+    const [cx, cy] = b.center
+    return { name: b.name, square: [cx, cy], near: b.near, far: b.far, rect: [cx - 3.5, cy - 3.5, cx + 3.5, cy + 3.5], preset: true }
+  }
+  if (!bo) return undefined
+  const mid = bo.x + bo.w / 2
+  const front = bo.y + bo.h
+  return { name: bo.name, square: [mid, front - 1], near: [mid, front], far: [mid, front - 0.5], rect: boroughRect(bo), preset: false }
+}
+
+// The building of a kind its agents use inside a borough, if the person placed one there.
+export function burbBuilding(layout: Layout | undefined, id: Burb, kind: District): Building | undefined {
+  return layout?.buildings.find(b => b.burb === id && b.kind === kind)
+}
 
 // ---- the Manhattan preset: the filler lots --------------------------------------
 
@@ -473,7 +505,7 @@ export function parseOp(raw: unknown): Op | undefined {
 
 // ---- what is where -----------------------------------------------------------
 
-type Rect = [number, number, number, number]
+export type Rect = [number, number, number, number]
 
 const within = ([x0, y0, x1, y1]: Rect, x: number, y: number) => x >= x0 && x < x1 && y >= y0 && y < y1
 const overlaps = (a: Rect, b: Rect) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]

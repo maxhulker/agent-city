@@ -1,7 +1,7 @@
 import type { Agent, District, Landmark, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, BURBS, ISLAND, LABELS, esc, p, pts } from './geo.ts'
+import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, esc, p, pts } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
-import { deltaOf } from '../layout.ts'
+import { boroughRect, deltaOf } from '../layout.ts'
 import type { Kind } from '../layout.ts'
 
 // Invisible hover zones over every place on the map that means something, each
@@ -144,30 +144,54 @@ export function drawPlaces(world: World, sc: Scene): string {
     }
   }
 
-  // A borough for each other repository.
+  // A borough for each other repository, the houses one left behind when it
+  // packed up, and the drawn boroughs nobody has moved into yet.
+  const boxOf = (b: string): [number, number, number, number] | undefined => {
+    const g = burbGeo(sc.layout, b)
+    if (!g) return undefined
+    if (!g.preset) return g.rect
+    const [cx, cy] = g.square
+    return [cx - 3, cy - 3, cx + 3, cy + 4.6]
+  }
+  const seen = new Set<string>()
   for (const [b, repo] of sc.repoOf) {
-    const [cx, cy] = BURBS[b].center
+    const box = boxOf(b)
+    if (!box) continue
+    seen.add(b)
     zones.push({
       borough: b,
-      box: [cx - 3, cy - 3, cx + 3, cy + 4.6],
+      box,
       height: 26,
-      title: `${BURBS[b].name}: ${repo.name}`,
+      title: `${burbGeo(sc.layout, b)!.name}: ${repo.name}`,
       text: `Another repository, at ${repo.root}. Agents cross the bridge to work here. "Make Manhattan" in the sidebar makes it home.`,
       color: '#fde68a',
       who: sc.byBurb.get(b) ?? [],
     })
   }
-  // The houses a repository left behind when it packed up.
   for (const [b, repo] of sc.vacantOf) {
-    const [cx, cy] = BURBS[b].center
+    const box = boxOf(b)
+    if (!box) continue
+    seen.add(b)
     zones.push({
       borough: b,
-      box: [cx - 3, cy - 3, cx + 3, cy + 4.6],
+      box,
       height: 26,
-      title: `${BURBS[b].name}: empty`,
+      title: `${burbGeo(sc.layout, b)!.name}: empty`,
       text: `${repo.name} moved out after an hour's quiet${repo.left ? `, ${ago(sc.now - repo.left)}` : ''}. It moves straight back in when a session works there again.`,
       color: '#94a3b8',
       who: sc.byBurb.get(b) ?? [],
+    })
+  }
+  for (const bo of sc.layout.boroughs) {
+    if (bo.preset || seen.has(bo.id)) continue
+    zones.push({
+      borough: bo.id,
+      box: boroughRect(bo),
+      height: 10,
+      title: `${bo.name}: nobody yet`,
+      text: 'A borough you laid out. Move a repository in from its New arrival card in the sidebar.',
+      color: '#94a3b8',
+      who: [],
     })
   }
 

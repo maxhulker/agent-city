@@ -1,8 +1,8 @@
-import type { Burb, District, Landmark, Launch, Repo, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, edges, esc, frame, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf } from './geo.ts'
+import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
+import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { cellsOf, cityBuildings, deltaOf, lotsOf, siteFor, trackOf } from '../layout.ts'
-import type { Building, Kind } from '../layout.ts'
+import { boroughRect, cellsOf, cityBuildings, deltaOf, lotsOf, siteFor, trackOf } from '../layout.ts'
+import type { Borough, Building, Kind, Layout } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
 // streets, buildings, the landmarks' bodies, bridges, trees, names), which
@@ -647,7 +647,7 @@ const HOUSE_PALS: Pal[] = ['b', 'b', 'r', 'b', 'r', 's']
 // square, with the tall corner house at its east end.
 type House = { x: number; y0: number; w: number; h: number; pal: Pal; corner: boolean; ri: number }
 
-function houses(b: Burb): House[] {
+function houses(b: PresetBurb): House[] {
   const [cx, cy] = BURBS[b].center
   const rows: [number, number, number][] = [
     [cy - 3.4, 12, 3],
@@ -684,7 +684,7 @@ function houses(b: Burb): House[] {
 // streets, and a square at the front where the borough's agents gather. The
 // map draws the place itself, with the borough's name; burbLit adds the
 // repository's sign, the glow of work and the scaffolding of an edit.
-function burb(b: Burb): string {
+function burb(b: PresetBurb): string {
   const [cx, cy] = BURBS[b].center
   // The ground: pavement, the streets between the blocks, an avenue down the
   // east side, and the square in front with a fountain behind the agents.
@@ -731,7 +731,7 @@ function burb(b: Burb): string {
 // What changes about a borough: the repository's name on the sign (none once
 // it has packed up), the glow and lit square while someone works there, and
 // scaffolding on the corner house while someone edits.
-function burbLit(b: Burb, repo: Repo | undefined, sc: Scene): string {
+function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
   const [cx, cy] = BURBS[b].center
   const here = (sc.byBurb.get(b) ?? []).filter(a => a.status !== 'done')
   const isActive = here.some(a => a.status === 'working')
@@ -750,6 +750,55 @@ function burbLit(b: Burb, repo: Repo | undefined, sc: Scene): string {
     g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
   }
   return g
+}
+
+// A borough the person drew: its line on the ground, the square on its front
+// edge where its agents gather, and its name at the back. Its houses come
+// with zoning (docs/city-builder.md, step nine).
+function drawnBurb(bo: Borough, layout: Layout): string {
+  const [x0, y0, x1, y1] = boroughRect(bo)
+  const [sx, sy] = burbGeo(layout, bo.id)!.square
+  const half = Math.min(1.6, (x1 - x0) / 2 - 0.2)
+  let g = GRID
+  g += gRect(x0 + 0.08, y0 + 0.08, x1 - 0.08, y1 - 0.08, 'none', ` rx=".2" stroke="#64748b" stroke-width=".06" stroke-dasharray=".35 .25"`)
+  g += gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, '#343944', ` rx=".25" stroke="#3f4552" stroke-width=".05"`)
+  g += '</g>'
+  const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
+  g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${esc(bo.name.toUpperCase())}</text>`
+  return g
+}
+
+// A drawn borough's lit side: its repository's name under the borough's,
+// and the square lit while someone works there.
+function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
+  const [x0, y0, x1, y1] = boroughRect(bo)
+  const [sx, sy] = burbGeo(sc.layout, bo.id)!.square
+  const half = Math.min(1.6, (x1 - x0) / 2 - 0.2)
+  const here = (sc.byBurb.get(bo.id) ?? []).filter(a => a.status !== 'done')
+  const isActive = here.some(a => a.status === 'working')
+  let g = ''
+  if (isActive) {
+    g += glow(sx, sy, 34)
+    g += GRID + gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, 'none', ` rx=".25" stroke="#fde68a" stroke-width=".05"`) + '</g>'
+  }
+  if (repo) {
+    const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
+    g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
+  }
+  return g
+}
+
+// The sign on the station's forecourt over the agents of repositories that
+// have no borough yet.
+function waitingSign(sc: Scene): string {
+  const names = [...sc.repoOf].filter(([b]) => isWaiting(b)).map(([, r]) => r.name)
+  if (!names.length) return ''
+  const [gx, gy] = waitAt(sc.layout, 0)
+  const [x, y] = p(gx + 0.7, gy, 22)
+  let g = `<g class="waiting">`
+  g += `<text class="sign sb" x="${n(x)}" y="${n(y)}" dy="-1.7em" text-anchor="middle">WAITING FOR A BOROUGH</text>`
+  g += `<text class="sign" x="${n(x)}" y="${n(y)}" text-anchor="middle" style="fill:#fde68a">${esc(names.join(' · '))}</text>`
+  return g + '</g>'
 }
 
 // ---- landmarks ------------------------------------------------------------
@@ -1582,13 +1631,18 @@ function fireworks(): string {
   return g + '</g>'
 }
 
+// The boroughs the view takes in: the preset's in use, and every drawn one.
+export function framed(sc: Scene): Burb[] {
+  return [...sc.repoOf.keys(), ...sc.vacantOf.keys(), ...sc.layout.boroughs.filter(bo => !bo.preset).map(bo => bo.id)]
+}
+
 // What the still map depends on: which landmarks stand, which boroughs have
 // houses, whether the rails are laid, how many blocks the population has
 // earned, and the layout's revision. Its hash tells the page whether it
 // already has this map.
 export function mapKey(sc: Scene): string {
   const built = Object.keys(sc.built).sort()
-  const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].sort()
+  const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].filter(b => !isWaiting(b)).sort()
   return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev]))
 }
 
@@ -1596,7 +1650,7 @@ export function mapKey(sc: Scene): string {
 // It reads only what mapKey hashes.
 export function drawMap(sc: Scene): string {
   const { repoOf, vacantOf } = sc
-  const vb = frame([...repoOf.keys(), ...vacantOf.keys()])
+  const vb = frame(framed(sc), sc.layout)
   let s = ''
   // The water's sparkle, and the city's lights reflected in it.
   s += `<rect x="${n(vb.x - 2000)}" y="${n(vb.y - 2000)}" width="${n(vb.w + 4000)}" height="${n(vb.h + 4000)}" fill="url(#rip)"/>`
@@ -1652,8 +1706,10 @@ export function drawMap(sc: Scene): string {
 
   // A borough for each repository in use besides the session's own, and the
   // houses of the ones that have moved out.
-  for (const [b] of vacantOf) s += burb(b)
-  for (const [b] of repoOf) s += burb(b)
+  const preset = (b: Burb) => !!burbGeo(sc.layout, b)?.preset
+  for (const [b] of vacantOf) if (preset(b)) s += burb(b as PresetBurb)
+  for (const [b] of repoOf) if (preset(b)) s += burb(b as PresetBurb)
+  for (const bo of sc.layout.boroughs) if (!bo.preset) s += drawnBurb(bo, sc.layout)
 
   // Buildings and landmarks, back to front.
   fabric(items, sc)
@@ -1705,8 +1761,10 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   put('twinkle', twinkles())
   put('cars', traffic())
   put('pads', padsLit(sc))
-  for (const [b] of sc.vacantOf) put(`burb:${b}`, burbLit(b, undefined, sc))
-  for (const [b, repo] of sc.repoOf) put(`burb:${b}`, burbLit(b, repo, sc))
+  for (const [b] of sc.vacantOf) if (burbGeo(sc.layout, b)?.preset) put(`burb:${b}`, burbLit(b as PresetBurb, undefined, sc))
+  for (const [b, repo] of sc.repoOf) if (burbGeo(sc.layout, b)?.preset) put(`burb:${b}`, burbLit(b as PresetBurb, repo, sc))
+  for (const bo of sc.layout.boroughs) if (!bo.preset) put(`burb:${bo.id}`, drawnBurbLit(bo, sc.repoOf.get(bo.id), sc))
+  put('waiting', waitingSign(sc))
   out.push(...landmarkLights(sc))
   put('spires', spireLights(sc))
   put('haze', haze(sc))

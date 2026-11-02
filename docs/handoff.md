@@ -142,8 +142,22 @@ and leaves the other overlay items alone. Step five is in: `doorOf`,
 `spotFor` and `route` in `src/layout.ts` (a shortest way along the road
 segments with a small cost per corner), `walk()` in `geo.ts` on top of it
 with the straight-line fallback, and the station's forecourt for a kind with
-nothing placed (`test/route.test.ts`). Step six (boroughs by the person) is
-next; the page does not yet draw player-laid bridges or parks (step nine).
+nothing placed (`test/route.test.ts`). Step six is in: `Repo.burb` is a
+borough's id (`Burb` is a string; the preset's four are `PresetBurb`), or
+`@<root>` while the repository waits on Grand Central's forecourt
+(`waitingId`/`isWaiting` in `src/layout.ts`). A new repository no longer
+moves into a free preset borough by itself: it is announced and waits, and
+the sidebar's New arrival card lays out a borough for it (the sheet's
+repository pre-picked) or moves it into a free one (`{op: 'movein'}` on
+POST `/build`, handled by `City.moveIn`). `burbGeo` gives every borough its
+square, edge and rectangle; a drawn one gathers along the middle of its
+south edge, and a landmark placed in a borough draws that work to its door.
+Bulldozing a borough sends its repository back to wait; Make Manhattan gives
+the old home the borough the new one leaves, or the forecourt. Tests in
+`test/borough.test.ts`. On the Manhattan preset the only land is the island,
+so a drawn borough stands on it until step seven's generated map; drawn
+boroughs show a dashed line, a square and their name, and get houses with
+zoning (step nine), as do player-laid bridges and parks.
 
 ## Lessons from the first session, on cost
 
@@ -164,8 +178,6 @@ next; the page does not yet draw player-laid bridges or parks (step nine).
   sessions (`src/sessions.ts`) can, since they run with a permission host.
 - Quiet-mode hooks (`npm run connect -- --quiet`) wait up to 0.3 s per event
   when the app is closed.
-- A repository keeps its borough until all four are taken; nothing empties a
-  borough that has gone quiet.
 - The interactive-window fallback for an unanswered permission card (the card
   says it falls back after nine minutes) was never tested in a real terminal.
 - The conversation drawer keeps polling `/conversation` for a session that

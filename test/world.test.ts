@@ -153,6 +153,7 @@ test('a borough packs up after an hour of quiet, and its repository moves straig
   idleSession(city, 'S1', T0)
   workingSession(city, 'S2', T0, OTHER)
   const repo = () => city.world.repos.find(r => r.root === OTHER)!
+  assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0))
   assert.equal(repo().burb, 'brooklyn')
   assert.equal(city.world.homeRoot, HOME)
 
@@ -168,21 +169,25 @@ test('a borough packs up after an hour of quiet, and its repository moves straig
   const svg = renderCity(city.world, T0 + BURB_LEAVE + MIN, {})
   assert.ok(svg.includes('Brooklyn: empty'), 'the houses stay, with an empty sign')
 
-  // Another repository may take the free borough.
+  // Another repository may be moved into the free borough.
   workingSession(city, 'S3', T0 + BURB_LEAVE + 2 * MIN, THIRD)
+  assert.ok(city.world.repos.find(r => r.root === THIRD)?.burb.startsWith('@'), 'it waits at the station first')
+  assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: THIRD }, T0 + BURB_LEAVE + 2 * MIN))
   assert.equal(city.world.repos.find(r => r.root === THIRD)?.burb, 'brooklyn')
 
-  // The first one comes back and finds Brooklyn taken, so it gets the next free one.
+  // The first one comes back and finds Brooklyn taken, so it waits at the station, announced again.
+  city.toasts.length = 0
   city.apply(ev('UserPromptSubmit', 'S2', { cwd: OTHER, prompt: 'again' }), T0 + BURB_LEAVE + 3 * MIN)
   assert.equal(repo().left, undefined)
-  assert.equal(repo().burb, 'queens')
-  assert.ok(city.toasts.some(t => t.includes('moved back into Queens')))
+  assert.ok(repo().burb.startsWith('@'))
+  assert.ok(city.toasts.some(t => t.includes('arrived at Grand Central')))
 })
 
 test('a repository moving back in takes its old borough when it is still free', () => {
   const city = new City()
   idleSession(city, 'S1', T0)
   workingSession(city, 'S2', T0, OTHER)
+  assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0))
   city.apply(ev('Stop', 'S2', { cwd: OTHER }), T0 + MIN)
   city.flush(T0 + BURB_LEAVE + MIN)
   const repo = () => city.world.repos.find(r => r.root === OTHER)!
