@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 
 import { renderFrame } from '../src/city.ts'
 import { burbAt, p, waitAt } from '../src/draw/geo.ts'
-import { doorOf } from '../src/layout.ts'
+import { lotStyle } from '../src/draw/map.ts'
+import { doorOf, manhattanLayout } from '../src/layout.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
@@ -164,4 +165,31 @@ test('Make Manhattan: the old home takes the borough the new one leaves, or wait
   city.makeHome(THIRD, T0 + 700)
   const api = city.world.repos.find(r => r.root === OTHER)!
   assert.ok(api.burb.startsWith('@'), 'api waits for a borough')
+})
+
+test("a drawn borough's zoned blocks fill with brownstones, the city's with towers", () => {
+  const city = new City()
+  assert.ok('ok' in city.newMap(7, T0))
+  const l = () => city.world.layout!
+  const st = l().buildings.find(b => b.kind === 'station')!
+  // A borough on the island west of the station, with a street through it.
+  let laid: { x: number; y: number } | undefined
+  for (let y = st.y - 8; y < st.y + 6 && !laid; y++) {
+    for (let x = st.x - 14; x < st.x - 3 && !laid; x++) {
+      if ('ok' in city.build({ op: 'borough', x, y, w: 5, h: 4, name: 'Little Italy' }, T0)) laid = { x, y }
+    }
+  }
+  assert.ok(laid, 'room for a borough')
+  const { x, y } = laid
+  assert.ok('ok' in city.build({ op: 'road', x, y: y + 2, dir: 1, len: 5 }, T0))
+  assert.ok('ok' in city.build({ op: 'zone', x: x + 1, y: y + 1 }, T0), 'a block inside it')
+  assert.equal(lotStyle(l(), x + 1, y + 1), 'houses')
+  assert.equal(lotStyle(l(), st.x, st.y + 3), 'towers')
+  assert.equal(lotStyle(manhattanLayout(), 24, 55), 'towers', "the preset's boroughs keep their hand-drawn houses")
+  const draw = (population: number) => {
+    city.world.population = population
+    city.world.layout!.rev += 1
+    return renderFrame(city.world, T0).map!.svg
+  }
+  assert.notEqual(draw(0), draw(1_000_000), 'the houses go up with the population')
 })

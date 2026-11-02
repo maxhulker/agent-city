@@ -1,7 +1,7 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, boroughRect, componentOf, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, boroughAt, boroughRect, componentOf, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
@@ -406,6 +406,13 @@ function building(items: Item[], x0: number, y0: number, w: number, d: number, h
 
 // The filler blocks on the zoned lots, as many as the population has earned
 // (all of them once the city is full), in zoning order.
+// What a zoned lot fills with: the city's towers, or, inside a borough the
+// person drew, a row of brownstones like the preset boroughs' houses.
+export function lotStyle(layout: Layout, x: number, y: number): 'towers' | 'houses' {
+  const bo = boroughAt(layout, x, y)
+  return bo && !bo.preset ? 'houses' : 'towers'
+}
+
 function fabric(items: Item[], sc: Scene) {
   const keep = keeps(sc)
   const all = lotsOf(sc.layout)
@@ -413,6 +420,17 @@ function fabric(items: Item[], sc: Scene) {
     const q = seeded(x, y)
     const y0 = y + 0.18
     const d = 0.64
+    if (lotStyle(sc.layout, x, y) === 'houses') {
+      // Three or four narrow houses, a storey or two apart, with a tall corner one now and then.
+      const count = q > 0.5 ? 4 : 3
+      const w = (x1 - x0) / count
+      for (let i = 0; i < count; i++) {
+        const qi = seeded(x + i * 0.37, y)
+        const h = i === count - 1 && q > 0.7 ? 11 : 5.5 + qi * 2.5
+        building(items, x0 + i * w, y0, w - 0.03, d, h, HOUSE_PALS[Math.floor(qi * HOUSE_PALS.length)]!, qi, keep)
+      }
+      continue
+    }
     // Two buildings on wide lots, for a ragged skyline.
     if (x1 - x0 > 1.2 && q > 0.6) {
       const cut = x0 + (x1 - x0) * (0.4 + q * 0.2)
