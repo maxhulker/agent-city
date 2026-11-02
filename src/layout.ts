@@ -373,7 +373,7 @@ export function trackOf(layout: Layout): { y: number; x0: number; x1: number; mo
 }
 
 // The plazas and parks the landmarks open onto, which no building takes.
-const PRESET_PARKS: Span[] = [
+export const PRESET_PARKS: Span[] = [
   [38, 5, 7], // Times Square's plaza
   [40, 7, 9], // Bryant Park
   [42, 5, 7], // Herald Square

@@ -184,8 +184,17 @@ whole); Build it all now is gone from the welcome. Rebuild's two starts:
 `rebuild()` stays for the bare preset. A brand-new state file starts on a
 random seed. The welcome shows until the first session (`isWelcome`); its
 picker only while the city is new. Tests in `test/quests.test.ts`. Step
-nine (zoning fill, parks, the Statue in the water, player bridges) is
-next.
+nine is in, and with it the brief's nine steps: zoned lots fill with the
+population in zoning order (the fabric already read `lotsOf`; now tested on
+a generated map), park cells the person paints draw lawn and two or three
+trees each (`parks` in map.ts; the preset's own plazas stay with their
+landmarks), a road over water draws as a bridge deck under the roadway, a
+placed Statue stands at once (with the Seaport's time where it stands), and
+every Statue on the map is drawn and launches. Tests in
+`test/zoning.test.ts`. Left for later: drawn boroughs still have no houses
+of their own (zone their blocks), act two of the onboarding waits for
+section B, and `World.built` is still the game's record beside the
+buildings' own `built`.
 
 ## Lessons from the first session, on cost
 

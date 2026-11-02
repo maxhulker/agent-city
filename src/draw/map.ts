@@ -1,7 +1,7 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { boroughRect, cellsOf, cityBuildings, deltaOf, lotsOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, boroughRect, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
@@ -550,10 +550,42 @@ function streets(sc: Scene): string {
       zebra += `M${xy(p(x - 0.27, y - 0.1))}L${xy(p(x - 0.27, y + 0.1))}M${xy(p(x + 0.27, y - 0.1))}L${xy(p(x + 0.27, y + 0.1))}`
     }
   }
+  // Roads the person laid over water: a deck with its shadow on the water
+  // and railings, under the roadway.
+  let deck = ''
+  for (const r of layout.roads) {
+    if (!isBridge(layout, r)) continue
+    const [x, y, dir] = r
+    deck += dir === 0 ? `M${xy(p(x, y))}L${xy(p(x, y + 1))}` : `M${xy(p(x, y))}L${xy(p(x + 1, y))}`
+  }
+  const bridges = deck ? `<g class="deck" fill="none"><path d="${deck}" transform="translate(0 4)" stroke="#06101f" stroke-width="7" opacity=".6"/><path d="${deck}" stroke="#94a3b8" stroke-width="7"/><path d="${deck}" stroke="#334155" stroke-width="5"/></g>` : ''
   return (
+    bridges +
     `<path class="road st" d="${st}"/><path class="road av" d="${av}"/><path class="cl" d="${av}"/>` +
     `<path class="zebra" d="${zebra}"/><path class="lamph" d="${lamps}"/><path class="lamp" d="${lamps}"/>`
   )
+}
+
+// Parks the person planted: lawn on each cell, and trees, two or three a
+// cell, set back to front with the buildings. The preset's plazas and parks
+// are drawn with their landmarks, so they are left out here.
+function parks(items: Item[], sc: Scene): string {
+  const preset = 'preset' in sc.layout.map
+  const own = (y: number, x: number) => !(preset && PRESET_PARKS.some(([py, x0, x1]) => py === y && x >= x0 && x < x1))
+  let lawn = ''
+  for (const [y, x0, x1] of sc.layout.park) {
+    for (let x = x0; x < x1; x++) {
+      if (!own(y, x)) continue
+      lawn += `M${n(x + 0.04)} ${n(y + 0.04)}h.92v.92h-.92z`
+      const count = 2 + Math.floor(seeded(x, y) * 2)
+      for (let i = 0; i < count; i++) {
+        const gx = x + 0.2 + seeded(x + i, y * 3) * 0.6
+        const gy = y + 0.2 + seeded(y + i, x * 3) * 0.6
+        items.push({ depth: gx + gy, svg: tree(gx, gy, 1.3 + seeded(gx, gy) * 0.6) })
+      }
+    }
+  }
+  return lawn ? `${GRID}<path class="lawn" d="${lawn}" fill="#1d4a2b"/></g>` : ''
 }
 
 // ---- districts ------------------------------------------------------------
@@ -1731,6 +1763,7 @@ export function drawMap(sc: Scene): string {
   s += streets(sc)
   if (sc.connected) s += rails(sc)
   const items: Item[] = []
+  s += parks(items, sc)
   s += landmarks(items, sc)
   s += pads(sc)
 
@@ -1826,15 +1859,15 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   put('spires', spireLights(sc))
   put('haze', haze(sc))
   if (sc.hasConflict) put('alarm', bridgeAlarm())
-  const liberty = sc.layout.buildings.find(b => b.kind === 'liberty')
-  if (liberty) {
-    // She stands with the Seaport, dark before it; her torch lights on the first push.
+  sc.layout.buildings.filter(b => b.kind === 'liberty').forEach((liberty, i) => {
+    // She stands dark until she goes up (with the Seaport, on the preset);
+    // her torch lights on the first push. Every Statue launches on a push.
     const state = liberty.built === undefined ? 'dark' : sc.built.torch !== undefined ? 'lit' : 'unlit'
     const kind = launching(world.launch, sc.now)
     const d = deltaOf(liberty)
     // Keyed on the launch, not the markup: the markup holds offsets from now.
-    out.push(keyed('statue', [state, kind, kind ? world.launch!.at : 0, kind ? world.launch!.who : '', kind ? world.launch!.repo : '', d], sh(statue(world.launch, sc.now, state), d)))
-  }
+    out.push(keyed(i ? `statue:${liberty.id}` : 'statue', [state, kind, kind ? world.launch!.at : 0, kind ? world.launch!.who : '', kind ? world.launch!.repo : '', d], sh(statue(world.launch, sc.now, state), d)))
+  })
   put('labels', labels(sc))
   // Fireworks over the Empire State for an update waiting, and for a while
   // once the city is complete.

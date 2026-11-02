@@ -473,7 +473,8 @@ export class City {
       const b = r.layout.buildings[r.layout.buildings.length - 1]!
       if (!b.burb) {
         if (b.kind === 'liberty') {
-          if (w.built?.harbor !== undefined) b.built = w.built.harbor
+          // She goes up as she is placed (with the Seaport's time when it stands).
+          b.built = w.built?.harbor ?? now
         } else if (!FIXED.includes(b.kind)) {
           // What is left is a landmark of the game's.
           this.raise(b.kind as Landmark, undefined, now)
