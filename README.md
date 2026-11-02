@@ -29,6 +29,19 @@ City, or any you drew). Then its agents cross over and gather on the
 borough's square. Use **Make Manhattan** in the sidebar to pick home
 yourself, and **Pick automatically** to hand it back.
 
+A borough's houses are its repository. Agent City reads each one with git
+(every 15 seconds while its agents work, every 5 minutes otherwise) and
+gives every folder a run of houses side by side: as many as its share of the
+files, as tall as its size, lit if it had commits in the last two weeks and
+dark if not. Tests are red brick, docs stone, assets and loose files grey, code
+brownstone. A small repository leaves the back plots empty, room to grow.
+Folders with uncommitted changes go up in scaffolding (with a crane while an
+agent edits there). The line under the sign shows the branch, commits ahead
+(↑) and behind (↓) its upstream, the fortnight's commits and what is
+uncommitted. Hover over a house for its folder's files, size and latest
+commit, or over the borough for the repository at a glance. In a borough you
+drew, the zoned lots take the folders. Manhattan keeps its districts.
+
 When a newer version is on GitHub's `main`, the Empire State Building lights up
 gold and shoots fireworks: click it to update. Agent City pulls the new version
 (a clean fast-forward only) and restarts itself; app sessions wake up with their

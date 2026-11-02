@@ -2,6 +2,7 @@ import type { Agent, District, Landmark, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
 import { SIZES, boroughRect, cellsOf, deltaOf } from '../layout.ts'
+import { blockTip, censusText, placeBlocks, runsOf, slotsOf } from './blocks.ts'
 import type { Kind } from '../layout.ts'
 
 // Invisible hover zones over every place on the map that means something, each
@@ -193,7 +194,7 @@ export function drawPlaces(world: World, sc: Scene): string {
       box,
       height: 26,
       title: `${burbGeo(sc.layout, b)!.name}: ${repo.name}`,
-      text: `Another repository, at ${repo.root}. Agents cross the bridge to work here. "Make Manhattan" in the sidebar makes it home.`,
+      text: `Another repository, at ${repo.root}. ${repo.census ? censusText(repo.census, sc.now) + ' ' : ''}Agents cross the bridge to work here. "Make Manhattan" in the sidebar makes it home.`,
       color: '#fde68a',
       who: sc.byBurb.get(b) ?? [],
     })
@@ -227,6 +228,22 @@ export function drawPlaces(world: World, sc: Scene): string {
 
   // Back to front, so the zone nearest the viewer wins the hover.
   zones.sort((a, b) => a.box[0] + a.box[1] + a.box[3] - (b.box[0] + b.box[1] + b.box[3]))
+
+  // Each folder's houses in a borough with a census, over the borough's own
+  // zone so a house names its folder.
+  const houses: Zone[] = []
+  for (const [b, repo] of [...sc.vacantOf, ...sc.repoOf]) {
+    const census = repo.census
+    const g = burbGeo(sc.layout, b)
+    if (!census || !g) continue
+    for (const run of runsOf(placeBlocks(slotsOf(sc.layout, b, g.preset), census))) {
+      const block = census.blocks[run.block]!
+      const tip = blockTip(block, sc.now)
+      houses.push({ box: run.box, height: run.h, title: `${repo.name}: ${tip.title}`, text: tip.text, color: block.dirty ? '#fcd34d' : block.commits ? '#fde68a' : '#94a3b8' })
+    }
+  }
+  houses.sort((a, b) => a.box[0] + a.box[1] + a.box[3] - (b.box[0] + b.box[1] + b.box[3]))
+  zones.push(...houses)
 
   // Manhattan itself, under everything else.
   let s = `<g class="places">`
