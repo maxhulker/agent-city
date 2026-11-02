@@ -35,11 +35,16 @@ export function toast(title: string, body: string, url: string) {
     '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show($t)',
   ].join('; ')
   try {
-    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    // Encoded, so Windows' command-line parsing leaves its backslashes alone
+    // (passed plainly, the registry path and PowerShell's own app id lost them,
+    // and Windows dropped the toast without a word).
+    const encoded = Buffer.from(script, 'utf16le').toString('base64')
+    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
       env: { ...process.env, AGENT_CITY_TOAST: toastXml(title, body, url) },
       windowsHide: true,
       stdio: 'ignore',
-      detached: true,
+      // Not detached: a detached PowerShell (a console of its own) exits at
+      // once without showing anything. The server outlives the toast anyway.
     }).unref()
   } catch {
     // No PowerShell: the Empire State still lights up.
