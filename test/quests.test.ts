@@ -135,3 +135,22 @@ test('Start from Manhattan is the preset, whole; Rebuild offers both starts', ()
   city.restart('manhattan', T0 + 600)
   assert.ok(city.world.layout!.buildings.every(b => b.built !== undefined))
 })
+
+test("the game's record is read from the buildings: one source of truth", () => {
+  const city = laidOut()
+  city.buildAll(T0)
+  assert.deepEqual(city.world.built, {}, 'Build it all now raises nothing a laid-out city has not placed')
+  const lib = place(city, 'library', T0 + 100)
+  assert.equal(city.world.built?.library, T0 + 100)
+  assert.ok('ok' in city.build({ op: 'remove', id: lib.id }, T0 + 200))
+  assert.equal(city.world.built?.library, undefined, 'bulldozed: off the record')
+  assert.notEqual(state(city, 'library'), 'done', 'its quest is open again')
+
+  // A city saved with the old record keeps its torch.
+  const saved = { ...new City().world, built: { harbor: T0, torch: T0 + 5 }, homeRoot: 'C:/fake/home', home: 'home' }
+  delete saved.layout
+  const old = new City(saved)
+  assert.equal(old.world.torch, T0 + 5)
+  assert.equal(old.world.built?.torch, T0 + 5)
+  assert.equal(old.world.built?.harbor, T0, 'its Seaport stands, from the migrated layout')
+})

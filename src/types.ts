@@ -284,6 +284,9 @@ export type World = {
   // and when the person laid their first road: the quests read them.
   opened?: Partial<Record<Landmark, number>>
   firstRoad?: number
+  // When Liberty's torch was lit (the first push): the one landmark with no
+  // building of its own.
+  torch?: number
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts

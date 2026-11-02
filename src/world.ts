@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
-import { FIXED, applyOp, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
+import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
@@ -282,20 +282,27 @@ export class City {
   constructor(world?: World) {
     this.world = world ?? emptyWorld()
     const w = this.world
-    if (!w.built) {
+    const legacy = w.built
+    if (legacy?.torch !== undefined) w.torch ??= legacy.torch
+    w.population ??= 0
+    // A city saved before layouts existed is today's Manhattan, with the
+    // landmarks it had built standing and the rest still lots.
+    w.layout ??= manhattanLayout(legacy ?? {})
+    if (!legacy) {
       // A city saved before the game existed. Anyone who has used theirs keeps
       // it whole; only a city that never saw a session starts as bare land.
-      w.built = {}
       const used = w.sessions.length || w.agents.length || w.repos.length || w.homeRoot || w.tasks?.length || w.appSessions?.length
       if (used) this.buildAll(w.flushedAt)
     }
-    w.population ??= 0
-    // A city saved before layouts existed is today's Manhattan, with the
-    // landmarks it has built standing and the rest still lots.
-    w.layout ??= manhattanLayout(w.built)
+    this.sync()
     // A city that has seen sessions already knows its landmarks: no burst of
     // "opened its doors" for them.
     w.opened ??= w.homeRoot ? { ...w.built } : {}
+  }
+
+  // The game's record of what stands, read from the buildings (and the torch).
+  private sync() {
+    this.world.built = builtOf(this.layout, this.world.torch)
   }
 
   // The layout (docs/city-builder.md); the constructor makes sure there is one.
@@ -337,8 +344,9 @@ export class City {
       }
     }
     if (w.built[id] !== undefined) return
-    w.built[id] = now
-    markBuilt(this.layout, id, now)
+    if (id === 'torch') w.torch = now
+    else markBuilt(this.layout, id, now)
+    this.sync()
     // A lot risen by its own first work is open already.
     if (a) (w.opened ??= {})[id] = now
     const name = BLUEPRINTS[id].name
@@ -406,13 +414,14 @@ export class City {
   restart(start: number | 'manhattan', now: number) {
     const w = this.world
     const rev = this.layout.rev + 1
-    w.built = {}
     w.opened = {}
     delete w.firstRoad
+    delete w.torch
     w.population = 0
     w.layout = start === 'manhattan' ? manhattanLayout() : generateMap(start)
     w.layout.rev = rev
     if (start === 'manhattan') this.buildAll(now)
+    this.sync()
     for (const repo of w.repos) {
       if (isWaiting(repo.burb) || burbGeo(this.layout, repo.burb)) continue
       const was = repo.burb
@@ -430,9 +439,10 @@ export class City {
   // rising as sessions do each kind of work.
   rebuild(now: number) {
     const w = this.world
-    w.built = {}
     w.population = 0
+    delete w.torch
     clearBuilt(this.layout)
+    this.sync()
     for (const a of w.agents) delete a.arriving
     this.toasts.push('The island is bare again: build it by working')
     this.say(undefined, 'the island is bare again', now)
@@ -442,11 +452,14 @@ export class City {
   // "Build it all now": every landmark stands, the fabric is full, no ceremony.
   buildAll(now: number) {
     const w = this.world
-    w.built ??= {}
+    // Only what has a building stands: a laid-out city has nothing to raise
+    // until it is placed. The torch needs a Statue.
     for (const id of LANDMARKS) {
-      w.built[id] ??= now - SCAFFOLD_MS
-      if (w.layout) markBuilt(w.layout, id, w.built[id])
+      if (id === 'torch') {
+        if (cityBuildings(this.layout, 'liberty').length) w.torch ??= now - SCAFFOLD_MS
+      } else markBuilt(this.layout, id, now - SCAFFOLD_MS)
     }
+    this.sync()
     w.population = Math.max(w.population ?? 0, fullPopulation())
     this.isDirty = true
   }
@@ -489,6 +502,7 @@ export class City {
     }
     // The sheet's repository moves into the borough just drawn.
     if (op.op === 'borough' && op.root) this.moveIn(op.root, r.layout.boroughs[r.layout.boroughs.length - 1]!.id, now)
+    this.sync()
     // A bulldozed borough frees its repository, which waits at the station again.
     if (bulldozed) {
       for (const repo of w.repos.filter(one => one.burb === bulldozed.id)) {
@@ -517,6 +531,8 @@ export class City {
     } else if (typeof seed === 'number' && Number.isInteger(seed) && seed > 0 && seed < 2 ** 31) this.world.layout = generateMap(seed)
     else return { error: 'Not a map' }
     this.world.layout.rev = rev
+    if (seed !== 'manhattan') delete this.world.torch
+    this.sync()
     this.isDirty = true
     return { ok: true }
   }

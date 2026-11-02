@@ -203,8 +203,11 @@ placed Statue stands at once (with the Seaport's time where it stands), and
 every Statue on the map is drawn and launches. Tests in
 `test/zoning.test.ts`. Left for later: drawn boroughs still have no houses
 of their own (zone their blocks), act two of the onboarding waits for
-section B, and `World.built` is still the game's record beside the
-buildings' own `built`.
+section B. Since then: a drawn borough's zoned blocks fill with brownstones
+(`lotStyle`), and `World.built` is no longer written on its own: it is
+`builtOf(layout, torch)`, kept by `City.sync()`, with Liberty's torch in
+`World.torch` (migrated from an old record on load). Bulldozing a landmark
+takes it off the record, and Build it all now raises only what is placed.
 
 ## Lessons from the first session, on cost
 

@@ -102,6 +102,22 @@ export function markBuilt(layout: Layout, kind: Landmark, at: number) {
   }
 }
 
+// What stands, by landmark, read from the buildings themselves: when the
+// first of each kind went up in the city. The torch has no building of its
+// own; it is lit when `torch` says. `World.built` is this, kept by
+// `City.sync()`, never written on its own.
+export function builtOf(layout: Layout, torch?: number): Partial<Record<Landmark, number>> {
+  const out: Partial<Record<Landmark, number>> = {}
+  for (const b of layout.buildings) {
+    if (b.burb || b.built === undefined || FIXED.includes(b.kind) || b.kind === 'liberty') continue
+    const id = b.kind as Landmark
+    const at = out[id]
+    if (at === undefined || b.built < at) out[id] = b.built
+  }
+  if (torch !== undefined) out.torch = torch
+  return out
+}
+
 // Back to lots: every building of the game's kinds, the fixed ones excepted.
 export function clearBuilt(layout: Layout) {
   for (const b of layout.buildings) if (!FIXED.includes(b.kind)) delete b.built
