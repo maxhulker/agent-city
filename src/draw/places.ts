@@ -1,5 +1,5 @@
 import type { Agent, District, Landmark, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, esc, p, pts } from './geo.ts'
+import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
 import { boroughRect, deltaOf } from '../layout.ts'
 import type { Kind } from '../layout.ts'
@@ -51,6 +51,7 @@ const BOXES: Record<Kind, [[number, number, number, number], number]> = {
   wtc: [[3, 57, 6, 58], 120],
   woolworth: [[5, 55, 7, 56], 64],
   liberty: [[1.4, 69.4, 2.8, 70.6], 34],
+  treasury: [[0.1, 0.1, 1.9, 0.9], 14],
 }
 
 // The outline of a box standing on the footprint: what the eye sees of it.
@@ -125,6 +126,25 @@ export function drawPlaces(world: World, sc: Scene): string {
               }
             : { ...tag, box, height, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
       )
+    } else if (kind === 'treasury') {
+      // The city's books: what sessions have spent, and what is left of the plan's limits.
+      const t = world.treasury
+      const today = t?.days[dayOf(sc.now)] ?? 0
+      let week = 0
+      for (let i = 0; i < 7; i++) week += t?.days[dayOf(sc.now - i * 86_400_000)] ?? 0
+      const lim = world.limits
+      const left = (name: string, w?: { used: number; resetsAt: number }) =>
+        w ? `${name}: ${Math.round(100 - (w.resetsAt <= sc.now ? 0 : w.used))}% left, resets ${new Date(w.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''
+      const limits = [left('5-hour limit', lim?.fiveHour), left('7-day limit', lim?.sevenDay), left('Spend limit', lim?.spend)].filter(Boolean)
+      zones.push({
+        ...tag,
+        box,
+        height,
+        title: 'City Treasury',
+        text: `Spent ${usd(today)} today, ${usd(week)} this week, ${usd(t?.total ?? 0)} in all (Claude Code's estimate at list price).`,
+        extra: limits.length ? limits.join('. ') + '.' : 'No plan limits reported yet: they come from the status line on Pro, Max and Ultra plans.',
+        color: '#fbbf24',
+      })
     } else if (kind === 'wtc') {
       zones.push({ ...tag, box, height, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' })
     } else if (kind === 'woolworth') {

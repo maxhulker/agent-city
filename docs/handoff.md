@@ -127,7 +127,24 @@ B3: the scaffolding climbing with the share completed. Act two of the
 onboarding is in as well (`World.feats`, `City.achieve`, `actTwo()`): answer
 at City Hall, send a telegram, open a work site, file a zoning plan, lay out
 a borough, last train home, shown on the card once the city stands. Tests
-in `test/siteplan.test.ts`. B4's small touches are not done. The smoothness rebuild
+in `test/siteplan.test.ts`. B4's small touches are not done. (The
+installer's two task events only landed with the Treasury's commit: the
+site plans commit missed them.)
+
+### E. The City Treasury
+
+A civic building (`treasury` in `FOOTPRINT` and `FIXED`: it stands at once
+and is no part of the game; drawn from the grid's origin, since the preset
+has no place for it). The books are `World.treasury` (spend by local day, in
+all, and each report's last running total, so only what a report adds is
+counted and a /clear starts again) and `World.limits` (the 5-hour, 7-day and
+gateway spend windows). Reports come from POST `/statusline` (the status
+line `src/install.ts` sets when the person has none; its reply is the line
+the terminal prints), from app sessions (`costUsd`, keyed per app session)
+and from tasks (keyed per turn). `City.treasuryView()` feeds the sidebar
+card and the board over the building; its tooltip has the week. Tests in
+`test/treasury.test.ts`. Per-subagent spend is not split out: Claude Code
+reports cost per session. The smoothness rebuild
 (`docs/frames.md`) is done.
 
 A is done (commit d318388). Section C, the onboarding game where the city is

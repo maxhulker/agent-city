@@ -12,7 +12,7 @@ import type { Burb, District, Landmark, PresetBurb } from './types.ts'
 // What can be placed: the game's landmarks (the torch is a light on the
 // Statue, not a building), the station everyone arrives at, the Statue of
 // Liberty, and two scenery towers the Manhattan preset keeps.
-export type Kind = Exclude<Landmark, 'torch'> | 'station' | 'liberty' | 'woolworth' | 'wtc'
+export type Kind = Exclude<Landmark, 'torch'> | 'station' | 'liberty' | 'woolworth' | 'wtc' | 'treasury'
 
 export type RoadKind = 'street' | 'avenue'
 export type Face = 'n' | 'e' | 's' | 'w'
@@ -83,10 +83,13 @@ export const FOOTPRINT: Record<Kind, [number, number, number, number][]> = {
   liberty: [[0, 0, 2, 2]],
   woolworth: [[0, 0, 2, 1]],
   wtc: [[0, 0, 2, 1]],
+  // The City Treasury: the city's books, kept from what each session spends.
+  treasury: [[0, 0, 2, 1]],
 }
 
-// The kinds that always stand: never a lot, never in the catalogue.
-export const FIXED: Kind[] = ['station', 'woolworth', 'wtc']
+// The kinds that always stand, never a lot: the preset's own (never in the
+// catalogue) and the civic buildings, which are no part of the game.
+export const FIXED: Kind[] = ['station', 'woolworth', 'wtc', 'treasury']
 
 // A building's cells on the grid: [x0, y0, x1, y1] per rect.
 export function cellsOf(b: Building): [number, number, number, number][] {
@@ -301,7 +304,7 @@ export function lots(): Lot[] {
 // shifts it to wherever the building is). The relay's towers are the MetLife
 // lot behind the station; the Chrysler rises from the station's own lot once
 // the towers are built. The Statue has Liberty Island. In drawing order.
-export const PRESET_SITES: Record<Kind, [number, number]> = {
+export const PRESET_SITES: Record<Exclude<Kind, 'treasury'>, [number, number]> = {
   plaza: [5, 22],
   observatory: [3, 37],
   library: [7, 39],
@@ -319,7 +322,8 @@ export const PRESET_SITES: Record<Kind, [number, number]> = {
 
 // How far a building stands from its kind's preset origin, in cells.
 export function deltaOf(b: Building): [number, number] {
-  const [ox, oy] = PRESET_SITES[b.kind]
+  // The Treasury has no place on the preset: it is drawn from the grid's origin.
+  const [ox, oy] = b.kind === 'treasury' ? [0, 0] : PRESET_SITES[b.kind]
   return [b.x - ox, b.y - oy]
 }
 
@@ -428,7 +432,7 @@ export function manhattanLayout(built: Partial<Record<Landmark, number>> = {}): 
     if (e - w < 0.8) continue
     for (let x = whole(Math.ceil(w - 0.5)); x + 1 <= e + 0.5; x++) roads.push([whole(x), y, 1, 'street'])
   }
-  const buildings: Building[] = (Object.keys(PRESET_SITES) as Kind[]).map(kind => {
+  const buildings: Building[] = (Object.keys(PRESET_SITES) as (keyof typeof PRESET_SITES)[]).map(kind => {
     const [x, y] = PRESET_SITES[kind]!
     const b: Building = { id: kind, kind, x, y, face: 's' }
     if (FIXED.includes(kind)) b.built = 0

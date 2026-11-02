@@ -106,6 +106,14 @@
   #welcome .wstart { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--dim); }
   .bp-line .nm { flex: 1; min-width: 0; }
   .bp-line .hn { color: var(--dim); font-size: 11px; text-align: right; }
+  /* The City Treasury card. */
+  .tre { gap: 12px; }
+  .tre > div { display: flex; flex-direction: column; }
+  .tre b { font-size: 15px; color: #fbbf24; }
+  .spark { width: 100%; height: 34px; margin: 6px 0; display: block; }
+  .lim { margin-top: 6px; font-size: 12px; }
+  .lim .bar { height: 5px; background: #1e293b; border-radius: 3px; overflow: hidden; margin: 3px 0; }
+  .lim .bar i { display: block; height: 100%; }
   /* A subagent's work order and an agent's route, in the drawer's head. */
   .order { margin-top: 6px; border: 1px solid #a16207; border-radius: 8px; background: #1c1608; padding: 6px 8px; }
   .order .oh { font-size: 10px; letter-spacing: .08em; color: #fbbf24; font-weight: 700; }
@@ -544,6 +552,8 @@
     </section>
     <h2 id="bp-title">Blueprints</h2>
     <div class="card" id="blueprints"></div>
+    <h2>City Treasury</h2>
+    <div class="card" id="treasury"></div>
     <h2>Boroughs</h2>
     <div id="boroughs"></div>
     <h2>Recent</h2>
@@ -1462,6 +1472,7 @@
     const pop = m.game ? ` · population ${(m.game.population || 0).toLocaleString()}` : ''
     $('counts').textContent = c ? `${c.sessions} session${c.sessions === 1 ? '' : 's'} · ${c.working} working · ${c.subagents} subagent${c.subagents === 1 ? '' : 's'}${pop}` : ''
     drawGame(m.game)
+    drawTreasury(m.game && m.game.treasury)
     $('pills').innerHTML =
       (conflicts.length ? `<button class="pill red" data-needs="1">⚠ ${conflicts.length} merge conflict${conflicts.length === 1 ? '' : 's'} at the Seaport</button>` : '') +
       (asks.length ? `<button class="pill amber" data-needs="1">? ${asks.length} waiting at City Hall</button>` : '')
@@ -1524,6 +1535,29 @@
   let gameHtml = ''
   // The quests of the latest frame, for the catalogue and the toolbar's hint.
   var gameQuests = null
+  // ---- the City Treasury: what sessions spend, what is left of the plan ----
+  let treasuryHtml = ''
+  function drawTreasury(t) {
+    if (!t) return
+    const money = v => v > 0 && v < 0.1 ? `$${v.toFixed(3)}` : `$${v.toFixed(2)}`
+    const max = Math.max(...t.days.map(d => d[1]), 0.01)
+    const bars = t.days.map(([day, v], i) => `<rect x="${i * 10}" y="${(30 - (v / max) * 28).toFixed(1)}" width="7" height="${Math.max(0.5, (v / max) * 28).toFixed(1)}" rx="1" fill="${i === t.days.length - 1 ? '#fbbf24' : '#64748b'}"><title>${esc(day)}: ${money(v)}</title></rect>`).join('')
+    const when = ms => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+    const limits = t.limits.length
+      ? t.limits.map(l => `<div class="lim"><div class="row"><span>${esc(l.name === '5h' ? '5-hour limit' : l.name === '7d' ? '7-day limit' : `Spend limit (${l.name})`)}</span><span style="margin-left:auto"><b>${Math.round(l.left)}%</b> left</span></div>
+          <div class="bar"><i style="width:${Math.min(100, l.used).toFixed(0)}%;background:${l.left < 15 ? 'var(--red)' : l.left < 40 ? '#fbbf24' : '#4ade80'}"></i></div>
+          <div class="small dim">resets ${esc(when(l.resetsAt))}${l.limitUsd !== undefined ? ` · ${money(l.usedUsd ?? 0)} of ${money(l.limitUsd)}` : ''}</div></div>`).join('')
+      : '<div class="small dim">No plan limits reported yet. They come from the status line on Pro, Max and Ultra plans: run <code>npm run connect</code> again.</div>'
+    const sessions = t.sessions.length
+      ? t.sessions.slice(0, 6).map(s => `<div class="row small"><span>${esc(s.name)}</span><span class="dim">${s.agents} agent${s.agents === 1 ? '' : 's'}</span><span style="margin-left:auto">${money(s.usd)}</span></div>`).join('')
+      : '<div class="small dim">No spend reported by the sessions here yet.</div>'
+    const html = `<div class="row tre"><div><b>${money(t.today)}</b><span class="dim small">today</span></div><div><b>${money(t.week)}</b><span class="dim small">this week</span></div><div><b>${money(t.total)}</b><span class="dim small">in all</span></div></div>
+      <svg class="spark" viewBox="0 0 137 31" preserveAspectRatio="none">${bars}</svg>
+      ${limits}<div class="small dim" style="margin:6px 0 2px">Spent by the sessions here</div>${sessions}
+      <div class="small dim" style="margin-top:6px">Claude Code's estimate at list price; your bill may differ. Place the City Treasury from Build… to see it on the map.</div>`
+    if (html !== treasuryHtml) { $('treasury').innerHTML = html; treasuryHtml = html }
+  }
+
   function drawGame(g) {
     if (!g) return
     const w = $('welcome')
@@ -2713,6 +2747,7 @@
     ['foundry', 'Hudson Yards', '#fb923c'], ['observatory', 'Times Square', '#f472b6'], ['relay', "Grand Central's towers", '#2dd4bf'],
     ['harbor', 'Seaport', '#38bdf8'], ['plaza', 'Central Park', '#4ade80'], ['empire', 'Empire State Building', '#f8fafc'],
     ['liberty', 'Statue of Liberty', '#5eada0'], ['station', 'Grand Central', '#2dd4bf'],
+    ['treasury', 'City Treasury', '#fbbf24'],
   ]
   const DISTRICT_KINDS = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
   const FACES = ['s', 'w', 'n', 'e']

@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
-import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
+import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
 import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
-import type { Agent, Burb, District, Feat, Landmark, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
+import type { Agent, Burb, District, Feat, Landmark, LimitWindow, Limits, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -394,6 +394,107 @@ export class City {
     this.toasts.push(text)
     this.say(a, text, now)
     this.tick(a, text, now)
+  }
+
+  // ---- the City Treasury -------------------------------------------------------
+
+  // A cost report: `key`'s running total so far (a session's, from its status
+  // line or its app process; a task turn's). Only what it adds since the last
+  // report goes into the books; a total that drops (a /clear) starts again.
+  spend(key: string, totalUsd: unknown, now: number, sessionId = key) {
+    if (typeof totalUsd !== 'number' || !Number.isFinite(totalUsd) || totalUsd < 0) return
+    const w = this.world
+    const t = (w.treasury ??= { days: {}, total: 0, last: {} })
+    const before = t.last[key] ?? 0
+    const added = totalUsd >= before ? totalUsd - before : totalUsd
+    t.last[key] = totalUsd
+    const s = w.sessions.find(one => one.id === sessionId)
+    if (s) s.costUsd = (s.costUsd ?? 0) + added
+    if (added <= 0) return
+    const day = dayOf(now)
+    t.days[day] = (t.days[day] ?? 0) + added
+    t.total += added
+    // The books keep two months of days and the last few hundred reports.
+    for (const d of Object.keys(t.days).sort().slice(0, -62)) delete t.days[d]
+    const keys = Object.keys(t.last)
+    for (const k of keys.slice(0, Math.max(0, keys.length - 300))) delete t.last[k]
+    this.isDirty = true
+  }
+
+  // What Claude Code gives a status line: the session's cost, and the plan's
+  // usage limits. The reply is the line the terminal shows.
+  statusLine(raw: unknown, now: number): string {
+    const j = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const sid = str(j.session_id)
+    const cost = (j.cost && typeof j.cost === 'object' ? j.cost : {}) as Record<string, unknown>
+    if (sid) this.spend(sid, cost.total_cost_usd, now)
+    const rl = j.rate_limits
+    if (rl && typeof rl === 'object') {
+      const r = rl as Record<string, Record<string, unknown> | undefined>
+      const win = (x?: Record<string, unknown>): LimitWindow | undefined =>
+        x && typeof x.used_percentage === 'number' && typeof x.resets_at === 'number' ? { used: x.used_percentage, resetsAt: x.resets_at * 1000 } : undefined
+      const limits: Limits = { at: now }
+      const five = win(r.five_hour)
+      const seven = win(r.seven_day)
+      const spend = win(r.spend_limit)
+      if (five) limits.fiveHour = five
+      if (seven) limits.sevenDay = seven
+      if (spend) {
+        const x = r.spend_limit!
+        limits.spend = {
+          ...spend,
+          ...(typeof x.used_usd === 'number' ? { usedUsd: x.used_usd } : {}),
+          ...(typeof x.limit_usd === 'number' ? { limitUsd: x.limit_usd } : {}),
+          ...(typeof x.period === 'string' ? { period: x.period } : {}),
+        }
+      }
+      if (five || seven || spend) {
+        this.world.limits = limits
+        this.isDirty = true
+      }
+    }
+    const v = this.treasuryView(now)
+    const s = this.world.sessions.find(one => one.id === sid)
+    // A session the city has not seen yet shows its own report.
+    const own = typeof cost.total_cost_usd === 'number' ? cost.total_cost_usd : 0
+    const parts = [`🏦 ${usd(s?.costUsd ?? own)} this session`, `${usd(v.today)} today`]
+    for (const l of v.limits) parts.push(`${l.name} ${Math.round(l.left)}% left`)
+    return parts.join(' · ')
+  }
+
+  // The Treasury's report for the page: spend today, this week and in all, the
+  // last two weeks by day, the sessions here by what they have spent, and what
+  // is left of the plan's limits (a window past its reset is full again).
+  treasuryView(now: number) {
+    const w = this.world
+    const t = w.treasury ?? { days: {}, total: 0, last: {} }
+    const days: [string, number][] = []
+    for (let i = 13; i >= 0; i--) {
+      const d = dayOf(now - i * 86_400_000)
+      days.push([d, t.days[d] ?? 0])
+    }
+    const lim = w.limits
+    const limits: { id: string; name: string; used: number; left: number; resetsAt: number; usedUsd?: number; limitUsd?: number }[] = []
+    const add = (id: string, name: string, x?: LimitWindow & { usedUsd?: number; limitUsd?: number }) => {
+      if (!x) return
+      const used = x.resetsAt <= now ? 0 : x.used
+      limits.push({ id, name, used, left: Math.max(0, 100 - used), resetsAt: x.resetsAt, ...(x.usedUsd !== undefined ? { usedUsd: x.usedUsd } : {}), ...(x.limitUsd !== undefined ? { limitUsd: x.limitUsd } : {}) })
+    }
+    add('fiveHour', '5h', lim?.fiveHour)
+    add('sevenDay', '7d', lim?.sevenDay)
+    add('spend', lim?.spend?.period ?? 'spend', lim?.spend)
+    return {
+      today: days[13]![1],
+      week: days.slice(7).reduce((a, [, v]) => a + v, 0),
+      total: t.total,
+      days,
+      sessions: w.sessions
+        .filter(s => (s.costUsd ?? 0) > 0)
+        .map(s => ({ id: s.id, name: w.agents.find(a => a.id === `lead:${s.id}`)?.name ?? s.name, usd: s.costUsd ?? 0, agents: w.agents.filter(a => a.session === s.id).length }))
+        .sort((a, b) => b.usd - a.usd),
+      limits,
+      ...(lim ? { limitsAt: lim.at } : {}),
+    }
   }
 
   // ---- act two: run the city -------------------------------------------------

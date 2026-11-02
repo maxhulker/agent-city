@@ -141,6 +141,19 @@ Once the city stands, the card turns to **Run the city**: answer at City
 Hall, send a telegram, open a work site, file a zoning plan, lay out a
 borough, and send a session home on the last train.
 
+## The City Treasury
+
+Place the **City Treasury** from Build… to keep the city's books on the map:
+a Federal Hall with a board over its steps showing what was spent today and
+what is left of your plan's limits. The **City Treasury** card in the
+sidebar has today, this week and in all, the last two weeks, the 5-hour and
+7-day limits (Pro, Max and Ultra plans) with when they reset, and what each
+session here has spent. Spend is Claude Code's own estimate at list price;
+your bill may differ. It comes from the status line `npm run connect` sets
+up (only when you have none of your own; it prints the Treasury's line in
+each terminal), and from app sessions and tasks, which report their cost
+themselves.
+
 ## The last train home
 
 Grand Central is the exit as well as the entrance. Everyone who leaves the

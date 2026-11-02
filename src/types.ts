@@ -69,6 +69,15 @@ export type Agent = {
   stops?: Stop[]
 }
 
+// A usage window: how much of it is used (percent) and when it resets.
+export type LimitWindow = { used: number; resetsAt: number }
+export type Limits = {
+  fiveHour?: LimitWindow
+  sevenDay?: LimitWindow
+  spend?: LimitWindow & { usedUsd?: number; limitUsd?: number; period?: string }
+  at: number
+}
+
 export type Feat = 'answer' | 'telegram' | 'worksite' | 'zoning' | 'borough' | 'train'
 export type PlanItem = { id: string; subject: string; state: 'todo' | 'doing' | 'done' }
 
@@ -101,6 +110,8 @@ export type Session = {
   bullet?: string
   // How many work orders its lead has issued (subagents started).
   orders?: number
+  // What it has spent: Claude Code's running estimate, in US dollars.
+  costUsd?: number
   // Its site plan: the task checklist Claude Code keeps for it (TaskCreated
   // and TaskCompleted, or the TodoWrite and TaskUpdate tools).
   plan?: PlanItem[]
@@ -298,6 +309,12 @@ export type World = {
   feats?: Partial<Record<Feat, number>>
   // The plan last approved from plan mode, posted at City Hall.
   zoning?: { title: string; plan: string; by: string; at: number }
+  // The City Treasury's books: what was spent each day (local dates), in all,
+  // and each cost report's last running total (to take only what it adds).
+  treasury?: { days: Record<string, number>; total: number; last: Record<string, number> }
+  // The plan's usage limits as Claude Code last reported them (Pro, Max and
+  // Ultra plans, or a gateway's spend limit), from the status line.
+  limits?: Limits
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts

@@ -26,6 +26,10 @@ const EVENTS = [
   'Stop',
   'StopFailure',
   'Notification',
+  // A session's task checklist, for its site plan. Our reply is always empty,
+  // so a task is never blocked.
+  'TaskCreated',
+  'TaskCompleted',
 ]
 // The page answers these: Claude Code waits for the reply, so the hook may take
 // minutes (the server gives up a minute before this and answers with nothing).
@@ -49,6 +53,15 @@ const path = at >= 0 && args[at + 1] ? args[at + 1]! : join(homedir(), '.claude'
 // a message sent from the page still reaches the session.
 const command = (maxSeconds: number) =>
   `curl -s --connect-timeout 0.3 -m ${maxSeconds} -H "content-type: application/json" --data-binary @- ${URL} || exit 0`
+
+// The status line: Claude Code hands it the session's cost and the plan's
+// usage limits, which the City Treasury keeps; it prints the Treasury's line
+// (or nothing while Agent City is closed). Set only when there is no status
+// line already: the person's own stays as it is.
+const STATUS_URL = `http://127.0.0.1:${PORT}/statusline`
+const STATUS_COMMAND = `curl -s --connect-timeout 0.3 -m 1 -H "content-type: application/json" --data-binary @- ${STATUS_URL} || exit 0`
+const isOurStatus = (v: unknown) =>
+  !!v && typeof v === 'object' && typeof (v as { command?: unknown }).command === 'string' && /\/\/(127\.0\.0\.1|localhost):\d+\/statusline\b/.test((v as { command: string }).command)
 
 // Either mode, so installing one removes the other and --uninstall gets both.
 function isOurs(h: Handler): boolean {
@@ -100,7 +113,11 @@ function add(settings: Settings) {
 function main() {
   const settings: Settings = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Settings) : {}
   strip(settings)
-  if (!isUninstall) add(settings)
+  if (isOurStatus(settings.statusLine)) delete settings.statusLine
+  if (!isUninstall) {
+    add(settings)
+    if (!settings.statusLine) settings.statusLine = { type: 'command', command: STATUS_COMMAND, padding: 0 }
+  }
   const text = JSON.stringify(settings, null, 2) + '\n'
 
   if (isPrint) {

@@ -1,5 +1,5 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
+import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
 import { PRESET_PARKS, boroughAt, boroughRect, componentOf, doorOf as doorOfHall, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
@@ -1362,6 +1362,22 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     }
     add(55.28 + 8.0 + 1.5, g)
   }
+  // The City Treasury: a Federal Hall for the city's books, columns along its
+  // steps under a pediment. Its board, with the day's spend, is the overlay's.
+  if (kind === 'treasury') {
+    ground += gRect(0.05, 0.05, 1.95, 0.95, '#3b3f48')
+    let g = box(0.15, 0.1, 1.7, 0.6, 2, 's')
+    g += box(0.25, 0.12, 1.5, 0.45, 7.5, 's', 2)
+    g += box(0.2, 0.7, 1.6, 0.22, 0.8, 's')
+    for (let i = 0; i < 6; i++) g += box(0.3 + i * 0.26, 0.6, 0.08, 0.08, 6.5, 's', 2)
+    const a = p(0.18, 0.66, 9.5)
+    const b = p(1.82, 0.66, 9.5)
+    const top = p(1.0, 0.66, 13)
+    g += `<path d="M${xy(a)}L${xy(top)}L${xy(b)}z" fill="#d6d3d1" stroke="#a8a29e" stroke-width=".3"/>`
+    const [ex, ey] = p(1.0, 0.66, 10.6)
+    g += `<circle cx="${n(ex)}" cy="${n(ey)}" r=".9" fill="#fbbf24"/>`
+    add(0.1 + 0.15 + 1.7, g)
+  }
   // The Woolworth Building: scenery, always there.
   if (kind === 'woolworth') {
     let w = box(5.5, 55.25, 0.9, 0.55, 40, 's')
@@ -1914,6 +1930,27 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   for (const bo of sc.layout.boroughs) if (!bo.preset) put(`burb:${bo.id}`, drawnBurbLit(bo, sc.repoOf.get(bo.id), sc))
   put('waiting', waitingSign(sc))
   out.push(...landmarkLights(sc))
+  // The Treasury's board: the day's spend, and what is left of the plan's limits.
+  for (const t of cityBuildings(sc.layout, 'treasury')) {
+    const today = world.treasury?.days[dayOf(sc.now)] ?? 0
+    const lim = world.limits
+    const windows: [string, { used: number; resetsAt: number } | undefined][] = [
+      ['5h', lim?.fiveHour],
+      ['7d', lim?.sevenDay],
+    ]
+    const left = windows
+      .flatMap(([name, w]) => (w ? [`${name} ${Math.round(100 - (w.resetsAt <= sc.now ? 0 : w.used))}% left`] : []))
+      .join(' · ')
+    const [bx, by] = p(...([t.x + 1, t.y + 0.5] as [number, number]), 22)
+    const lines = left ? 2 : 1
+    put(
+      `treasury:${t.id}`,
+      `<g class="treasury-board"><rect x="${n(bx - 25)}" y="${n(by - 6 - lines * 6)}" width="50" height="${n(4 + lines * 6)}" rx="1.5" fill="#0b1224" stroke="#fbbf24" stroke-width=".6"/>` +
+        `<text x="${n(bx)}" y="${n(by - 2 - (lines - 1) * 6 - 2)}" text-anchor="middle" font-size="5" font-weight="800" fill="#fbbf24">${esc(usd(today))} today</text>` +
+        (left ? `<text x="${n(bx)}" y="${n(by - 4)}" text-anchor="middle" font-size="3.6" fill="#e2e8f0">${esc(left)}</text>` : '') +
+        `</g>`,
+    )
+  }
   // The zoning plan, pinned on a board by City Hall's door.
   const hall = cityBuildings(sc.layout, 'hall').find(b => b.built !== undefined)
   if (world.zoning && hall) {

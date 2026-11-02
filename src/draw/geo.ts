@@ -437,3 +437,17 @@ export function keyed(k: string, inputs: unknown[], svg: string, top = false): O
   const h = hash(JSON.stringify(inputs))
   return top ? { k, h, svg, top } : { k, h, svg }
 }
+
+// ---- the City Treasury ------------------------------------------------------
+
+// A local date, the Treasury's day: "2026-11-01".
+export function dayOf(t: number): string {
+  const d = new Date(t)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Dollars as the Treasury shows them: cents, or tenths of a cent below a dime.
+export function usd(v: number): string {
+  return v < 0.1 && v > 0 ? `$${v.toFixed(3)}` : `$${v.toFixed(2)}`
+}
+

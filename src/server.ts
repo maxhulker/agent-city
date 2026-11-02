@@ -54,6 +54,8 @@ const AMBER = '#fbbf24'
 const ENDS = { done: 'FINISHED', failed: 'FAILED', stopped: 'STOPPED' } as const
 const tasks = new Tasks(city.world.tasks, (task, what) => {
   city.world.tasks = tasks.list
+  // The Treasury: each turn of a task is its own claude process, its own running total.
+  if (task.sessionId) city.spend(`task:${task.id}:${task.turns?.length ?? 0}`, task.costUsd, Date.now(), task.sessionId)
   const folder = base(task.cwd)
   const text = what === 'start' ? `STARTED A TASK IN ${folder}` : `TASK IN ${folder} ${ENDS[what]}`
   city.announce('YOU', text, '★', AMBER, Date.now())
@@ -68,8 +70,10 @@ const approvals = new Approvals(() => {
 })
 
 // Sessions that live in the app: one streaming claude process each.
-const appSessions = new AppSessions(city.world.appSessions, (_s, what) => {
+const appSessions = new AppSessions(city.world.appSessions, (s, what) => {
   city.world.appSessions = appSessions.list()
+  // The Treasury: an app session's cost runs on across its processes.
+  if (s.sessionId) city.spend(`app:${s.id}`, s.costUsd, Date.now(), s.sessionId)
   city.isDirty = true
   // Worth keeping straight away when a turn ends or a session starts or ends.
   if (what === 'result' || what === 'start' || what === 'ended' || what === 'failed') save()
@@ -178,6 +182,7 @@ function game(world: World, now: number) {
     connected,
     quests: city.quests(),
     acttwo: city.actTwo(),
+    treasury: city.treasuryView(now),
     zoning: world.zoning,
     landmarks: LANDMARKS.map(id => {
       const at = built[id]
@@ -309,6 +314,18 @@ const server = createServer(async (req, res) => {
   const origin = req.headers.origin
 
   try {
+    // The status line Agent City installs posts what Claude Code gives it (the
+    // session's cost, the plan's limits) and prints the Treasury's line.
+    if (req.method === 'POST' && url.pathname === '/statusline') {
+      if (origin) return reply(res, 403, '{}')
+      let line = ''
+      try {
+        line = city.statusLine(JSON.parse(await body(req)), Date.now())
+      } catch {
+        line = '🏦 Agent City'
+      }
+      return reply(res, 200, line, 'text/plain; charset=utf-8')
+    }
     if (req.method === 'POST' && url.pathname === '/hook') {
       // Claude Code posts with no Origin; a web page always sends one.
       if (origin) return reply(res, 403, '{}')
