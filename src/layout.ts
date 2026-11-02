@@ -472,7 +472,8 @@ export type Op =
 export type Applied = { layout: Layout } | { error: string }
 
 // The grid the city may spread over.
-const RANGE = { x0: -60, x1: 90, y0: -40, y1: 110 }
+// The preset's boroughs reach west and north of 0; a generated map runs to GEN.
+const RANGE = { x0: -60, x1: 140, y0: -40, y1: 140 }
 const RUN_MAX = 64
 const BOROUGH_MIN = 3
 const BOROUGH_MAX = 24
@@ -945,7 +946,7 @@ export function route(layout: Layout, from: Pt2, to: Pt2): Pt2[] | undefined {
 // A generated map is GEN cells each way, from (0, 0) at the back to (GEN, GEN)
 // at the front: the mainland behind, a strait, the station's island, and the
 // sea in front.
-export const GEN = 64
+export const GEN = 128
 
 // A number in [0, 1) for a lattice point, the same on every machine.
 function rnd(seed: number, x: number, y: number): number {
@@ -1007,7 +1008,7 @@ export function mapShape(seed: number): { cx: number; cy: number; a: number; b: 
   const r = (k: number) => rnd(seed, 1000 + k, 7)
   const turn = r(5) * Math.PI * 2
   const inland: [number, number] = [Math.cos(turn), Math.sin(turn)]
-  return { cx: 32 + (r(0) - 0.5) * 6, cy: 32 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 12 + r(3) * 4, strait: 0.25 + r(4) * 0.25, inland, tilt: (r(6) - 0.5) * 0.9, across: r(7) > 0.45 }
+  return { cx: GEN / 2 + (r(0) - 0.5) * 6, cy: GEN / 2 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 12 + r(3) * 4, strait: 0.25 + r(4) * 0.25, inland, tilt: (r(6) - 0.5) * 0.9, across: r(7) > 0.45 }
 }
 
 // A seed's terrain: which cells are land, and how high each stands (0 at the
@@ -1056,10 +1057,10 @@ export function terrainOf(seed: number): { land: boolean[][]; height: number[][]
   }
   // Rivers: from the far side of the mainland down to the sea, meandering,
   // widening towards their mouths.
-  const rivers = 1 + Math.floor(rnd(seed, 2000, 1) * 2)
+  const rivers = 2 + Math.floor(rnd(seed, 2000, 1) * 3)
   for (let k = 0; k < rivers; k++) {
     const along = [-inland[1], inland[0]]
-    const offset = (rnd(seed, 2001, k) - 0.5) * 36
+    const offset = (rnd(seed, 2001, k) - 0.5) * GEN * 0.8
     // Its source: as far inland as the map goes, a little in from the edge.
     let x = cx + along[0]! * offset
     let y = cy + along[1]! * offset
@@ -1068,7 +1069,7 @@ export function terrainOf(seed: number): { land: boolean[][]; height: number[][]
       y += inland[1]
     }
     let dir = Math.atan2(-inland[1], -inland[0])
-    for (let step = 0; step < 160; step++) {
+    for (let step = 0; step < GEN * 3; step++) {
       // A slow swing either side of seaward, from the noise along its course.
       const swing = (noise(seed + 60 + k, step, k * 13, 9) - 0.5) * 2.4
       const seaward = Math.atan2(-inland[1], -inland[0])
@@ -1078,7 +1079,7 @@ export function terrainOf(seed: number): { land: boolean[][]; height: number[][]
       if (x < -2 || y < -2 || x > GEN + 1 || y > GEN + 1) break
       const isl = islandAt(x, y)
       if (isl.warped < 1 + strait) break
-      const width = 0.75 + Math.min(1, step / 100) * 0.9
+      const width = 0.75 + Math.min(1, step / 180) * 1.1
       for (let yy = Math.floor(y - width); yy <= Math.ceil(y + width); yy++) {
         for (let xx = Math.floor(x - width); xx <= Math.ceil(x + width); xx++) {
           if (yy < 0 || xx < 0 || yy >= GEN || xx >= GEN) continue

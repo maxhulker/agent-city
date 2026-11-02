@@ -140,7 +140,11 @@ core, one or two rivers meandering from the mainland's far side to the sea
 and widening to their mouths, and small islets and puddles swept away.
 `generatedLand` in map.ts draws blurred shallows round the coasts and up
 the rivers, a sand rim, green rising into three bands of hills by height,
-and pavement only under zoned blocks and buildings.
+and pavement only under zoned blocks and buildings. A generated map is 128
+cells each way (`GEN`; the grid's `RANGE` reaches it), so the mainland has
+room for many boroughs, with two to four rivers. Its frame is all the land;
+the page opens on the station's island (`fitIsland`, also on Rebuild and a
+new pick) and may zoom in further on a bigger map (`maxZ`).
 
 ### E. The City Treasury
 
