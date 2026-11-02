@@ -93,6 +93,11 @@ A city that existed before this version counts as built. **Rebuild the city**
 
 ## Lay it out yourself
 
+A new city first asks for its land: the welcome card shows three maps made
+from seeds (a mainland, a strait and the station's island; **Shuffle** for
+others) and the hand-drawn Manhattan. Pick one before your first session;
+after that the map stays.
+
 The build toolbar along the bottom of the map lets you shape the city
 (`docs/city-builder.md` is the plan): **Road** drags a street or avenue (over
 water it is a bridge), **Zone** marks blocks beside a road for the population

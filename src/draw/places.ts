@@ -200,7 +200,7 @@ export function drawPlaces(world: World, sc: Scene): string {
 
   // Manhattan itself, under everything else.
   let s = `<g class="places">`
-  s += `<polygon class="zone ground" points="${pts(ISLAND.map(([gx, gy]) => p(gx, gy)))}" data-tip-title="${esc(`Manhattan: ${world.home || 'home'}`)}" data-tip-text="${esc('The busiest repository, unless you picked one. Its districts stand for kinds of work: hover over one to see which.')}"/>`
+  if ('preset' in sc.layout.map) s += `<polygon class="zone ground" points="${pts(ISLAND.map(([gx, gy]) => p(gx, gy)))}" data-tip-title="${esc(`Manhattan: ${world.home || 'home'}`)}" data-tip-text="${esc('The busiest repository, unless you picked one. Its districts stand for kinds of work: hover over one to see which.')}"/>`
   for (const z of zones) {
     const who = z.who ? whoLines(world, z.who) : ''
     const more = [z.extra, who].filter(Boolean).join('\n')

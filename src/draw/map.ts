@@ -2,7 +2,7 @@ import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
 import { boroughRect, cellsOf, cityBuildings, deltaOf, lotsOf, siteFor, trackOf } from '../layout.ts'
-import type { Borough, Building, Kind, Layout } from '../layout.ts'
+import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
 // streets, buildings, the landmarks' bodies, bridges, trees, names), which
@@ -1367,6 +1367,44 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
 
 // ---- water and sky --------------------------------------------------------
 
+// A generated map's land, from its cells: each row's spans drawn half a cell
+// in and stroked half a cell wide with round joins, so the cells meet and the
+// shore's corners round off, over a darker shore. The station's island is
+// paved; the rest is the mainland's green.
+function generatedLand(layout: Layout): string {
+  const station = layout.buildings.find(b => b.kind === 'station')
+  const island = station ? componentOf(layout.land, station.x, station.y) : new Set<number>()
+  let paved = ''
+  let green = ''
+  layout.land.forEach(([y, x0, x1], i) => {
+    const d = `M${n(x0 + 0.25)} ${n(y + 0.25)}H${n(x1 - 0.25)}V${n(y + 0.75)}H${n(x0 + 0.25)}z`
+    if (island.has(i)) paved += d
+    else green += d
+  })
+  const shape = (d: string, fill: string) => (d ? `<path d="${d}" fill="${fill}" stroke="${fill}" stroke-width=".54" stroke-linejoin="round"/>` : '')
+  let s = `<g class="shore" transform="translate(0 4)">${GRID}${shape(paved + green, '#0d1a14')}</g></g>`
+  s += GRID + shape(green, '#17251d') + shape(paved, '#30353f') + '</g>'
+  return s
+}
+
+// The spans joined to the one at (x, y), by index: rows touching rows.
+function componentOf(land: Span[], x: number, y: number): Set<number> {
+  const start = land.findIndex(([ry, x0, x1]) => ry === y && x >= x0 && x < x1)
+  const out = new Set<number>()
+  if (start < 0) return out
+  const todo = [start]
+  out.add(start)
+  while (todo.length) {
+    const [ry, a0, a1] = land[todo.pop()!]!
+    land.forEach(([sy, b0, b1], j) => {
+      if (out.has(j) || Math.abs(sy - ry) !== 1 || b1 <= a0 || b0 >= a1) return
+      out.add(j)
+      todo.push(j)
+    })
+  }
+  return out
+}
+
 // City lights reflected in the rivers: streaks under the shores that face us.
 function reflections(): string {
   let warm = ''
@@ -1643,7 +1681,8 @@ export function framed(sc: Scene): Burb[] {
 export function mapKey(sc: Scene): string {
   const built = Object.keys(sc.built).sort()
   const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].filter(b => !isWaiting(b)).sort()
-  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev]))
+  const map = 'preset' in sc.layout.map ? [] : [sc.layout.map.seed]
+  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev, ...map]))
 }
 
 // The still city, back to front: everything but the agents and the overlay.
@@ -1654,10 +1693,13 @@ export function drawMap(sc: Scene): string {
   let s = ''
   // The water's sparkle, and the city's lights reflected in it.
   s += `<rect x="${n(vb.x - 2000)}" y="${n(vb.y - 2000)}" width="${n(vb.w + 4000)}" height="${n(vb.h + 4000)}" fill="url(#rip)"/>`
-  s += reflections()
+  const isPreset = 'preset' in sc.layout.map
+  if (isPreset) s += reflections()
+  else s += generatedLand(sc.layout)
   // Land: New Jersey, the Bronx, Queens, Brooklyn and the small islands, each
   // a shore under its top.
   const land = (shape: [number, number][], top: string) => {
+    if (!isPreset) return
     const shifted = shape.map(([gx, gy]) => p(gx, gy)).map(([x, y]) => [x, y + 3] as Pt)
     s += `<polygon points="${pts(shifted)}" fill="#0d1a14"/>`
     s += poly(shape, top)
@@ -1670,7 +1712,7 @@ export function drawMap(sc: Scene): string {
   land(RANDALLS, '#1d3326')
   land(GOVERNORS, '#1d3326')
   // Lights across the boroughs.
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < (isPreset ? 70 : 0); i++) {
     const r1 = seeded(i, 91)
     const r2 = seeded(91, i)
     const [gx, gy] =
@@ -1681,9 +1723,11 @@ export function drawMap(sc: Scene): string {
 
   // Manhattan: the shore, the pavement, the streets, then whatever lies flat
   // on them, then the cars.
-  const shore = ISLAND.map(([gx, gy]) => p(gx, gy)).map(([x, y]) => [x, y + 5] as Pt)
-  s += `<polygon points="${pts(shore)}" fill="#0f172a"/>`
-  s += poly(ISLAND, '#30353f')
+  if (isPreset) {
+    const shore = ISLAND.map(([gx, gy]) => p(gx, gy)).map(([x, y]) => [x, y + 5] as Pt)
+    s += `<polygon points="${pts(shore)}" fill="#0f172a"/>`
+    s += poly(ISLAND, '#30353f')
+  }
   s += streets(sc)
   if (sc.connected) s += rails(sc)
   const items: Item[] = []
@@ -1691,13 +1735,13 @@ export function drawMap(sc: Scene): string {
   s += pads(sc)
 
   // Bridges.
-  s += bridge([edges(4.5)[0], 4.5], [edges(4.5)[0] - 5.2, 4.5], [0.12, 0.88], '#cbd5e1') // George Washington
-  s += bridge([edges(34.5)[1], 34.5], [19.2, 34.5], [0.3, 0.75], '#94a3b8') // Queensboro
-  s += bridge([edges(50.5)[1], 50.5], [21.4, 50.5], [0.25, 0.75], '#94a3b8') // Williamsburg
-  s += bridge([edges(54)[1], 54], [20.5, 54], [0.2, 0.8], '#94a3b8') // Manhattan
-  s += bridge(...BROOKLYN_BRIDGE, '#e2e8f0') // Brooklyn
-  s += bridge([12.9, 11], [14.6, 11], [], '#94a3b8') // Third Avenue, to the Bronx
-  {
+  if (isPreset) s += bridge([edges(4.5)[0], 4.5], [edges(4.5)[0] - 5.2, 4.5], [0.12, 0.88], '#cbd5e1') // George Washington
+  if (isPreset) s += bridge([edges(34.5)[1], 34.5], [19.2, 34.5], [0.3, 0.75], '#94a3b8') // Queensboro
+  if (isPreset) s += bridge([edges(50.5)[1], 50.5], [21.4, 50.5], [0.25, 0.75], '#94a3b8') // Williamsburg
+  if (isPreset) s += bridge([edges(54)[1], 54], [20.5, 54], [0.2, 0.8], '#94a3b8') // Manhattan
+  if (isPreset) s += bridge(...BROOKLYN_BRIDGE, '#e2e8f0') // Brooklyn
+  if (isPreset) s += bridge([12.9, 11], [14.6, 11], [], '#94a3b8') // Third Avenue, to the Bronx
+  if (isPreset) {
     // The ferry to Jersey City.
     const [x1, y1] = p(0.4, 39)
     const [x2, y2] = p(-4.8, 39)
@@ -1715,6 +1759,16 @@ export function drawMap(sc: Scene): string {
   fabric(items, sc)
   items.sort((a, b) => a.depth - b.depth)
   s += items.map(i => i.svg).join('')
+  s += moonAndNames(sc, vb, isPreset)
+  return s
+}
+
+// The sky, and the names on the map. A generated map has neither the
+// preset's glow over Midtown nor its Liberty Island and names.
+function moonAndNames(sc: Scene, vb: { x: number; y: number; w: number; h: number }, isPreset: boolean): string {
+  const { repoOf, vacantOf } = sc
+  let s = ''
+  if (!isPreset) return moon(vb.x + vb.w * 0.3, vb.y + 34)
   // The city's glow on the haze above Midtown and downtown.
   s += `<ellipse class="sky" cx="${n(p(9, 41)[0])}" cy="${n(p(9, 41)[1] - 40)}" rx="190" ry="85" fill="url(#sky)"/>`
   s += `<ellipse class="sky" cx="${n(p(8, 58)[0])}" cy="${n(p(8, 58)[1] - 40)}" rx="130" ry="60" fill="url(#sky)"/>`
@@ -1758,8 +1812,11 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   const put = (k: string, svg: string, top = false) => {
     if (svg) out.push(item(k, svg, top))
   }
-  put('twinkle', twinkles())
-  put('cars', traffic())
+  // The preset's reflections and its traffic, along its own avenues.
+  if ('preset' in sc.layout.map) {
+    put('twinkle', twinkles())
+    put('cars', traffic())
+  }
   put('pads', padsLit(sc))
   for (const [b] of sc.vacantOf) if (burbGeo(sc.layout, b)?.preset) put(`burb:${b}`, burbLit(b as PresetBurb, undefined, sc))
   for (const [b, repo] of sc.repoOf) if (burbGeo(sc.layout, b)?.preset) put(`burb:${b}`, burbLit(b as PresetBurb, repo, sc))

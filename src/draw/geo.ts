@@ -329,17 +329,27 @@ export function frame(burbs: Burb[], layout?: Layout): Frame {
     y0 = Math.min(y0, y)
     y1 = Math.max(y1, y)
   }
-  for (let gy = -3; gy <= 71; gy += 0.5) {
-    const [w, e] = edges(gy)
-    take(w - 1, gy)
-    take(e + 1, gy)
+  if (layout && !('preset' in layout.map)) {
+    // A generated map: all its land.
+    for (const [y, x0, x1] of layout.land) {
+      take(x0, y)
+      take(x1, y)
+      take(x0, y + 1)
+      take(x1, y + 1)
+    }
+  } else {
+    for (let gy = -3; gy <= 71; gy += 0.5) {
+      const [w, e] = edges(gy)
+      take(w - 1, gy)
+      take(e + 1, gy)
+    }
+    for (const [gx, gy] of [
+      [0.5, 71],
+      [3.5, 71.5],
+      [12, 67],
+      [-3, 70],
+    ] as const) take(gx, gy)
   }
-  for (const [gx, gy] of [
-    [0.5, 71],
-    [3.5, 71.5],
-    [12, 67],
-    [-3, 70],
-  ] as const) take(gx, gy)
   for (const b of burbs) {
     const g = burbGeo(layout, b)
     if (!g) continue

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
-import { FIXED, applyOp, burbGeo, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
+import { FIXED, applyOp, burbGeo, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, World } from './types.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -382,6 +382,21 @@ export class City {
         }
       }
     }
+    this.isDirty = true
+    return { ok: true }
+  }
+
+  // The welcome's map picker (docs/city-builder.md, step seven): a city that
+  // has seen no session yet starts again on the map of a seed, or on the
+  // hand-drawn Manhattan ('manhattan'). Once work has begun the map stays.
+  newMap(seed: unknown): { ok: true } | { error: string } {
+    if (!this.isNew) return { error: 'The city is under way: its map stays' }
+    // The revision runs on, so every page takes the new layout.
+    const rev = this.layout.rev + 1
+    if (seed === 'manhattan') this.world.layout = manhattanLayout()
+    else if (typeof seed === 'number' && Number.isInteger(seed) && seed > 0 && seed < 2 ** 31) this.world.layout = generateMap(seed)
+    else return { error: 'Not a map' }
+    this.world.layout.rev = rev
     this.isDirty = true
     return { ok: true }
   }

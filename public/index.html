@@ -84,6 +84,12 @@
   #welcome .wstate i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; flex: none; }
   #welcome .wstate.on i { background: #4ade80; }
   #welcome .wskip { margin-top: 8px; font-size: 12px; color: var(--dim); }
+  #welcome .wmaps { margin-top: 10px; }
+  #welcome .wm-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+  #welcome .wm-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+  #welcome .wm { background: #0b1830; border: 1px solid #334155; border-radius: 8px; padding: 3px; cursor: pointer; color: var(--dim); font: inherit; font-size: 11px; }
+  #welcome .wm.on { border-color: #7dd3fc; color: #e2e8f0; }
+  #welcome .wm svg { display: block; width: 100%; height: auto; }
   #welcome .lnkbtn { background: none; border: 0; padding: 0; color: #7dd3fc; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; }
   /* The Blueprints card: one line per landmark. */
   .bp-line { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
@@ -406,6 +412,10 @@
       <p>The island is bare land: it builds itself as you work. Each blueprint lot says what raises it, and the Blueprints card keeps the list.</p>
       <p id="w-next">Next step: run <code>npm run connect</code> in the agent-city folder, then start a Claude Code session.</p>
       <div class="wstate" id="w-state"><i></i><span>Checking for the hooks…</span></div>
+      <div class="wmaps" id="w-maps">
+        <div class="wm-head"><span>Pick the land your city stands on</span><button class="lnkbtn" type="button" id="wm-shuffle">Shuffle</button></div>
+        <div class="wm-row" id="wm-row"></div>
+      </div>
       <div class="wskip">Rather have the whole city now? <button class="lnkbtn" type="button" data-buildall="1">Build it all now</button></div>
     </div>
     <div id="ticker"><div id="track"></div></div>
@@ -1489,6 +1499,7 @@
     if (!g) return
     const w = $('welcome')
     w.hidden = !g.welcome
+    if (g.welcome && typeof drawMapPicker === "function") drawMapPicker()
     if (g.welcome) {
       const st = $('w-state')
       st.className = 'wstate' + (g.connected ? ' on' : '')
@@ -2618,6 +2629,7 @@
 
   function setLayout(l) {
     layout = l
+    drawMapPicker()
     buildBar.hidden = false
     drawCatalog()
     drawCursor()
@@ -2871,6 +2883,45 @@
       if (await build({ op: 'remove', id: b.dataset.bulldoze })) hideSel()
     }
   })
+
+  // ---- the welcome's map picker (docs/city-builder.md, step seven) --------
+  // Three maps made from seeds, drawn small from the shared rules, and the
+  // hand-drawn Manhattan. Picking one starts the new city on it.
+  let pickSeeds = [0, 0, 0].map(() => 1 + Math.floor(Math.random() * 2147483000))
+  function thumb(l) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, d = ''
+    for (const [y, a, b] of l.land) {
+      const c = [[a, y], [b, y], [b, y + 1], [a, y + 1]].map(([gx, gy]) => [(gx - gy) * 10, (gx + gy) * 5])
+      for (const [x, yy] of c) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, yy); y1 = Math.max(y1, yy) }
+      d += 'M' + c.map(([x, yy]) => `${x.toFixed(0)} ${yy.toFixed(0)}`).join('L') + 'z'
+    }
+    const st = l.buildings.find(b => b.kind === 'station')
+    const dot = st ? `<circle cx="${(st.x - st.y) * 10 + 20}" cy="${(st.x + st.y) * 5 + 10}" r="22" fill="#fbbf24"/>` : ''
+    return `<svg viewBox="${x0 - 20} ${y0 - 20} ${x1 - x0 + 40} ${y1 - y0 + 40}"><rect x="${x0 - 400}" y="${y0 - 400}" width="${x1 - x0 + 800}" height="${y1 - y0 + 800}" fill="#0b2545"/><path d="${d}" fill="#3a4a3f" stroke="#3a4a3f" stroke-width="6" stroke-linejoin="round"/>${dot}</svg>`
+  }
+  function drawMapPicker() {
+    const row = document.getElementById('wm-row')
+    if (!row || !window.cityRules || document.getElementById('welcome').hidden) return
+    const now = layout && layout.map
+    const isOn = s => now && (s === 'manhattan' ? 'preset' in now : now.seed === s)
+    const seeds = isOn('manhattan') || !now || pickSeeds.includes(now.seed) ? pickSeeds : [now.seed, ...pickSeeds.slice(0, 2)]
+    const key = JSON.stringify([seeds, now])
+    if (row.dataset.key === key) return
+    row.dataset.key = key
+    row.innerHTML = seeds.map(s => `<button class="wm${isOn(s) ? ' on' : ''}" type="button" data-seed="${s}" title="Map ${s}">${thumb(cityRules.generateMap(s))}Map ${String(s).slice(-4)}</button>`).join('') +
+      `<button class="wm${isOn('manhattan') ? ' on' : ''}" type="button" data-seed="manhattan" title="The hand-drawn island">${thumb(cityRules.manhattanLayout())}Manhattan</button>`
+  }
+  document.getElementById('wm-row').addEventListener('click', e => {
+    const b = e.target.closest('[data-seed]')
+    if (!b) return
+    const seed = b.dataset.seed === 'manhattan' ? 'manhattan' : Number(b.dataset.seed)
+    post('/newmap', { seed }).then(r => { if (r && r.error) toast(r.error) })
+  })
+  document.getElementById('wm-shuffle').addEventListener('click', () => {
+    pickSeeds = pickSeeds.map(() => 1 + Math.floor(Math.random() * 2147483000))
+    drawMapPicker()
+  })
+  window.addEventListener('rules-ready', drawMapPicker)
 
   // ---- the borough sheet -------------------------------------------------
   let sheetRect = null

@@ -157,7 +157,18 @@ the old home the borough the new one leaves, or the forecourt. Tests in
 `test/borough.test.ts`. On the Manhattan preset the only land is the island,
 so a drawn borough stands on it until step seven's generated map; drawn
 boroughs show a dashed line, a square and their name, and get houses with
-zoning (step nine), as do player-laid bridges and parks.
+zoning (step nine), as do player-laid bridges and parks. Step seven is in:
+`generateMap(seed)` in `src/layout.ts` (value noise over a 64-cell square:
+mainland at the back, a strait, the station's island with a solid core, the
+sea in front; the station near the island's east shore with a street along
+its front), drawn by `generatedLand` in map.ts (spans inset and stroked with
+round joins over a darker shore; the island paved, the rest green), with
+the preset's backdrop, bridges, names, reflections and traffic left out and
+the view framed on the land. The welcome's picker (three seeds, Shuffle,
+Manhattan) posts `/newmap`, which `City.newMap` takes only while the city is
+new. Tests in `test/map.test.ts`. Not done yet: Build it all now on a
+generated map records the game but has no buildings to raise (step eight's
+starts take that on).
 
 ## Lessons from the first session, on cost
 

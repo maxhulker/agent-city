@@ -400,13 +400,20 @@ const server = createServer(async (req, res) => {
     }
     if (
       req.method === 'POST' &&
-      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build')
+      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap')
     ) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
       // The city builder: one placement, checked by the layout's rules.
       if (url.pathname === '/build') {
         const r = city.build(args, Date.now())
+        if ('error' in r) return reply(res, 400, JSON.stringify(r))
+        save()
+        return reply(res, 200, '{"ok":true}')
+      }
+      // The welcome's map picker: a new city starts on a generated map, or on Manhattan.
+      if (url.pathname === '/newmap') {
+        const r = city.newMap((args as { seed?: unknown }).seed)
         if ('error' in r) return reply(res, 400, JSON.stringify(r))
         save()
         return reply(res, 200, '{"ok":true}')

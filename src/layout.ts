@@ -919,3 +919,99 @@ export function route(layout: Layout, from: Pt2, to: Pt2): Pt2[] | undefined {
   }
   return out
 }
+
+// ---- the generated map ---------------------------------------------------------
+
+// A generated map is GEN cells each way, from (0, 0) at the back to (GEN, GEN)
+// at the front: the mainland behind, a strait, the station's island, and the
+// sea in front.
+export const GEN = 64
+
+// A number in [0, 1) for a lattice point, the same on every machine.
+function rnd(seed: number, x: number, y: number): number {
+  let h = Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1)
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+// Value noise: lattice values every `scale` cells, eased between.
+function noise(seed: number, x: number, y: number, scale: number): number {
+  const gx = x / scale
+  const gy = y / scale
+  const ix = Math.floor(gx)
+  const iy = Math.floor(gy)
+  const ease = (t: number) => t * t * (3 - 2 * t)
+  const fx = ease(gx - ix)
+  const fy = ease(gy - iy)
+  const a = rnd(seed, ix, iy)
+  const b = rnd(seed, ix + 1, iy)
+  const c = rnd(seed, ix, iy + 1)
+  const d = rnd(seed, ix + 1, iy + 1)
+  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy
+}
+
+// Three octaves, in [0, 1).
+function fbm(seed: number, x: number, y: number): number {
+  return 0.55 * noise(seed, x, y, 16) + 0.3 * noise(seed + 1, x, y, 8) + 0.15 * noise(seed + 2, x, y, 4)
+}
+
+// The shape of a seed's map: the island's middle and half-sizes, and how wide
+// the strait round it runs.
+export function mapShape(seed: number): { cx: number; cy: number; a: number; b: number; strait: number } {
+  const r = (k: number) => rnd(seed, 1000 + k, 7)
+  return { cx: 30 + (r(0) - 0.5) * 8, cy: 38 + (r(1) - 0.5) * 6, a: 8 + r(2) * 3, b: 13 + r(3) * 4, strait: 0.35 + r(4) * 0.3 }
+}
+
+// A map made from a seed (docs/city-builder.md, "The map"): value noise over
+// the grid with a coast threshold. The mainland rises towards the back and the
+// west, cut by inlets and headlands; the island sits in front of it across a
+// strait, with a core of solid land big enough for every footprint; the sea
+// lies in front. The station stands on the island near its east shore, its
+// track running out to the water, with a street along its front.
+export function generateMap(seed: number): Layout {
+  const { cx, cy, a, b, strait } = mapShape(seed)
+  const isLand = (x: number, y: number): boolean => {
+    const px = x + 0.5
+    const py = y + 0.5
+    const e = ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2
+    const wobble = (fbm(seed + 10, px, py) - 0.5) * 0.7
+    if (e < 0.55) return true
+    if (e + wobble < 1) return true
+    // The strait round the island.
+    if (e + wobble < 1 + strait + 0.5) return false
+    // The mainland: high at the back and the west, sinking into the sea in front.
+    const back = Math.max(0, Math.min(1, 1.45 - (px + py) / 46))
+    return fbm(seed + 20, px, py) * 1.0 + back * 0.55 > 0.86
+  }
+  const cells: boolean[][] = []
+  for (let y = 0; y < GEN; y++) {
+    const row: boolean[] = []
+    for (let x = 0; x < GEN; x++) row.push(isLand(x, y))
+    cells.push(row)
+  }
+  // The station: on the island's row a little above its middle, four cells in
+  // from the east shore, on a quay of solid land with the street in front.
+  const sy = Math.round(cy) - 2
+  let east = Math.floor(cx)
+  while (east + 1 < GEN && cells[sy]![east + 1]) east++
+  const sx = Math.max(Math.floor(cx) - 2, east - 5)
+  for (const y of [sy, sy + 1]) for (let x = sx - 1; x <= sx + 5; x++) cells[y]![x] = true
+  const land: Span[] = []
+  for (let y = 0; y < GEN; y++) {
+    let x = 0
+    while (x < GEN) {
+      if (!cells[y]![x]) {
+        x++
+        continue
+      }
+      const x0 = x
+      while (x < GEN && cells[y]![x]) x++
+      land.push([y, x0, x])
+    }
+  }
+  const roads: Road[] = []
+  for (let x = sx - 1; x < sx + 5; x++) roads.push([x, sy + 1, 1, 'street'])
+  const station: Building = { id: 'station', kind: 'station', x: sx, y: sy, face: 's', built: 0 }
+  return { rev: 0, map: { seed }, land, park: [], roads, zoned: [], buildings: [station], boroughs: [] }
+}
