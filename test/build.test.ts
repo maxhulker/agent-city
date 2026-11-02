@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { applyOp, canPlace, facesRoad, isBridge, manhattanLayout, parseOp } from '../src/layout.ts'
+import { applyOp, canPlace, facesRoad, isBridge, manhattanLayout, parseOp, spotFor } from '../src/layout.ts'
+import { renderFrame } from '../src/city.ts'
 import type { Layout } from '../src/layout.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
@@ -109,7 +110,41 @@ test('bulldozing the road a building faces leaves the building, which then faces
   l = ok(applyOp(l, { op: 'remove', id: 'library' }))
   assert.equal(l.buildings.length, 0)
   refused(applyOp(l, { op: 'remove', id: 'library' }), 'nothing')
-  refused(applyOp(manhattanLayout(), { op: 'remove', id: 'station' }), 'station')
+})
+
+test('Grand Central moves: bulldozed, the waiting gather elsewhere; placed again, one at a time and in the city', () => {
+  let l = field()
+  l = ok(applyOp(l, { op: 'road', x: 0, y: 3, dir: 1, len: 10 }))
+  l = ok(applyOp(l, { op: 'road', x: 0, y: 7, dir: 1, len: 10 }))
+  l = ok(applyOp(l, { op: 'place', kind: 'station', x: 1, y: 2 }))
+  assert.equal(l.buildings[0]!.built, 0, 'it stands at once')
+  refused(applyOp(l, { op: 'place', kind: 'station', x: 5, y: 2 }), 'bulldoze it to move it')
+  l = ok(applyOp(l, { op: 'place', kind: 'library', x: 6, y: 6 }))
+  const atStation = spotFor(l, 'relay')
+
+  // Bulldozed: the relay's agents and the waiting stand at what is left.
+  l = ok(applyOp(l, { op: 'remove', id: 'station' }))
+  assert.equal(l.buildings.some(b => b.kind === 'station'), false)
+  assert.notDeepEqual(spotFor(l, 'relay'), atStation)
+  assert.deepEqual(spotFor(l, 'relay'), spotFor(l, 'library'), 'at the Library, the one building left')
+
+  // Placed again somewhere else, but not in a borough.
+  l = ok(applyOp(l, { op: 'borough', name: 'Queens', x: 0, y: 4, w: 5, h: 5 }))
+  refused(applyOp(l, { op: 'place', kind: 'station', x: 0, y: 6 }), 'not in a borough')
+  l = ok(applyOp(l, { op: 'place', kind: 'station', x: 5, y: 2 }))
+  assert.equal(l.buildings.find(b => b.kind === 'station')!.x, 5)
+
+  // On the preset too, and the city draws while it is gone: no rails, no trains.
+  const city = new City()
+  city.buildAll(T0)
+  read(city, 'S1', HOME, T0 + 10)
+  city.apply(ev('SessionEnd', 'S1'), T0 + 100)
+  city.flush(T0 + 200)
+  assert.ok(city.world.trains?.length, 'a train is leaving')
+  assert.deepEqual(city.build({ op: 'remove', id: 'station' }, T0 + 300), { ok: true })
+  const frame = renderFrame(city.world, T0 + 400, { connected: true })
+  assert.equal(frame.overlay.some(o => /train/.test(o.key)), false, 'no trains without a station')
+  assert.equal(/class="rails"/.test(frame.map.svg), false, 'no rails either')
 })
 
 test('zoning needs a road beside the lot and land under it; parks take free land', () => {

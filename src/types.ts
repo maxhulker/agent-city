@@ -170,6 +170,22 @@ export type Decision = {
   always?: boolean
 }
 
+// A session's account in the City Treasury's ledger: what it has spent, by
+// day, and who it was when it last spent (it may have left the city since).
+export type LedgerEntry = {
+  name: string
+  // Its repository root or folder, when the city knew it.
+  root: string
+  color: string
+  bullet?: string
+  usd: number
+  // Local dates, as in the books.
+  days: Record<string, number>
+  // When it first and last spent.
+  first: number
+  last: number
+}
+
 // One line of a session's conversation, read from its transcript.
 export type Entry = {
   kind: 'user' | 'assistant' | 'tool' | 'result' | 'system'
@@ -327,7 +343,8 @@ export type World = {
   zoning?: { title: string; plan: string; by: string; at: number }
   // The City Treasury's books: what was spent each day (local dates), in all,
   // and each cost report's last running total (to take only what it adds).
-  treasury?: { days: Record<string, number>; total: number; last: Record<string, number> }
+  // The ledger is each session's account, kept after the session leaves.
+  treasury?: { days: Record<string, number>; total: number; last: Record<string, number>; ledger?: Record<string, LedgerEntry> }
   // The plan's usage limits as Claude Code last reported them (Pro, Max and
   // Ultra plans, or a gateway's spend limit), from the status line.
   limits?: Limits

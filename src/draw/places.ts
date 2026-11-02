@@ -145,7 +145,7 @@ export function drawPlaces(world: World, sc: Scene): string {
         box,
         height,
         title: 'City Treasury',
-        text: `Spent ${usd(today)} today, ${usd(week)} this week, ${usd(t?.total ?? 0)} in all (Claude Code's estimate at list price).`,
+        text: `Spent ${usd(today)} today, ${usd(week)} this week, ${usd(t?.total ?? 0)} in all (Claude Code's estimate at list price). Click it for what each session spent.`,
         extra: limits.length ? limits.join('. ') + '.' : 'No plan limits reported yet: they come from the status line on Pro, Max and Ultra plans.',
         color: '#fbbf24',
       })

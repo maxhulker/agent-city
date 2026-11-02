@@ -54,6 +54,69 @@ test('the books take only what each report adds; a /clear starts again', () => {
   assert.equal(v.sessions[0]!.id, 'S1')
 })
 
+test('each session has an account in the ledger, kept after it leaves', () => {
+  const c = city()
+  c.apply(ev('SessionStart', 'S2', { cwd: 'C:/fake/other' }), T0)
+  c.spend('S1', 0.5, T0)
+  c.spend('app:a1', 0.2, T0, 'S2')
+  c.spend('task:t1:0', 1, T0 + 86_400_000, 'S2')
+  // A status line from a session the city hasn't seen yet still has an account.
+  c.spend('S3', 0.05, T0 + 86_400_000)
+  const v = c.treasuryView(T0 + 86_400_000)
+  assert.equal(v.count, 3)
+  assert.deepEqual(v.sessions.map(s => s.id), ['S2', 'S1', 'S3'], 'costliest first')
+  const s2 = v.sessions[0]!
+  assert.ok(close(s2.usd, 1.2) && close(s2.today, 1) && close(s2.week, 1.2))
+  assert.equal(s2.days.length, 14)
+  assert.ok(close(s2.days[13]!, 1) && close(s2.days[12]!, 0.2))
+  assert.equal(s2.root, 'C:/fake/other')
+  assert.ok(s2.name && s2.color, 'named and coloured as it is in the city')
+  assert.equal(s2.here, true)
+  assert.ok(s2.agents >= 1)
+  assert.equal(s2.first, c.world.sessions.find(s => s.id === 'S2')!.startedAt)
+  assert.equal(s2.last, T0 + 86_400_000)
+  const s3 = v.sessions.find(s => s.id === 'S3')!
+  assert.equal(s3.here, false)
+  assert.equal(s3.name, '')
+
+  // S2 is sent home: its account stays, as it was.
+  assert.ok(c.sendHome('S2', T0 + 86_400_000 + 1000))
+  const after = c.treasuryView(T0 + 86_400_000 + 2000).sessions.find(s => s.id === 'S2')!
+  assert.equal(after.here, false)
+  assert.equal(after.agents, 0)
+  assert.ok(close(after.usd, 1.2))
+  assert.equal(after.root, 'C:/fake/other')
+  assert.equal(after.name, s2.name)
+  assert.ok(close(c.world.treasury!.total, 1.75))
+})
+
+test('a session that spent before the ledger existed keeps what it spent', () => {
+  const c = city()
+  // As a city saved before the ledger has it: the session's cost, no account.
+  c.world.sessions[0]!.costUsd = 2
+  let v = c.treasuryView(T0)
+  assert.equal(v.sessions[0]!.id, 'S1')
+  assert.ok(close(v.sessions[0]!.usd, 2))
+  // Its next report opens the account with the 2 already spent.
+  c.world.treasury = { days: {}, total: 2, last: { S1: 2 } }
+  c.spend('S1', 2.5, T0 + 1000)
+  v = c.treasuryView(T0 + 1000)
+  assert.ok(close(v.sessions[0]!.usd, 2.5))
+  assert.ok(close(v.sessions[0]!.today, 0.5))
+})
+
+test('the ledger keeps the sessions that spent last', () => {
+  const c = city()
+  for (let i = 0; i < 230; i++) c.spend(`X${i}`, 0.01 * (i + 1), T0 + i)
+  const ledger = c.world.treasury!.ledger!
+  assert.equal(Object.keys(ledger).length, 200)
+  assert.ok(!ledger.X0 && ledger.X229, 'the longest quiet go first')
+  const v = c.treasuryView(T0 + 1000)
+  assert.equal(v.count, 200)
+  assert.equal(v.sessions.length, 100, 'the page gets the costliest hundred')
+  assert.equal(v.sessions[0]!.id, 'X229')
+})
+
 test('the status line brings the cost and the plan limits, and shows the Treasury', () => {
   const c = city()
   const line = c.statusLine(

@@ -455,8 +455,9 @@ function fabric(items: Item[], sc: Scene) {
 }
 
 // The rails into the station, along the street behind its front and under
-// the river, once the hooks are laid.
+// the river, once the hooks are laid. None while the station is being moved.
 function rails(sc: Scene): string {
+  if (!cityBuildings(sc.layout, 'station').length) return ''
   const t = trackOf(sc.layout)
   const y = t.y + 0.16
   const ties = `M${xy(p(t.x0, y))}L${xy(p(t.x1, y))}`

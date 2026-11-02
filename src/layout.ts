@@ -668,6 +668,11 @@ export function canPlace(layout: Layout, kind: Kind, x: number, y: number, face:
   if (cells.some(([cx, cy]) => takenAt(layout, cx, cy))) return 'Something is already there'
   const burbs = new Set(cells.map(([cx, cy]) => boroughAt(layout, cx, cy)?.id))
   if (burbs.size > 1) return 'A building stands in one borough, or in the city'
+  // One way in: to move the station, bulldoze it and place it again.
+  if (kind === 'station') {
+    if (cityBuildings(layout, 'station').length) return 'Grand Central stands already: bulldoze it to move it'
+    if (!burbs.has(undefined)) return 'Grand Central stands in the city, not in a borough'
+  }
   if (!facesRoad(layout, b)) return 'No road along its front'
   return undefined
 }
@@ -702,7 +707,8 @@ export function applyOp(layout: Layout, op: Op): Applied {
     case 'remove': {
       const b = layout.buildings.find(one => one.id === op.id)
       if (b) {
-        if (b.kind === 'station') return { error: 'The station is the way in: it stays' }
+        // The station too, to move it: until it is placed again, nothing
+        // arrives by train and the waiting gather at what still stands.
         return next({ buildings: layout.buildings.filter(one => one !== b) })
       }
       const bo = layout.boroughs.find(one => one.id === op.id)
@@ -851,10 +857,11 @@ export function roomOf(b: Building | undefined): number {
 }
 
 // Where a district's agents stand: its building's door, or the station's
-// forecourt while nothing of the kind is placed (the preset's spot when there
-// is no station either).
+// forecourt while nothing of the kind is placed. With the station bulldozed
+// (being moved), at the door of the first building still standing in the
+// city; the preset's spot when there is none.
 export function spotFor(layout: Layout, d: District): Pt2 {
-  const b = siteFor(layout, d) ?? cityBuildings(layout, 'station')[0]
+  const b = siteFor(layout, d) ?? cityBuildings(layout, 'station')[0] ?? layout.buildings.find(one => !one.burb && one.kind !== 'liberty')
   return b ? doorOf(b) : SITES[d].spot
 }
 

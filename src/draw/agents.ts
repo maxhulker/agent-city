@@ -1,7 +1,7 @@
 import type { Agent, District, Hat, Session, World } from '../types.ts'
 import { LABELS, TRAIN_MS, esc, hash, isWaiting, keyed, n, p, placeAt, standAt, waitAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
-import { roomOf, siteFor, spotFor, trackOf } from '../layout.ts'
+import { cityBuildings, roomOf, siteFor, spotFor, trackOf } from '../layout.ts'
 
 // The agents: who they are, where they stand, what they are doing. They go
 // to the page as sprites (docs/frames.md): the figure, the spot, and the walk
@@ -273,6 +273,8 @@ function car(x: number, y: number, color: string, isFront: boolean, boarding: bo
 // from now, which the page shifts onto its clock when the item arrives.
 export function drawTrains(world: World, sc: Scene): OverlayItem[] {
   const out: OverlayItem[] = []
+  // No trains while the station is being moved: the leaving simply go.
+  if (!cityBuildings(sc.layout, 'station').length) return out
   const [dx, dy] = p(7, 0)
   const secs = n(TRAIN_MS / 1000)
   // The platform: along the track, in front of the station wherever it is.

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
 import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
-import type { Agent, Burb, District, Feat, Landmark, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
+import type { Agent, Burb, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -267,6 +267,11 @@ export const MESSAGE_MAX = 4000
 const MESSAGES_QUEUED = 10
 const MESSAGE_KEPT = 10 * 60_000
 
+// The Treasury's ledger keeps the accounts of this many sessions (the ones
+// that spent last), and the page is sent the costliest of them.
+const LEDGER_MAX = 200
+const LEDGER_SHOWN = 100
+
 // What a hook reply carries: Claude reads it as a note from the person.
 function frame(m: Message): string {
   return `Message from the user, sent through Agent City (a dashboard on their machine): ${m.text}`
@@ -434,16 +439,37 @@ export class City {
     const added = totalUsd >= before ? totalUsd - before : totalUsd
     t.last[key] = totalUsd
     const s = w.sessions.find(one => one.id === sessionId)
-    if (s) s.costUsd = (s.costUsd ?? 0) + added
+    const had = s?.costUsd ?? 0
+    if (s) s.costUsd = had + added
     if (added <= 0) return
     const day = dayOf(now)
     t.days[day] = (t.days[day] ?? 0) + added
     t.total += added
-    // The books keep two months of days and the last few hundred reports.
+    // The session's account. One opened for a session already here starts
+    // with what it spent before there was a ledger.
+    const ledger = (t.ledger ??= {})
+    const e = (ledger[sessionId] ??= { name: '', root: '', color: '', usd: had, days: {}, first: s?.startedAt ?? now, last: now })
+    e.usd += added
+    e.days[day] = (e.days[day] ?? 0) + added
+    e.last = now
+    if (s) this.ledgerName(e, s)
+    // The books keep two months of days, the last few hundred reports, and
+    // the accounts of the few hundred sessions that spent last.
     for (const d of Object.keys(t.days).sort().slice(0, -62)) delete t.days[d]
+    for (const d of Object.keys(e.days).sort().slice(0, -62)) delete e.days[d]
     const keys = Object.keys(t.last)
     for (const k of keys.slice(0, Math.max(0, keys.length - 300))) delete t.last[k]
+    const accounts = Object.keys(ledger)
+    if (accounts.length > LEDGER_MAX) for (const k of accounts.sort((a, b) => ledger[a]!.last - ledger[b]!.last).slice(0, accounts.length - LEDGER_MAX)) delete ledger[k]
     this.isDirty = true
+  }
+
+  // Who a session is, as its account remembers it: its lead's name, folder and colours.
+  private ledgerName(e: LedgerEntry, s: Session) {
+    e.name = this.world.agents.find(a => a.id === `lead:${s.id}`)?.name ?? s.name
+    e.root = s.root
+    e.color = s.color
+    if (s.bullet) e.bullet = s.bullet
   }
 
   // What Claude Code gives a status line: the session's cost, and the plan's
@@ -508,15 +534,40 @@ export class City {
     add('fiveHour', '5h', lim?.fiveHour)
     add('sevenDay', '7d', lim?.sevenDay)
     add('spend', lim?.spend?.period ?? 'spend', lim?.spend)
+    // Every session's account, here or gone: a session here is as it is now,
+    // and one here from before the ledger counts what it has spent.
+    const ledger = t.ledger ?? {}
+    const ids = new Set([...Object.keys(ledger), ...w.sessions.filter(s => (s.costUsd ?? 0) > 0).map(s => s.id)])
+    const lastWeek = days.slice(7).map(([d]) => d)
+    const sessions = [...ids].map(id => {
+      const s = w.sessions.find(one => one.id === id)
+      const e: LedgerEntry = { ...(ledger[id] ?? { name: '', root: '', color: '', usd: s?.costUsd ?? 0, days: {}, first: s?.startedAt ?? 0, last: s?.updatedAt ?? 0 }) }
+      if (s) this.ledgerName(e, s)
+      const on = (d: string) => e.days[d] ?? 0
+      return {
+        id,
+        name: e.name,
+        root: e.root,
+        color: e.color,
+        ...(e.bullet ? { bullet: e.bullet } : {}),
+        usd: e.usd,
+        today: on(days[13]![0]),
+        week: lastWeek.reduce((a, d) => a + on(d), 0),
+        // The last two weeks, as the card's chart has them.
+        days: days.map(([d]) => on(d)),
+        first: e.first,
+        last: e.last,
+        here: !!s,
+        agents: s ? w.agents.filter(a => a.session === id).length : 0,
+      }
+    })
     return {
       today: days[13]![1],
       week: days.slice(7).reduce((a, [, v]) => a + v, 0),
       total: t.total,
       days,
-      sessions: w.sessions
-        .filter(s => (s.costUsd ?? 0) > 0)
-        .map(s => ({ id: s.id, name: w.agents.find(a => a.id === `lead:${s.id}`)?.name ?? s.name, usd: s.costUsd ?? 0, agents: w.agents.filter(a => a.session === s.id).length }))
-        .sort((a, b) => b.usd - a.usd),
+      sessions: sessions.sort((a, b) => b.usd - a.usd).slice(0, LEDGER_SHOWN),
+      count: sessions.length,
       limits,
       ...(lim ? { limitsAt: lim.at } : {}),
     }

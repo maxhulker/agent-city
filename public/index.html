@@ -127,6 +127,18 @@
   .lim { margin-top: 6px; font-size: 12px; }
   .lim .bar { height: 5px; background: #1e293b; border-radius: 3px; overflow: hidden; margin: 3px 0; }
   .lim .bar i { display: block; height: 100%; }
+  /* Each session's account: a row that opens into what it spent. */
+  .tre-s { display: flex; align-items: center; gap: 6px; background: none; border: 0; border-radius: 6px; padding: 3px 4px; margin: 0 -4px; width: calc(100% + 8px); color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+  .tre-s:hover, .tre-s.on { background: #1e293b; }
+  .tre-s .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tre-s .fd { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+  .tre-s .amt { flex: none; margin-left: auto; }
+  .tre-s.gone .nm { color: var(--dim); }
+  .tre-d { border-left: 2px solid var(--c, #fbbf24); margin: 2px 0 6px 4px; padding: 4px 0 4px 8px; font-size: 12px; }
+  .tre-d .tre b { font-size: 13px; }
+  .tre-d .spark { height: 26px; margin: 4px 0; }
+  .tre-d .fp { word-break: break-all; }
+  .tre-more { background: none; border: 0; padding: 2px 0; color: #7dd3fc; cursor: pointer; font: inherit; font-size: 12px; }
   /* A subagent's work order and an agent's route, in the drawer's head. */
   .order { margin-top: 6px; border: 1px solid #a16207; border-radius: 8px; background: #1c1608; padding: 6px 8px; }
   .order .oh { font-size: 10px; letter-spacing: .08em; color: #fbbf24; font-weight: 700; }
@@ -1685,24 +1697,58 @@
   // The quests of the latest frame, for the catalogue and the toolbar's hint.
   var gameQuests = null
   // ---- the City Treasury: what sessions spend, what is left of the plan ----
-  let treasuryHtml = ''
+  let treasuryHtml = '', lastTreasury = null
+  // The account open in the card, and whether every session is listed or the costliest few.
+  let treOpen = '', treAll = false
+  const TRE_FEW = 6
   function drawTreasury(t) {
     if (!t) return
+    lastTreasury = t
     const money = v => v > 0 && v < 0.1 ? `$${v.toFixed(3)}` : `$${v.toFixed(2)}`
-    const max = Math.max(...t.days.map(d => d[1]), 0.01)
-    const bars = t.days.map(([day, v], i) => `<rect x="${i * 10}" y="${(30 - (v / max) * 28).toFixed(1)}" width="7" height="${Math.max(0.5, (v / max) * 28).toFixed(1)}" rx="1" fill="${i === t.days.length - 1 ? '#fbbf24' : '#64748b'}"><title>${esc(day)}: ${money(v)}</title></rect>`).join('')
+    // Two weeks of bars, today's in gold.
+    const chart = (vals, days) => {
+      const max = Math.max(...vals, 0.01)
+      return `<svg class="spark" viewBox="0 0 137 31" preserveAspectRatio="none">${vals.map((v, i) => `<rect x="${i * 10}" y="${(30 - (v / max) * 28).toFixed(1)}" width="7" height="${Math.max(0.5, (v / max) * 28).toFixed(1)}" rx="1" fill="${i === vals.length - 1 ? '#fbbf24' : '#64748b'}"><title>${esc(days[i])}: ${money(v)}</title></rect>`).join('')}</svg>`
+    }
+    const dayNames = t.days.map(d => d[0])
     const when = ms => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
     const limits = t.limits.length
       ? t.limits.map(l => `<div class="lim"><div class="row"><span>${esc(l.name === '5h' ? '5-hour limit' : l.name === '7d' ? '7-day limit' : `Spend limit (${l.name})`)}</span><span style="margin-left:auto"><b>${Math.round(l.left)}%</b> left</span></div>
           <div class="bar"><i style="width:${Math.min(100, l.used).toFixed(0)}%;background:${l.left < 15 ? 'var(--red)' : l.left < 40 ? '#fbbf24' : '#4ade80'}"></i></div>
           <div class="small dim">resets ${esc(when(l.resetsAt))}${l.limitUsd !== undefined ? ` · ${money(l.usedUsd ?? 0)} of ${money(l.limitUsd)}` : ''}</div></div>`).join('')
       : `<div class="small dim">No plan limits reported yet. They come from the status line on Pro, Max and Ultra plans: run <code>${CONNECT}</code> again.</div>`
-    const sessions = t.sessions.length
-      ? t.sessions.slice(0, 6).map(s => `<div class="row small"><span>${esc(s.name)}</span><span class="dim">${s.agents} agent${s.agents === 1 ? '' : 's'}</span><span style="margin-left:auto">${money(s.usd)}</span></div>`).join('')
+    // Each session's account: a row, and under the open one what it spent, when and where.
+    const folder = r => String(r || '').split(/[\\/]/).filter(Boolean).pop() || ''
+    const account = s => {
+      const share = t.total > 0 ? Math.round((s.usd / t.total) * 100) : 0
+      const span = s.first && s.last ? (s.last - s.first < 60_000 ? `Spent ${when(s.last)}` : `Spent from ${when(s.first)} to ${when(s.last)}`) : ''
+      const agents = s.here ? `${s.agents} agent${s.agents === 1 ? '' : 's'} here now` : 'It has left the city.'
+      return `<div class="tre-d" style="--c:${esc(s.color || '#fbbf24')}">
+        <div class="row tre"><div><b>${money(s.today)}</b><span class="dim small">today</span></div><div><b>${money(s.week)}</b><span class="dim small">this week</span></div><div><b>${money(s.usd)}</b><span class="dim small">in all${share ? ` · ${share}% of the city` : ''}</span></div></div>
+        ${chart(s.days || [], dayNames)}
+        ${s.root ? `<div class="dim fp">${esc(s.root)}</div>` : ''}
+        <div class="dim">${esc([span, agents].filter(Boolean).join(' · '))}</div>
+        ${s.here ? `<div class="row" style="margin-top:4px"><button class="btn sm" type="button" data-tre-open="${esc(s.id)}">Open its conversation</button></div>` : ''}
+      </div>`
+    }
+    const row = s => {
+      const name = s.name || `Session ${String(s.id).slice(0, 8)}`
+      const on = s.id === treOpen
+      return `<button class="tre-s${on ? ' on' : ''}${s.here ? '' : ' gone'}" type="button" data-tre="${esc(s.id)}" aria-expanded="${on}" title="${on ? 'Close its account' : 'What it spent'}">${dotOrBullet(s, true)}<span class="nm">${esc(name)}</span><span class="fd">${esc(folder(s.root))}</span><span class="amt">${money(s.usd)}</span></button>${on ? account(s) : ''}`
+    }
+    const list = t.sessions || []
+    const count = t.count ?? list.length
+    // The costliest few, and the open one wherever it is in the list.
+    const shown = treAll ? list : list.filter((s, i) => i < TRE_FEW || s.id === treOpen)
+    const more = list.length > TRE_FEW
+      ? `<button class="tre-more" type="button" data-tre-all="1">${treAll ? 'Show the costliest few' : `Show all ${count} sessions`}</button>${treAll && count > list.length ? `<div class="small dim">The ${list.length} costliest are listed.</div>` : ''}`
+      : ''
+    const sessions = list.length
+      ? shown.map(row).join('') + more
       : '<div class="small dim">No spend reported by the sessions here yet.</div>'
     const html = `<div class="row tre"><div><b>${money(t.today)}</b><span class="dim small">today</span></div><div><b>${money(t.week)}</b><span class="dim small">this week</span></div><div><b>${money(t.total)}</b><span class="dim small">in all</span></div></div>
-      <svg class="spark" viewBox="0 0 137 31" preserveAspectRatio="none">${bars}</svg>
-      ${limits}<div class="small dim" style="margin:6px 0 2px">Spent by the sessions here</div>${sessions}
+      ${chart(t.days.map(d => d[1]), dayNames)}
+      ${limits}<div class="small dim" style="margin:6px 0 2px">Spent by each session${list.length ? ': click one for its account' : ''}</div>${sessions}
       <div class="small dim" style="margin-top:6px">Claude Code's estimate at list price; your bill may differ. Place the City Treasury from Build… to see it on the map.</div>`
     if (html !== treasuryHtml) { $('treasury').innerHTML = html; treasuryHtml = html }
   }
@@ -1815,6 +1861,15 @@
       post('/home', { root: b.dataset.home })
     } else if (b.dataset.movein) {
       post('/build', { op: 'movein', id: b.dataset.movein, root: b.dataset.root }).then(r => { if (r.error) toast(r.error) })
+    } else if (b.dataset.tre) {
+      // A session's account in the Treasury card: open it, or close it again.
+      treOpen = treOpen === b.dataset.tre ? '' : b.dataset.tre
+      drawTreasury(lastTreasury)
+    } else if (b.dataset.treAll) {
+      treAll = !treAll
+      drawTreasury(lastTreasury)
+    } else if (b.dataset.treOpen) {
+      if (keyFor(lastMeta, b.dataset.treOpen) !== selected || !cv.open) select(b.dataset.treOpen, true)
     } else if (b.dataset.layoutFor) {
       // The Borough tool, with the sheet's repository picked already.
       sheetFor = b.dataset.layoutFor
@@ -3251,6 +3306,7 @@
       const t = bulldozeTarget(e, gx, gy)
       if (!t) { toast('Nothing there to bulldoze'); return }
       if (t.borough && !confirm('Bulldoze this borough and everything in it?')) return
+      if (isStation(t.id) && !confirm(STATION_GONE)) return
       const { cells, road, borough, ...op } = t
       build(op)
     }
@@ -3262,6 +3318,10 @@
     else if ((e.key === 'r' || e.key === 'R') && tool === 'place') { face = FACES[(FACES.indexOf(face) + 1) % 4]; drawCursor() }
   }, true)
 
+  // Grand Central can be bulldozed to move it, after a word of warning.
+  const isStation = id => !!layout && layout.buildings.some(b => b.id === id && b.kind === 'station')
+  const STATION_GONE = 'Bulldoze Grand Central to move it? Until you place it again (Build… → Grand Central), nothing arrives by train and the waiting gather at another building.'
+
   // ---- the selection card ------------------------------------------------
   function showSel(z) {
     const id = z.dataset.building || z.dataset.borough
@@ -3271,7 +3331,7 @@
     selCard.style.setProperty('--accent', z.style.getPropertyValue('--accent') || '#fbbf24')
     selCard.innerHTML = `<b>${esc(z.dataset.tipTitle)}</b>${esc(z.dataset.tipText)}` +
       (noRoad ? `<div class="note">No road along its front: lay one so its agents can reach it.</div>` : '') +
-      `<div class="row"><button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
+      `<div class="row">${b?.kind === 'treasury' ? `<button class="btn sm" type="button" data-tre-show="1">What each session spent</button>` : ''}<button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
       `<button class="btn sm" type="button" data-sel-close="1">Close</button></div>`
     selCard.hidden = false
   }
@@ -3280,8 +3340,16 @@
     const b = e.target.closest('button')
     if (!b) return
     if (b.dataset.selClose) hideSel()
-    else if (b.dataset.bulldoze) {
+    else if (b.dataset.treShow) {
+      // The Treasury card in the sidebar, every session listed.
+      hideSel()
+      setCollapsed(false)
+      treAll = true
+      drawTreasury(lastTreasury)
+      $('treasury').scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    } else if (b.dataset.bulldoze) {
       if (b.dataset.boroughCard && !confirm('Bulldoze this borough and everything in it?')) return
+      if (isStation(b.dataset.bulldoze) && !confirm(STATION_GONE)) return
       if (await build({ op: 'remove', id: b.dataset.bulldoze })) hideSel()
     }
   })

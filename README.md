@@ -121,6 +121,11 @@ where it may not, with the reason beside the toolbar. With **Select**, click
 a building for its card and Bulldoze. The right mouse button always pans;
 `Esc` goes back to Select.
 
+To move Grand Central, bulldoze it and place it again from **Build…** (one
+stands at a time, in the city rather than a borough). While it is gone,
+nothing arrives by train and the agents who would wait on its forecourt
+gather at another building.
+
 In the city a placed landmark goes up at once. In a borough it is a
 blueprint lot until that repository's agents first do that kind of work
 there, and from then on that work happens at its door. Bulldozing a borough
