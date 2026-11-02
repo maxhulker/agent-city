@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, fullPopulation, placeAt, walk } from './draw/geo.ts'
 import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
-import type { Agent, Burb, District, Landmark, Message, Place, Repo, Session, WorkOrder, World } from './types.ts'
+import type { Agent, Burb, District, Feat, Landmark, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -70,10 +70,29 @@ const QUESTS: [Kind, string][] = [
   ['liberty', 'In the water; her torch lights on a push'],
 ]
 
+// Act two: run the city (docs/onboarding.md), once it stands. A checklist
+// with hints that gates nothing.
+const FEATS: [Feat, string, string][] = [
+  ['answer', 'Answer at City Hall', 'Approve a permission or answer a question from the page'],
+  ['telegram', 'Send a telegram', "Message a running session from its card"],
+  ['worksite', 'Open a work site', 'Start a task from the New task form'],
+  ['zoning', 'File a zoning plan', 'Approve a plan from plan mode: it is posted at City Hall'],
+  ['borough', 'Lay out a borough', 'The Borough tool: a home for another repository'],
+  ['train', 'Last train home', 'Send a session home from its card'],
+]
+export type ActTwo = { id: Feat; name: string; hint: string; state: 'done' | 'todo'; at?: number }
+
 // ---- paths and repositories -----------------------------------------------
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+// Two task ids for the same task: equal, or the same number ("task-003", "3").
+function sameTask(a: string, b: string): boolean {
+  if (a === b) return true
+  const n = (x: string) => /\d+/.exec(x)?.[0]?.replace(/^0+/, '')
+  return !!n(a) && n(a) === n(b)
 }
 
 // A long text cut to n characters, marked where it was cut.
@@ -377,6 +396,85 @@ export class City {
     this.tick(a, text, now)
   }
 
+  // ---- act two: run the city -------------------------------------------------
+
+  // The first use of one of the app's own features: recorded once, and
+  // announced while act two is showing.
+  achieve(feat: Feat, now: number) {
+    const w = this.world
+    w.feats ??= {}
+    if (w.feats[feat] !== undefined) return
+    w.feats[feat] = now
+    this.isDirty = true
+    if (w.built?.empire === undefined) return
+    const name = FEATS.find(f => f[0] === feat)![1]
+    this.toasts.push(`Act two: ${name}`)
+    this.tick(undefined, `${name}: done`, now)
+  }
+
+  // Act two's checklist, once the city stands (its Empire State is up).
+  actTwo(): ActTwo[] | undefined {
+    const w = this.world
+    if (w.built?.empire === undefined) return undefined
+    return FEATS.map(([id, name, hint]) => {
+      const at = w.feats?.[id]
+      return { id, name, hint, state: at !== undefined ? 'done' : 'todo', ...(at !== undefined ? { at } : {}) }
+    })
+  }
+
+  // A plan approved from the page is posted at City Hall as the zoning plan.
+  fileZoningPlan(p: { session: string; agentId?: string; plan?: string; summary: string }, now: number) {
+    const w = this.world
+    const plan = cut(p.plan ?? '', 8000)
+    const title = short((plan.split('\n').find(l => l.trim()) ?? p.summary).replace(/^#+\s*/, ''), 80) || 'A plan'
+    const who = w.agents.find(a => a.id === p.agentId || a.id === `lead:${p.session}`)
+    w.zoning = { title, plan, by: who?.name ?? 'a session', at: now }
+    this.tick(who, `filed a zoning plan at City Hall: ${title}`, now)
+    this.achieve('zoning', now)
+    this.isDirty = true
+  }
+
+  // ---- site plans (handoff B3) ------------------------------------------------
+
+  // A task the session's checklist gained; one of the same subject is the same task.
+  private addTask(s: Session, id: string, subject: string) {
+    if (!id || !subject) return
+    const plan = (s.plan ??= [])
+    if (plan.some(t => sameTask(t.id, id) || t.subject === subject)) return
+    plan.push({ id, subject, state: 'todo' })
+    s.plan = plan.slice(-40)
+    this.isDirty = true
+  }
+
+  private setTask(s: Session, id: string, subject: string, state: PlanItem['state']) {
+    const t = s.plan?.find(one => sameTask(one.id, id) || (subject && one.subject === subject))
+    if (!t || t.state === state) return
+    t.state = state
+    this.isDirty = true
+  }
+
+  // The checklist tools: TodoWrite gives the whole list; TaskUpdate one
+  // task's state; TaskCreate's reply its number ("Task #3 created").
+  private planTool(s: Session, tool: string, input: Record<string, unknown>, response?: unknown) {
+    if (tool === 'TodoWrite' && Array.isArray(input.todos)) {
+      s.plan = (input.todos as Record<string, unknown>[]).slice(0, 40).map((t, i) => ({
+        id: `todo-${i + 1}`,
+        subject: short(str(t.content) || str(t.subject), 80),
+        state: t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : 'todo',
+      }))
+      this.isDirty = true
+    } else if (tool === 'TaskUpdate') {
+      const id = str(input.taskId)
+      if (input.status === 'deleted') s.plan = (s.plan ?? []).filter(t => !sameTask(t.id, id))
+      else if (input.status === 'completed' || input.status === 'in_progress' || input.status === 'pending') {
+        this.setTask(s, id, '', input.status === 'completed' ? 'done' : input.status === 'in_progress' ? 'doing' : 'todo')
+      }
+    } else if (tool === 'TaskCreate' && response !== undefined) {
+      const id = /#(\d+)/.exec(typeof response === 'string' ? response : JSON.stringify(response))?.[1]
+      if (id) this.addTask(s, id, short(str(input.subject), 80))
+    }
+  }
+
   // The first district's quests (docs/city-builder.md), in their suggested
   // order, which nothing enforces; only on a laid-out (generated) map. The
   // next one is the first not done; the Empire State waits for every district.
@@ -500,6 +598,7 @@ export class City {
         }
       }
     }
+    if (op.op === 'borough') this.achieve('borough', now)
     // The sheet's repository moves into the borough just drawn.
     if (op.op === 'borough' && op.root) this.moveIn(op.root, r.layout.boroughs[r.layout.boroughs.length - 1]!.id, now)
     this.sync()
@@ -608,6 +707,7 @@ export class City {
     }
     const m: Message = { id: randomUUID(), text: body, at: now, status: 'queued' }
     s.messages.push(m)
+    this.achieve('telegram', now)
     this.isDirty = true
     return { id: m.id }
   }
@@ -888,6 +988,7 @@ export class City {
       }
       case 'PreToolUse': {
         const a = this.agent(ev, s, now)
+        this.planTool(s, tool, input)
         const cwd = str(ev.cwd) || s.cwd
         const path = pathOf(tool, input, cwd)
         let burb = a.burb
@@ -948,6 +1049,7 @@ export class City {
       case 'PostToolUse':
       case 'PostToolUseFailure': {
         const a = this.agent(ev, s, now)
+        if (ev.hook_event_name === 'PostToolUse') this.planTool(s, tool, input, ev.tool_response ?? '')
         a.inFlight = Math.max(0, a.inFlight - 1)
         a.updatedAt = now
         w.asks = w.asks.filter(q => q.id !== str(ev.tool_use_id) && q.id !== `perm:${a.id}`)
@@ -1051,6 +1153,15 @@ export class City {
         this.tick(a, 'is waiting for permission', now)
         break
       }
+      // The session's task checklist: its site plan.
+      case 'TaskCreated': {
+        this.addTask(s, str(ev.task_id), short(str(ev.task_subject), 80))
+        break
+      }
+      case 'TaskCompleted': {
+        this.setTask(s, str(ev.task_id), short(str(ev.task_subject), 80), 'done')
+        break
+      }
       case 'SessionEnd': {
         this.departSession(s, now, 'ended')
         break
@@ -1143,6 +1254,7 @@ export class City {
     const s = this.world.sessions.find(one => one.id === sessionId)
     if (!s) return false
     this.departSession(s, now, 'sent home')
+    this.achieve('train', now)
     return true
   }
 
@@ -1160,6 +1272,7 @@ export class City {
     const rest = w.agents.filter(a => !a.isMain && (a.status === 'done' || a.status === 'idle'))
     n += rest.length
     this.depart(rest, now, 'last call')
+    if (n) this.achieve('train', now)
     return n
   }
 

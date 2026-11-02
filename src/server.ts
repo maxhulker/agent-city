@@ -177,6 +177,8 @@ function game(world: World, now: number) {
     pick: city.isNew,
     connected,
     quests: city.quests(),
+    acttwo: city.actTwo(),
+    zoning: world.zoning,
     landmarks: LANDMARKS.map(id => {
       const at = built[id]
       const state = at === undefined ? 'blueprint' : now - at < SCAFFOLD_MS ? 'building' : 'built'
@@ -346,6 +348,7 @@ const server = createServer(async (req, res) => {
       if (url.pathname === '/task') {
         try {
           const task = tasks.start(args, Date.now())
+          city.achieve('worksite', Date.now())
           return reply(res, 200, JSON.stringify({ ok: true, id: task.id }))
         } catch (err) {
           return fail(err instanceof Error ? err.message : String(err))
@@ -362,7 +365,15 @@ const server = createServer(async (req, res) => {
           )
         }
         const id = String(args.id)
+        // Look before deciding: an approved plan is posted at City Hall.
+        const asked = [...approvals.list(), ...appSessions.pending()].find(p => p.id === id)
         const done = id.startsWith('app:') ? appSessions.decide(id, decision) : approvals.decide(id, decision)
+        if (done) {
+          const now = Date.now()
+          city.achieve('answer', now)
+          if (asked?.kind === 'plan' && behavior === 'allow') city.fileZoningPlan(asked, now)
+          save()
+        }
         return done ? reply(res, 200, '{"ok":true}') : fail('That request is no longer waiting')
       }
       if (url.pathname.startsWith('/app/')) {
@@ -370,6 +381,7 @@ const server = createServer(async (req, res) => {
           const now = Date.now()
           if (url.pathname === '/app/start') {
             const s = appSessions.start(args as Parameters<AppSessions['start']>[0], now)
+            city.achieve('worksite', now)
             return reply(res, 200, JSON.stringify({ ok: true, id: s.id }))
           }
           if (url.pathname === '/app/send') appSessions.send(String(args.id), String(args.text ?? ''), now)

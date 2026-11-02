@@ -114,8 +114,20 @@ the server sends them as `order` and `route` (named stops with map points);
 clicking an agent opens its session's drawer with its work order and the
 stops' legend, and draws its route as a dotted line with numbered stops
 (`drawRoute` in the page). A subagent carries a clipboard on its first walk.
-Tests in `test/orders.test.ts`. B3 (site plans) still waits on verifying
-the task hooks, and B4's small touches are not done. The smoothness rebuild
+Tests in `test/orders.test.ts`. B3 is in too: the hook docs confirm
+`TaskCreated` (task_id, task_subject, task_description, agent_id) and
+`TaskCompleted`; `src/install.ts` subscribes to both (they take effect when
+the person runs `npm run connect` again; our reply is always empty, so no
+task is ever blocked), and the TodoWrite, TaskCreate and TaskUpdate tool
+calls feed the same checklist, so site plans work before that. A session's
+`plan` shows as a hoarding beside its lead (while work is left) and in the
+drawer; an approved plan (POST `/decide` on a plan) is posted at City Hall
+as `World.zoning`, on a board by its door and in its tooltip. Not done from
+B3: the scaffolding climbing with the share completed. Act two of the
+onboarding is in as well (`World.feats`, `City.achieve`, `actTwo()`): answer
+at City Hall, send a telegram, open a work site, file a zoning plan, lay out
+a borough, last train home, shown on the card once the city stands. Tests
+in `test/siteplan.test.ts`. B4's small touches are not done. The smoothness rebuild
 (`docs/frames.md`) is done.
 
 A is done (commit d318388). Section C, the onboarding game where the city is

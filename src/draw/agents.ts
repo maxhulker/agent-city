@@ -79,6 +79,15 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
   if (session?.bullet) {
     body += `<circle cx="${n(-8 * s)}" cy="${n(-26 * s)}" r="${n(5 * s)}" fill="${esc(session.color)}" stroke="#fff" stroke-width="${n(1 * k)}"/><text x="${n(-8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(7.6 * s)}" font-weight="800" fill="${inkOn(session.color)}">${esc(session.bullet.slice(0, 1))}</text>`
   }
+  // A lead with a site plan stands by its hoarding: the checklist's progress.
+  const plan = a.isMain ? session?.plan ?? [] : []
+  if (plan.length && plan.some(t => t.state !== 'done')) {
+    const done = plan.filter(t => t.state === 'done').length
+    const w = 18
+    body += `<g class="hoarding" transform="translate(${n(9 * s)},${n(-15 * s)}) scale(${n(s)})"><path d="M1 9V12M${w - 1} 9V12" stroke="#78716c" stroke-width=".8"/><rect width="${w}" height="9" rx=".8" fill="#1e293b" stroke="#fbbf24" stroke-width=".6"/>` +
+      `<text x="${w / 2}" y="3.6" text-anchor="middle" font-size="2.8" font-weight="800" fill="#fbbf24">SITE PLAN</text><text x="${w / 2}" y="6.4" text-anchor="middle" font-size="2.4" fill="#e2e8f0">${done} of ${plan.length}</text>` +
+      `<rect x="2" y="7.2" width="${w - 4}" height="1" fill="#334155"/><rect x="2" y="7.2" width="${n(((w - 4) * done) / plan.length)}" height="1" fill="#4ade80"/></g>`
+  }
   // A subagent carries its work order on its first walk out of the station.
   if (a.order && (a.stops?.length ?? 0) <= 2) {
     body += `<g class="clipboard" transform="translate(${n(-6.5 * s)},${n(-7 * s)}) scale(${n(s)})"><rect x="-2.2" y="-3" width="4.4" height="5.6" rx=".5" fill="#a16207" stroke="#0b1224" stroke-width=".4"/><rect x="-1.6" y="-2.2" width="3.2" height="4.2" fill="#f8fafc"/><rect x="-1" y="-3.5" width="2" height="1" fill="#94a3b8"/></g>`

@@ -69,6 +69,9 @@ export type Agent = {
   stops?: Stop[]
 }
 
+export type Feat = 'answer' | 'telegram' | 'worksite' | 'zoning' | 'borough' | 'train'
+export type PlanItem = { id: string; subject: string; state: 'todo' | 'doing' | 'done' }
+
 export type WorkOrder = { no: string; title: string; brief: string; issuedBy: string; at: number }
 export type Stop = { at: District; burb?: Burb; t: number }
 
@@ -98,6 +101,9 @@ export type Session = {
   bullet?: string
   // How many work orders its lead has issued (subagents started).
   orders?: number
+  // Its site plan: the task checklist Claude Code keeps for it (TaskCreated
+  // and TaskCompleted, or the TodoWrite and TaskUpdate tools).
+  plan?: PlanItem[]
   startedAt: number
   updatedAt: number
   // What the person typed for it in the page: queued until its next hook event
@@ -287,6 +293,11 @@ export type World = {
   // When Liberty's torch was lit (the first push): the one landmark with no
   // building of its own.
   torch?: number
+  // Act two of the onboarding (docs/onboarding.md): when each of the app's
+  // own features was first used.
+  feats?: Partial<Record<Feat, number>>
+  // The plan last approved from plan mode, posted at City Hall.
+  zoning?: { title: string; plan: string; by: string; at: number }
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts

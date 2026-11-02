@@ -1,7 +1,7 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, boroughAt, boroughRect, componentOf, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, boroughAt, boroughRect, componentOf, doorOf as doorOfHall, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
@@ -1914,6 +1914,12 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   for (const bo of sc.layout.boroughs) if (!bo.preset) put(`burb:${bo.id}`, drawnBurbLit(bo, sc.repoOf.get(bo.id), sc))
   put('waiting', waitingSign(sc))
   out.push(...landmarkLights(sc))
+  // The zoning plan, pinned on a board by City Hall's door.
+  const hall = cityBuildings(sc.layout, 'hall').find(b => b.built !== undefined)
+  if (world.zoning && hall) {
+    const [hx, hy] = p(...doorOfHall(hall), 0)
+    put('zoning', `<g class="zoning"><title>${esc(`Zoning plan: ${world.zoning.title} (filed by ${world.zoning.by})`)}</title><path d="M${n(hx + 9)} ${n(hy)}v-9" stroke="#78716c" stroke-width=".8"/><rect x="${n(hx + 4)}" y="${n(hy - 16)}" width="10" height="8" fill="#f8fafc" stroke="#94a3b8" stroke-width=".5"/><path d="M${n(hx + 5.5)} ${n(hy - 14)}h7M${n(hx + 5.5)} ${n(hy - 12)}h7M${n(hx + 5.5)} ${n(hy - 10)}h4" stroke="#64748b" stroke-width=".5"/><circle cx="${n(hx + 9)}" cy="${n(hy - 16)}" r=".8" fill="#ef4444"/></g>`)
+  }
   put('spires', spireLights(sc))
   put('haze', haze(sc))
   if (sc.hasConflict) put('alarm', bridgeAlarm())

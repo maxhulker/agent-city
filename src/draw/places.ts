@@ -95,7 +95,13 @@ export function drawPlaces(world: World, sc: Scene): string {
         box,
         height: lot ? 4 : height,
         title: lot ? `${LABELS[d]}: blueprint` : d === 'relay' ? BLUEPRINTS.relay.name : LABELS[d],
-        text: lot ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}` : d === 'relay' ? 'MetLife and the Chrysler, raised by the first subagent.' : ABOUT[d],
+        text: lot
+          ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}`
+          : d === 'relay'
+            ? 'MetLife and the Chrysler, raised by the first subagent.'
+            : d === 'hall' && world.zoning
+              ? `${ABOUT[d]} Zoning plan on the board: "${world.zoning.title}", filed by ${world.zoning.by}.`
+              : ABOUT[d],
         color: lot ? '#7dd3fc' : ACCENT[d],
         // The relay's agents stand at the station.
         ...(d === 'relay' ? {} : { who: sc.byDistrict.get(d) ?? [] }),

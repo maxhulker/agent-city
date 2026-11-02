@@ -124,6 +124,23 @@ there, and from then on that work happens at its door. Bulldozing a borough
 sends its repository back to Grand Central to wait for another. Manhattan's blocks are all zoned, so to place something on the island
 bulldoze a lot first.
 
+## Work orders and site plans
+
+Click an agent to see why it exists and how it works. A subagent carries a
+**work order**, the brief its lead gave it, numbered by session (A-1, A-2,
+...), with who issued it and when; it walks out of Grand Central with a
+clipboard. Every agent's last eight stops are drawn as a dotted subway line
+with numbered stops, and listed in the drawer: Library and Garment District
+back and forth reads as debugging. A session's task checklist is its **site
+plan**: a hoarding beside its lead shows how much is done, and the drawer
+lists it. A plan you approve from plan mode is posted at City Hall as the
+zoning plan. Run `npm run connect` again to send Agent City the task
+events; the checklist tools already feed it.
+
+Once the city stands, the card turns to **Run the city**: answer at City
+Hall, send a telegram, open a work site, file a zoning plan, lay out a
+borough, and send a session home on the last train.
+
 ## The last train home
 
 Grand Central is the exit as well as the entrance. Everyone who leaves the

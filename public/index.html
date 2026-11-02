@@ -111,6 +111,13 @@
   .order .oh { font-size: 10px; letter-spacing: .08em; color: #fbbf24; font-weight: 700; }
   .order .ob { margin-top: 4px; font-size: 12px; white-space: pre-wrap; max-height: 9em; overflow: auto; color: #e2e8f0; }
   .route { margin-top: 6px; color: var(--dim); line-height: 1.6; }
+  .siteplan { margin-top: 6px; border: 1px solid #334155; border-radius: 8px; padding: 6px 8px; max-height: 10em; overflow: auto; }
+  .siteplan .oh { font-size: 10px; letter-spacing: .08em; color: #fbbf24; font-weight: 700; margin-bottom: 3px; }
+  .siteplan .sp { font-size: 12px; display: flex; gap: 6px; }
+  .siteplan .sp span { flex: none; width: 12px; color: #7dd3fc; }
+  .siteplan .sp.done { color: var(--dim); }
+  .siteplan .sp.done span { color: #4ade80; }
+  .siteplan .sp.doing span { color: #fbbf24; }
   .route b { display: inline-block; min-width: 14px; text-align: center; border-radius: 50%; background: #0b1224; border: 1px solid #64748b; color: #e2e8f0; font-size: 10px; }
   /* A quest: its name on one line; only the next one says how, underneath. */
   .bp-line.q { flex-wrap: wrap; }
@@ -1535,13 +1542,16 @@
     // Rebuild's two starts.
     const rebuild = `<button class="btn sm" type="button" data-rebuild="land" title="New land to lay out; sessions and agents stay">Rebuild: new land</button>
       <button class="btn sm" type="button" data-rebuild="manhattan" title="Manhattan, whole; sessions and agents stay">Rebuild: Manhattan</button>`
-    $('bp-title').textContent = g.quests ? 'First district' : 'Blueprints'
-    const html = g.quests
+    $('bp-title').textContent = g.complete ? 'The city' : g.quests ? 'First district' : 'Blueprints'
+    const html = g.quests && !g.complete
       ? g.quests.map(q => `<div class="bp-line q ${esc(q.state)}" title="${esc(q.hint)}"><span class="st">${MARK[q.state] || ''}</span><span class="nm">${esc(q.name)}</span>
           ${q.opened ? '<span class="op" title="A session has used it">open</span>' : ''}${q.state === 'next' ? `<span class="hn">${esc(q.hint)}</span>` : ''}</div>`).join('') +
         `<div class="row wrap" style="margin-top:8px"><span class="small dim">${g.quests.filter(q => q.state === 'done').length} of ${g.quests.length} done</span>${rebuild}</div>`
       : g.complete
-      ? `<div class="bp-done"><span>✓ The city is complete.</span></div><div class="row wrap">${rebuild}</div>`
+      ? `<div class="bp-done"><span>✓ The city is complete.</span></div>` +
+        (g.acttwo ? `<div class="small dim" style="margin:8px 0 2px">Run the city</div>` + g.acttwo.map(q => `<div class="bp-line q ${q.state}" title="${esc(q.hint)}"><span class="st">${q.state === 'done' ? '✓' : '◻'}</span><span class="nm">${esc(q.name)}</span>
+          ${q.state === 'done' ? '' : `<span class="hn">${esc(q.hint)}</span>`}</div>`).join('') : '') +
+        `<div class="row wrap">${rebuild}</div>`
       : g.landmarks.map(l => `<div class="bp-line ${esc(l.state)}" title="${esc(l.state === 'built' ? `Built ${ago(l.at)}` : l.state === 'building' ? 'Under construction' : l.hint)}">
           <span class="st">${MARK[l.state] || ''}</span><span class="nm">${esc(l.name)}</span><span class="hn">${esc(l.state === 'building' ? 'under construction' : l.hint)}</span></div>`).join('') +
         `<div class="row" style="margin-top:8px"><span class="small dim">${g.landmarks.filter(l => l.state !== 'blueprint').length} of ${g.landmarks.length} built</span>
@@ -1873,12 +1883,16 @@
     const who = ag && ag !== lead ? `<div class="small"><b>${esc(ag.name)}</b> <span class="dim">· ${esc(ag.where)} · ${esc(ag.activity)}</span></div>` : ''
     const order = ag?.order ? `<div class="order"><div class="oh">WORK ORDER ${esc(ag.order.no)} · issued by ${esc(ag.order.issuedBy)} at ${hhmm(ag.order.at)} · reports to Grand Central</div>
         <div class="ob">${esc(ag.order.brief || ag.order.title)}</div></div>` : ''
+    // The session's site plan: its task checklist (handoff B3).
+    const tasksOf = (live || s)?.plan || []
+    const sitePlan = tasksOf.length ? `<div class="siteplan"><div class="oh">SITE PLAN · ${tasksOf.filter(t => t.state === 'done').length} of ${tasksOf.length} done</div>
+        ${tasksOf.map(t => `<div class="sp ${esc(t.state)}"><span>${t.state === 'done' ? '✓' : t.state === 'doing' ? '▶' : '◻'}</span>${esc(t.subject)}</div>`).join('')}</div>` : ''
     const route = ag?.route?.length > 1 ? `<div class="route small">${ag.route.map((q, i) => `<span><b>${i + 1}</b> ${esc(q.name)}</span>`).join(' → ')}</div>` : ''
     const head = s
       ? `<div class="row">${dotOrBullet(s)}<span class="name">${esc(leadOf(s)?.name ?? s.name)}</span>
           ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
         <div class="path">${esc(s.cwd)}</div>
-        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}${who}${order}${route}`
+        ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}${who}${order}${route}${sitePlan}`
       : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
     if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
     drawAgentPicker(s)
