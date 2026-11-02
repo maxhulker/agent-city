@@ -25,6 +25,8 @@ export type Building = {
   y: number
   // The side its agents stand on.
   face: Face
+  // One of its kind's SIZES; none for the kind's own footprint.
+  size?: string
   // The borough it stands in; none for the city.
   burb?: string
   // When it went up: at placement in the city, at the first such work in a
@@ -87,13 +89,30 @@ export const FOOTPRINT: Record<Kind, [number, number, number, number][]> = {
   treasury: [[0, 0, 2, 1]],
 }
 
+// Kinds that come in other sizes than their own footprint, by size id: a
+// name and the footprint. A sized building is drawn to fit its footprint
+// rather than from its kind's hand-drawn picture.
+export const SIZES: Partial<Record<Kind, Record<string, { name: string; rects: [number, number, number, number][] }>>> = {
+  plaza: {
+    square: { name: 'Town square', rects: [[0, 0, 4, 4]] },
+    pocket: { name: 'Pocket park', rects: [[0, 0, 2, 2]] },
+  },
+}
+
+// A kind's footprint at a size (its own when none is given or known).
+export function footprintOf(kind: Kind, size?: string): [number, number, number, number][] {
+  return (size && SIZES[kind]?.[size]?.rects) || FOOTPRINT[kind]
+}
+
+const hasSize = (kind: Kind, size: string) => Object.hasOwn(SIZES[kind] ?? {}, size)
+
 // The kinds that always stand, never a lot: the preset's own (never in the
 // catalogue) and the civic buildings, which are no part of the game.
 export const FIXED: Kind[] = ['station', 'woolworth', 'wtc', 'treasury']
 
 // A building's cells on the grid: [x0, y0, x1, y1] per rect.
 export function cellsOf(b: Building): [number, number, number, number][] {
-  return FOOTPRINT[b.kind].map(([dx, dy, w, d]) => [b.x + dx, b.y + dy, b.x + dx + w, b.y + dy + d])
+  return footprintOf(b.kind, b.size).map(([dx, dy, w, d]) => [b.x + dx, b.y + dy, b.x + dx + w, b.y + dy + d])
 }
 
 // Marks the city's buildings of a kind built (a lot that rises). The Statue
@@ -460,7 +479,7 @@ export function manhattanLayout(built: Partial<Record<Landmark, number>> = {}): 
 // What the page may ask for (POST /build). Every op is checked here, and a
 // refused one changes nothing.
 export type Op =
-  | { op: 'place'; kind: Kind; x: number; y: number; face?: Face }
+  | { op: 'place'; kind: Kind; x: number; y: number; face?: Face; size?: string }
   | { op: 'remove'; id: string }
   | { op: 'road'; x: number; y: number; dir: 0 | 1; len?: number; kind?: RoadKind }
   | { op: 'unroad'; x: number; y: number; dir: 0 | 1; len?: number }
@@ -493,7 +512,15 @@ export function parseOp(raw: unknown): Op | undefined {
     case 'place':
       if (!xy || !KINDS.includes(r.kind as Kind)) return undefined
       if (r.face !== undefined && !FACES.includes(r.face as Face)) return undefined
-      return { op: 'place', kind: r.kind as Kind, x: r.x as number, y: r.y as number, ...(r.face ? { face: r.face as Face } : {}) }
+      if (r.size !== undefined && !(typeof r.size === 'string' && hasSize(r.kind as Kind, r.size))) return undefined
+      return {
+        op: 'place',
+        kind: r.kind as Kind,
+        x: r.x as number,
+        y: r.y as number,
+        ...(r.face ? { face: r.face as Face } : {}),
+        ...(r.size ? { size: r.size as string } : {}),
+      }
     case 'remove':
       return typeof r.id === 'string' && r.id.length <= 64 ? { op: 'remove', id: r.id } : undefined
     case 'road':
@@ -624,9 +651,10 @@ function lotHasRoad(layout: Layout, x: number, y: number): boolean {
 // Seaport is a pier: on the shore, reaching into the water. The Statue
 // stands in the water. Everything else stands on land, on free cells, with
 // a road along its front. A building inside a borough belongs to it.
-export function canPlace(layout: Layout, kind: Kind, x: number, y: number, face: Face = 's'): string | undefined {
+export function canPlace(layout: Layout, kind: Kind, x: number, y: number, face: Face = 's', size?: string): string | undefined {
   if (!FOOTPRINT[kind]) return 'Unknown kind'
-  const b: Building = { id: '', kind, x, y, face }
+  if (size && !hasSize(kind, size)) return 'Unknown size'
+  const b: Building = { id: '', kind, x, y, face, ...(size ? { size } : {}) }
   const cells: [number, number][] = []
   for (const [x0, y0, x1, y1] of cellsOf(b)) for (let cx = x0; cx < x1; cx++) for (let cy = y0; cy < y1; cy++) cells.push([cx, cy])
   if (!cells.every(([cx, cy]) => inRange(cx, cy))) return 'Off the map'
@@ -663,9 +691,9 @@ export function applyOp(layout: Layout, op: Op): Applied {
   switch (op.op) {
     case 'place': {
       const face = op.face ?? 's'
-      const why = canPlace(layout, op.kind, op.x, op.y, face)
+      const why = canPlace(layout, op.kind, op.x, op.y, face, op.size)
       if (why) return { error: why }
-      const b: Building = { id: idFor(layout, op.kind), kind: op.kind, x: op.x, y: op.y, face }
+      const b: Building = { id: idFor(layout, op.kind), kind: op.kind, x: op.x, y: op.y, face, ...(op.size ? { size: op.size } : {}) }
       const bo = boroughAt(layout, op.x, op.y)
       if (bo) b.burb = bo.id
       if (FIXED.includes(op.kind)) b.built = 0
@@ -796,11 +824,13 @@ export type Pt2 = [number, number]
 
 // Where a building's agents stand: on the road along its front. A kind with a
 // preset site keeps that spot (where its hand-drawn door is) while it faces
-// south; otherwise the midpoint of the face it turns to the road.
+// south; otherwise the midpoint of the face it turns to the road. A sized
+// park's agents rest on its lawn, rows from just behind its middle.
 export function doorOf(b: Building): Pt2 {
   const [x0, y0, x1, y1] = cellsOf(b)[0]!
   const siteKind = b.kind === 'station' ? 'relay' : b.kind
-  if (b.face === 's' && siteKind in SITES) {
+  if (b.kind === 'plaza' && b.size) return [(x0 + x1) / 2, (y0 + y1) / 2 + roomOf(b) * 0.3]
+  if (b.face === 's' && siteKind in SITES && !b.size) {
     const [sx, sy] = SITES[siteKind as District].spot
     const [dx, dy] = deltaOf(b)
     return [sx + dx, sy + dy]
@@ -809,6 +839,15 @@ export function doorOf(b: Building): Pt2 {
   if (b.face === 'e') return [x1, (y0 + y1) / 2]
   if (b.face === 'w') return [x0, (y0 + y1) / 2]
   return [(x0 + x1) / 2, y1]
+}
+
+// How much room a building gives the agents standing at it, against its
+// kind's own footprint: 1 unless it is a smaller size (a pocket park's lawn
+// holds its resting agents closer together than Central Park's).
+export function roomOf(b: Building | undefined): number {
+  if (!b?.size) return 1
+  const [x0, y0, x1, y1] = cellsOf(b)[0]!
+  return Math.max(0.45, Math.min(1, Math.min(x1 - x0, y1 - y0) / 4))
 }
 
 // Where a district's agents stand: its building's door, or the station's

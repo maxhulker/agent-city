@@ -276,6 +276,23 @@ section B. Since then: a drawn borough's zoned blocks fill with brownstones
 `World.torch` (migrated from an old record on load). Bulldozing a landmark
 takes it off the record, and Build it all now raises only what is placed.
 
+### G. Buildings in sizes (started 2026-11-02)
+
+The first step in making the landmarks generic rather than Manhattan's
+own: a kind may come in other sizes. `SIZES` in `src/layout.ts` lists them
+per kind (a name and the footprint), `Building.size` names one (none: the
+kind's own `FOOTPRINT`), and `footprintOf(kind, size)` is what `cellsOf`,
+`canPlace`, `parseOp` and the page's ghost read. Parks first: the plaza is
+Central Park (4×13, hand-drawn as before, golden hash unchanged), a town
+square (4×4, with a pond) or a pocket park (2×2). A sized building is drawn
+to fit its footprint (`landmark()` in map.ts) instead of from the kind's
+picture, and its lawn (`padFor` in geo.ts), its agents' rows (`roomOf`
+closes them up), its label and its hover box (named by its size) follow its
+cells. The catalogue lists each size as its own line. Any size of park
+counts for the quest and the Blueprints card. Tests in `test/parks.test.ts`.
+Next candidates: other kinds in sizes (a smaller station, a corner library),
+and agents picking the nearest of several (`siteFor` still takes the first).
+
 ## Lessons from the first session, on cost
 
 - One long session gets expensive: every action re-sends the whole history.

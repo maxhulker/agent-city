@@ -1,7 +1,7 @@
 import type { Burb, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
+import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padFor, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, isBridge, lotsOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
@@ -353,9 +353,17 @@ function keeps(sc: Scene): Keep[] {
   ]
   for (const [kind, [x0, y0, x1, y1, slack]] of low) {
     for (const b of cityBuildings(sc.layout, kind)) {
+      if (b.size) continue
       const [dx, dy] = deltaOf(b)
       list.push([x0 + dx, y0 + dy, x1 + dx, y1 + dy, slack])
     }
+  }
+  // A park of another size keeps its lawn in view.
+  for (const b of cityBuildings(sc.layout, 'plaza')) {
+    if (!b.size) continue
+    const [x0, y0, x1, y1] = cellsOf(b)[0]!
+    const inset = 0.3 + roomOf(b) * 0.3
+    list.push([x0 + inset, y0 + inset, x1 - inset, y1 - inset, 1])
   }
   return list
 }
@@ -618,7 +626,7 @@ function pads(sc: Scene): string {
   for (const d of DISTRICTS) {
     if (!siteFor(sc.layout, d)) continue
     const c = ACCENT[d]
-    const [x0, y0, x1, y1] = padOf(d, shiftFor(sc.layout, d))
+    const [x0, y0, x1, y1] = padFor(sc.layout, d)
     const cx = (x0 + x1) / 2
     const cy = (y0 + y1) / 2
     if (d === 'plaza') {
@@ -629,7 +637,7 @@ function pads(sc: Scene): string {
       g += `<rect x="${n(x0)}" y="${n(y0)}" width="${n(x1 - x0)}" height="${n(y1 - y0)}" rx=".22" fill="${c}" fill-opacity=".17" stroke="${c}" stroke-width=".06" stroke-opacity=".55"/>`
     }
     const [x, y] = p(cx, cy)
-    const rad = d === 'plaza' ? 30 : 22
+    const rad = d === 'plaza' ? 30 * roomOf(siteFor(sc.layout, d)) : 22
     glows += `<ellipse class="glow" cx="${n(x)}" cy="${n(y)}" rx="${n(rad * 2)}" ry="${n(rad)}" fill="url(#p-${d})" opacity=".5"/>`
   }
   return glows + g + '</g>'
@@ -641,7 +649,7 @@ function padsLit(sc: Scene): string {
   for (const d of DISTRICTS) {
     if (!sc.active.has(d) || !siteFor(sc.layout, d)) continue
     const c = ACCENT[d]
-    const [x0, y0, x1, y1] = padOf(d, shiftFor(sc.layout, d))
+    const [x0, y0, x1, y1] = padFor(sc.layout, d)
     const cx = (x0 + x1) / 2
     const cy = (y0 + y1) / 2
     if (d === 'plaza') {
@@ -651,7 +659,7 @@ function padsLit(sc: Scene): string {
       g += `<rect x="${n(x0 + 0.12)}" y="${n(y0 + 0.08)}" width="${n(x1 - x0 - 0.24)}" height="${n(y1 - y0 - 0.16)}" rx=".16" fill="none" stroke="${c}" stroke-width=".04"><animate attributeName="opacity" values=".2;1;.2" dur="1.6s" repeatCount="indefinite"/></rect>`
     }
     const [x, y] = p(cx, cy)
-    const rad = d === 'plaza' ? 30 : 22
+    const rad = d === 'plaza' ? 30 * roomOf(siteFor(sc.layout, d)) : 22
     glows += `<ellipse class="glow" cx="${n(x)}" cy="${n(y)}" rx="${n(rad * 2)}" ry="${n(rad)}" fill="url(#p-${d})" opacity=".5"/>`
   }
   return g ? glows + GRID + g + '</g>' : ''
@@ -663,9 +671,9 @@ function haze(sc: Scene): string {
   let s = ''
   for (const d of DISTRICTS) {
     if (!siteFor(sc.layout, d)) continue
-    const [x0, y0, x1, y1] = padOf(d, shiftFor(sc.layout, d))
+    const [x0, y0, x1, y1] = padFor(sc.layout, d)
     const [x, y] = p((x0 + x1) / 2, (y0 + y1) / 2, 14)
-    s += `<ellipse class="glow haze" cx="${n(x)}" cy="${n(y)}" rx="${d === 'plaza' ? 70 : 46}" ry="${d === 'plaza' ? 36 : 27}" fill="url(#p-${d})" opacity="${sc.active.has(d) ? 0.55 : 0.28}"/>`
+    s += `<ellipse class="glow haze" cx="${n(x)}" cy="${n(y)}" rx="${d === 'plaza' ? n(70 * roomOf(siteFor(sc.layout, d))) : 46}" ry="${d === 'plaza' ? n(36 * roomOf(siteFor(sc.layout, d))) : 27}" fill="url(#p-${d})" opacity="${sc.active.has(d) ? 0.55 : 0.28}"/>`
   }
   return s
 }
@@ -679,11 +687,14 @@ function labels(sc: Scene): string {
     if (!site || site.built === undefined) continue
     const [dx, dy] = deltaOf(site)
     const [gx, gy, z, anchor] = SITES[d].label
-    const [x, y] = p(gx + dx, gy + dy, z)
+    // A building of another size: its name, under its middle.
+    const sized = site.size ? SIZES[site.kind]?.[site.size] : undefined
+    const [, , x1, y1] = cellsOf(site)[0]!
+    const [x, y] = sized ? p(x1 - (x1 - site.x) / 2, y1 - 0.5, -2) : p(gx + dx, gy + dy, z)
     const on = sc.active.has(d)
-    const cls = `lbl${on ? ' on' : MIDTOWN.has(d) ? ' minor' : ''}`
+    const cls = `lbl${on ? ' on' : MIDTOWN.has(d) || sized ? ' minor' : ''}`
     const fill = on ? ACCENT[d] : mix(ACCENT[d], '#e2e8f0', 0.5)
-    s += `<text class="${cls}" x="${n(x)}" y="${n(y)}" text-anchor="${anchor ?? 'middle'}" style="fill:${fill}">${LABELS[d].toUpperCase()}</text>`
+    s += `<text class="${cls}" x="${n(x)}" y="${n(y)}" text-anchor="${sized ? 'middle' : (anchor ?? 'middle')}" style="fill:${fill}">${esc((sized?.name ?? LABELS[d]).toUpperCase())}</text>`
   }
   return s
 }
@@ -1125,8 +1136,38 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     ground += blueprint(items, kind as Landmark, box, name, at, minor)
   }
 
+  // A park of another size, drawn to fit its footprint: a path round the
+  // edge, the lawn its agents rest on in the middle, trees between, and a
+  // pond when there is room for one.
+  if (kind === 'plaza' && b.size) {
+    const [ox, oy] = PRESET_SITES.plaza
+    const [[, , w, d]] = footprintOf(kind, b.size)
+    const name = SIZES.plaza?.[b.size]?.name ?? LABELS.plaza
+    if (!built) {
+      ground += gRect(ox + 0.15, oy + 0.1, ox + w - 0.15, oy + d - 0.1, '#3b352c')
+      lot([ox, oy, ox + w, oy + d], name)
+    } else {
+      const inset = 0.3 + roomOf(b) * 0.3
+      ground += gRect(ox + 0.15, oy + 0.1, ox + w - 0.15, oy + d - 0.1, '#1d4b2c')
+      ground += `<rect x="${n(ox + 0.4)}" y="${n(oy + 0.4)}" width="${n(w - 0.8)}" height="${n(d - 0.8)}" rx="${n(Math.min(w, d) * 0.25)}" fill="none" stroke="#4d5a45" stroke-width=".05"/>`
+      const big = w * d >= 12
+      const pond: [number, number, number, number] = [ox + w - 0.95, oy + 0.95, 0.42, 0.55]
+      if (big) ground += `<ellipse cx="${n(pond[0])}" cy="${n(pond[1])}" rx="${n(pond[2])}" ry="${n(pond[3])}" fill="#1e4f86" stroke="#2f6aa8" stroke-width=".05"/>`
+      const [lx, ly, rx, ry] = [ox + w / 2, oy + d / 2, w / 2 - inset, d / 2 - inset]
+      const list: [number, number, number][] = []
+      for (let i = 0; i < w * d * 3; i++) {
+        const tx = ox + 0.25 + seeded(i, w * 7 + d) * (w - 0.5)
+        const ty = oy + 0.25 + seeded(w * 7 + d, i) * (d - 0.5)
+        if (((tx - lx) / rx) ** 2 + ((ty - ly) / ry) ** 2 < 1) continue
+        if (big && ((tx - pond[0]) / (pond[2] + 0.2)) ** 2 + ((ty - pond[1]) / (pond[3] + 0.2)) ** 2 < 1) continue
+        list.push([tx, ty, 1.8 + seeded(i, i) * 1.5])
+      }
+      trees(list)
+    }
+  }
+
   // Central Park: the Reservoir, the Great Lawn (the plaza's pad), the Lake.
-  if (kind === 'plaza') if (!built) {
+  else if (kind === 'plaza') if (!built) {
     // Bare ground, fenced off, until the first subagent comes to rest.
     ground += gRect(5.15, 22.1, 8.85, 34.9, '#3b352c')
     lot([5, 22, 9, 27], LABELS.plaza)

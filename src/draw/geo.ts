@@ -1,5 +1,5 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
-import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, deltaOf, doorOf, edges, isWaiting, lots, route, siteFor, spotFor } from '../layout.ts'
+import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, cellsOf, deltaOf, doorOf, edges, isWaiting, lots, roomOf, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
@@ -194,12 +194,23 @@ export function padOf(d: District, [dx, dy]: [number, number] = [0, 0]): [number
   return [sx - 1.35, sy - 0.3, sx + 1.35, sy + (deep ? 0.85 : 0.42)]
 }
 
+// A district's lit ground where its building stands: a sized park's lawn is
+// its footprint set in from the paths round it.
+export function padFor(layout: Layout | undefined, d: District): [number, number, number, number] {
+  const b = layout && siteFor(layout, d)
+  if (!b?.size) return padOf(d, shiftFor(layout, d))
+  const [x0, y0, x1, y1] = cellsOf(b)[0]!
+  const inset = 0.3 + roomOf(b) * 0.3
+  return [x0 + inset, y0 + inset, x1 - inset, y1 - inset]
+}
+
 // Where the i-th agent of a district stands, around its spot (the door of
 // its building, or the station's forecourt while nothing of the kind is placed).
-export function standAt(d: District, i: number, [sx, sy]: [number, number] = SITES[d].spot): [number, number] {
+// `room` closes the rows up on a smaller park's lawn (`roomOf`).
+export function standAt(d: District, i: number, [sx, sy]: [number, number] = SITES[d].spot, room = 1): [number, number] {
   if (d === 'plaza') {
     // On the Great Lawn, in loose rows.
-    return [sx - 1.1 + (i % 3) * 1.1, sy - 1.6 + Math.floor(i / 3) * 1.1 + (i % 2) * 0.3]
+    return [sx + (-1.1 + (i % 3) * 1.1) * room, sy + (-1.6 + Math.floor(i / 3) * 1.1 + (i % 2) * 0.3) * room]
   }
   const off = (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * 0.55
   return [sx + off, sy + Math.floor(i / 6) * 0.3]
@@ -232,9 +243,9 @@ export function waitAt(layout: Layout | undefined, i: number): [number, number] 
 // Where an agent stands: in Manhattan at its district's door; in a borough
 // at the building of its kind the person placed there, else on the square.
 export function placeAt(place: Place, i: number, layout?: Layout): [number, number] {
-  if (!place.burb) return standAt(place.at, i, layout ? spotFor(layout, place.at) : undefined)
+  if (!place.burb) return standAt(place.at, i, layout ? spotFor(layout, place.at) : undefined, roomOf(layout && siteFor(layout, place.at)))
   const inside = burbGeo(layout, place.burb) && burbBuilding(layout, place.burb, place.at)
-  return inside ? standAt(place.at, i, doorOf(inside)) : burbAt(place.burb, i, layout)
+  return inside ? standAt(place.at, i, doorOf(inside), roomOf(inside)) : burbAt(place.burb, i, layout)
 }
 
 // How long the train home takes to pull out of Grand Central and be gone, and

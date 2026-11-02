@@ -112,7 +112,8 @@ water it is a bridge), **Zone** marks blocks beside a road for the population
 to fill in, **Park** plants trees, **Borough** drags a rectangle for a project
 and asks its name, **Build…** opens the catalogue of landmarks (each needs
 land and a road along its front; the Seaport a shore; the Statue water; `R`
-turns the front), and **Bulldoze** removes a road, a building, a zoned lot or
+turns the front; the park where finished subagents rest comes as Central
+Park, a town square or a pocket park), and **Bulldoze** removes a road, a building, a zoned lot or
 a park. The ghost under the cursor is green where a thing may go and red
 where it may not, with the reason beside the toolbar. With **Select**, click
 a building for its card and Bulldoze. The right mouse button always pans;

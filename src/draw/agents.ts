@@ -1,7 +1,7 @@
 import type { Agent, District, Session, World } from '../types.ts'
 import { LABELS, TRAIN_MS, esc, hash, isWaiting, keyed, n, p, placeAt, standAt, waitAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
-import { siteFor, spotFor, trackOf } from '../layout.ts'
+import { roomOf, siteFor, spotFor, trackOf } from '../layout.ts'
 
 // The agents: who they are, where they stand, what they are doing. They go
 // to the page as sprites (docs/frames.md): the figure, the spot, and the walk
@@ -135,7 +135,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
   const sessions = new Map(world.sessions.map(x => [x.id, x]))
   const out: Sprite[] = []
   const placed: { a: Agent; at: [number, number]; i: number }[] = []
-  for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i, spotFor(sc.layout, d)), i }))
+  for (const [d, list] of byDistrict) list.forEach((a, i) => placed.push({ a, at: standAt(d, i, spotFor(sc.layout, d), roomOf(siteFor(sc.layout, d))), i }))
   // The repositories with no borough wait together on the station's forecourt.
   let waiting = 0
   for (const [b, list] of byBurb) list.forEach((a, i) => placed.push({ a, at: isWaiting(b) ? waitAt(sc.layout, waiting++) : placeAt({ at: a.at, burb: b }, i, sc.layout), i }))

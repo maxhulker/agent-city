@@ -1,7 +1,7 @@
 import type { Agent, District, Landmark, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
-import { boroughRect, deltaOf } from '../layout.ts'
+import { SIZES, boroughRect, cellsOf, deltaOf } from '../layout.ts'
 import type { Kind } from '../layout.ts'
 
 // Invisible hover zones over every place on the map that means something, each
@@ -33,7 +33,7 @@ const ABOUT: Record<keyof typeof LABELS, string> = {
   relay: 'Dispatch: starting subagents, sending messages, and other connected tools. New subagents arrive here.',
   harbor: 'git and GitHub: commits, pushes, pulls and pull requests. It catches fire when a merge conflict needs you.',
   hall: "Where each session's lead thinks and waits for your next message. A \"?\" goes up when something needs you.",
-  plaza: 'Finished subagents rest on the Great Lawn before they leave.',
+  plaza: 'Finished subagents rest on its lawn before they leave.',
 }
 
 // Each kind's hover box at its preset origin, and how tall it stands.
@@ -85,7 +85,9 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const b of sc.layout.buildings) {
     const [[x0, y0, x1, y1], height] = BOXES[b.kind]
     const [dx, dy] = deltaOf(b)
-    const box: [number, number, number, number] = [x0 + dx, y0 + dy, x1 + dx, y1 + dy]
+    // A building of another size: its own footprint, under its own name.
+    const sized = b.size ? SIZES[b.kind]?.[b.size] : undefined
+    const box: [number, number, number, number] = sized ? cellsOf(b)[0]! : [x0 + dx, y0 + dy, x1 + dx, y1 + dy]
     const lot = b.built === undefined
     const kind = b.kind
     const tag = { building: b.id }
@@ -95,7 +97,7 @@ export function drawPlaces(world: World, sc: Scene): string {
         ...tag,
         box,
         height: lot ? 4 : height,
-        title: lot ? `${LABELS[d]}: blueprint` : d === 'relay' ? BLUEPRINTS.relay.name : LABELS[d],
+        title: lot ? `${sized?.name ?? LABELS[d]}: blueprint` : d === 'relay' ? BLUEPRINTS.relay.name : (sized?.name ?? LABELS[d]),
         text: lot
           ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}`
           : d === 'relay'

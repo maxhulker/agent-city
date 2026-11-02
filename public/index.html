@@ -2797,7 +2797,7 @@
   const DISTRICT_KINDS = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
   const FACES = ['s', 'w', 'n', 'e']
   let layout = null
-  let tool = 'select', placeKind = null, face = 's'
+  let tool = 'select', placeKind = null, placeSize = null, face = 's'
   let gesture = null, gestureEnded = false, hover = null, catalogHtml = ''
   const buildBar = $('build'), catalog = $('catalog'), selCard = $('sel'), sheet = $('bsheet')
   const cursorLayer = layer('ov-cursor')
@@ -2829,9 +2829,18 @@
     return { gx: (u.x / 10 + u.y / 5) / 2, gy: (u.y / 5 - u.x / 10) / 2 }
   }
 
-  function setTool(t, kind) {
+  // Every entry the catalogue lists: each kind, then the other sizes it comes
+  // in (a town square, a pocket park), from the shared rules.
+  function entries() {
+    const sizes = k => (R() && R().SIZES[k]) || {}
+    return KINDS.flatMap(([k, name, c]) => [[k, name, c, null], ...Object.entries(sizes(k)).map(([id, s]) => [k, s.name, c, id])])
+  }
+
+  function setTool(t, kind, size) {
     tool = t
+    if (t === 'place' && kind) placeSize = size || null
     placeKind = t === 'place' ? kind || placeKind || 'hall' : null
+    if (!placeKind) placeSize = null
     gesture = null
     for (const b of buildBar.querySelectorAll('.tool')) b.classList.toggle('on', b.dataset.tool === t)
     map.classList.toggle('tool', t !== 'select')
@@ -2839,7 +2848,7 @@
     // never covers the ground you are placing on; Build… opens it again.
     catalog.hidden = !(t === 'place' && !kind)
     const placeBtn = buildBar.querySelector('[data-tool="place"]')
-    const picked = KINDS.find(([k]) => k === placeKind)
+    const picked = entries().find(([k, , , s]) => k === placeKind && s === placeSize)
     placeBtn.textContent = t === 'place' && kind && picked ? `Build: ${picked[1]}` : 'Build…'
     if (t !== 'select') hideSel()
     $('bt-why').textContent = ''
@@ -2850,27 +2859,27 @@
   // The catalogue: a button per kind, with how many stand in the city.
   function drawCatalog() {
     if (!layout) return
-    const standing = k => layout.buildings.filter(b => b.kind === k && !b.burb)
+    const standing = (k, size) => layout.buildings.filter(b => b.kind === k && !b.burb && (size === undefined || (b.size || null) === size))
     const districtsUp = DISTRICT_KINDS.every(d => standing(d).some(b => b.built !== undefined))
     const quests = gameQuests
     const quest = k => quests && quests.find(q => q.id === k)
     // The suggested next step lights its tool or its line.
     const nextQ = quests && quests.find(q => q.state === 'next')
     for (const t of buildBar.querySelectorAll('[data-tool]')) t.classList.toggle('hint', !!nextQ && (nextQ.id === 'road' ? t.dataset.tool === 'road' : nextQ.id === 'zone' ? t.dataset.tool === 'zone' : t.dataset.tool === 'place'))
-    const html = KINDS.map(([k, name, c]) => {
-      const n = standing(k).length
+    const html = entries().map(([k, name, c, sz]) => {
+      const n = standing(k, sz).length
       const locked = k === 'empire' && (quest(k) ? quest(k).state === 'locked' : !districtsUp)
-      const fp = R() ? R().FOOTPRINT[k][0] : null
+      const fp = R() ? R().footprintOf(k, sz)[0] : null
       const size = fp ? `${fp[2]}×${fp[3]}` : ''
       const hint = locked ? 'Build every district first' : k === 'liberty' ? 'In the water' : k === 'harbor' ? 'On a shore' : 'On land, along a road'
-      return `<button class="kind${placeKind === k ? ' on' : ''}${locked ? ' locked' : ''}${quest(k) && quest(k).state === 'next' ? ' next' : ''}" type="button" data-kind="${k}" style="--c:${c}" title="${esc(hint)}">
+      return `<button class="kind${placeKind === k && placeSize === sz ? ' on' : ''}${locked ? ' locked' : ''}${!sz && quest(k) && quest(k).state === 'next' ? ' next' : ''}" type="button" data-kind="${k}"${sz ? ` data-size="${sz}"` : ''} style="--c:${c}" title="${esc(hint)}">
         <span class="sw"></span><span class="nm">${esc(name)}</span><span class="ct">${size}${n ? ` · ${n} placed` : ''}</span></button>`
     }).join('')
     if (html !== catalogHtml) { catalog.innerHTML = html; catalogHtml = html }
   }
   catalog.addEventListener('click', e => {
     const b = e.target.closest('[data-kind]')
-    if (b) setTool('place', b.dataset.kind)
+    if (b) setTool('place', b.dataset.kind, b.dataset.size)
   })
   buildBar.addEventListener('click', e => {
     const b = e.target.closest('[data-tool]')
@@ -2945,11 +2954,12 @@
       const rules = R()
       if (tool === 'place' && placeKind) {
         const x = Math.floor(gx), y = Math.floor(gy)
-        const bad = rules.canPlace(layout, placeKind, x, y, face)
+        const bad = rules.canPlace(layout, placeKind, x, y, face, placeSize || undefined)
         note = bad || ''
         const cls = bad ? 'bad' : 'ok'
-        for (const [dx, dy, w, d] of rules.FOOTPRINT[placeKind]) g += rect(x + dx, y + dy, w, d, cls)
-        const [, , w, d] = rules.FOOTPRINT[placeKind][0]
+        const fp = rules.footprintOf(placeKind, placeSize || undefined)
+        for (const [dx, dy, w, d] of fp) g += rect(x + dx, y + dy, w, d, cls)
+        const [, , w, d] = fp[0]
         if (face === 's') g += line(x, y + d, x + w, y + d, 'front')
         if (face === 'n') g += line(x, y, x + w, y, 'front')
         if (face === 'e') g += line(x + w, y, x + w, y + d, 'front')
@@ -3046,7 +3056,7 @@
     e.stopPropagation()
     if (gestureEnded) return
     const { gx, gy } = gridAt(e)
-    if (tool === 'place' && placeKind) build({ op: 'place', kind: placeKind, x: Math.floor(gx), y: Math.floor(gy), face })
+    if (tool === 'place' && placeKind) build({ op: 'place', kind: placeKind, x: Math.floor(gx), y: Math.floor(gy), face, ...(placeSize ? { size: placeSize } : {}) })
     else if (tool === 'bulldoze') {
       const t = bulldozeTarget(e, gx, gy)
       if (!t) { toast('Nothing there to bulldoze'); return }
