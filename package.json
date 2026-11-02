@@ -14,6 +14,7 @@
     "disconnect": "node src/install.ts --uninstall",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-shortcut.ps1",
     "autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/autostart.ps1",
+    "notifications": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/notifications.ps1",
     "icon": "node scripts/make-icon.mjs assets/agent-city.ico assets/agent-city-preview.bmp assets"
   }
 }

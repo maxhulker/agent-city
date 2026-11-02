@@ -17,8 +17,10 @@ export function toastXml(title: string, body: string, url: string): string {
   )
 }
 
-// PowerShell's app id: Windows shows a toast only for an app it knows.
-const NOTIFIER = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'
+// Windows shows a toast only for an app it knows: Agent City's own id once
+// `npm run notifications` has registered it, else PowerShell's.
+const OWN = 'AgentCity.App'
+const POWERSHELL = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'
 
 export function toast(title: string, body: string, url: string) {
   if (process.platform !== 'win32' || process.env.AGENT_CITY_NO_TOAST) return
@@ -29,7 +31,8 @@ export function toast(title: string, body: string, url: string) {
     '$x = New-Object Windows.Data.Xml.Dom.XmlDocument',
     '$x.LoadXml($env:AGENT_CITY_TOAST)',
     '$t = New-Object Windows.UI.Notifications.ToastNotification $x',
-    `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${NOTIFIER}').Show($t)`,
+    `$id = if (Test-Path 'HKCU:\\Software\\Classes\\AppUserModelId\\${OWN}') { '${OWN}' } else { '${POWERSHELL}' }`,
+    '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show($t)',
   ].join('; ')
   try {
     spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {

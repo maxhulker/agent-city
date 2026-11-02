@@ -157,7 +157,9 @@ started on and checks the folder every 30 s: commits made here since then
 set `restart` (the Empire State offers a restart instead of a pull, and
 `/update` restarts without pulling). Both a new main and a local restart are
 announced once by a Windows toast from the server (`src/notify.ts`, through
-PowerShell's own notifier; `AGENT_CITY_NO_TOAST` turns it off). Tests in
+PowerShell's notifier, or Agent City's own app id `AgentCity.App` once
+`npm run notifications` has registered it under HKCU; `AGENT_CITY_NO_TOAST`
+turns it off). Tests in
 `test/updates.test.ts`. The service worker would not register inside the
 desktop app's built-in browser pane, so installing was not checked there;
 Edge and Chrome install from the manifest.

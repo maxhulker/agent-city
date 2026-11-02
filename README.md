@@ -207,8 +207,12 @@ the server runs just opens another window.
 - **Notifications.** When main on GitHub has something new, or this copy has
   new commits since the server started (you or Claude committed here),
   Windows shows a notification once; clicking it opens the city, and the
-  lit Empire State updates or restarts it in one click. Set
-  `AGENT_CITY_NO_TOAST=1` to turn the notifications off.
+  lit Empire State updates or restarts it in one click. `npm run
+  notifications` gives them Agent City's own name and icon (otherwise they
+  come from Windows PowerShell) and its own entry in Windows' notification
+  settings. A notification that never pops up but sits in the notification
+  centre (Win+N) means Do Not Disturb is on. Set `AGENT_CITY_NO_TOAST=1` to
+  turn them off.
 
 ## Connect Claude Code
 
