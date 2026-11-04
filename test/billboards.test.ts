@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { devCommand, hostOf, localUrls, portOf, titleOf, watchedTool } from '../src/billboards.ts'
+import { devCommand, hostOf, litFor, localUrls, portOf, titleOf, watchedTool } from '../src/billboards.ts'
 import { renderFrame } from '../src/city.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
@@ -167,4 +167,48 @@ test('a billboard placed by hand stands exactly there, and the others keep clear
   assert.equal(after.length, 2)
   assert.notEqual(after.find(i => i.k.endsWith('|5174'))!.svg, before[1], 'it moved')
   assert.equal(after.find(i => i.k.endsWith('|5173'))!.svg, before[0], 'the other stays where it was')
+})
+
+test('a billboard glows new until opened, and lights up again whenever it is updated', () => {
+  assert.equal(litFor({}), 'new')
+  assert.equal(litFor({ openedAt: 5 }), '')
+  assert.equal(litFor({ openedAt: 5, updatedAt: 4 }), '')
+  assert.equal(litFor({ openedAt: 5, updatedAt: 6 }), 'updated')
+
+  const city = started()
+  run(city, 'Bash', { command: 'npm run dev' }, 'Local: http://localhost:5173/', T0 + 100)
+  const id = city.billboardsToProbe(T0 + 200)[0]!.id
+  city.billboardProbed(id, true, T0 + 300, 'My App')
+  const svg = (now: number) => boards(city, now)[0]!.svg
+  assert.match(svg(T0 + 400), /NEW · CLICK TO OPEN/)
+  city.openBillboard(id, T0 + 500)
+  assert.doesNotMatch(svg(T0 + 600), /<animate/, 'plainly lit once opened')
+
+  // A session edits a file in its project: the page has likely changed.
+  run(city, 'Edit', { file_path: `${HOME}/src/App.tsx`, old_string: 'a', new_string: 'b' }, 'ok', T0 + 700)
+  let s = svg(T0 + 800)
+  assert.match(s, /UPDATED · CLICK TO SEE/)
+  assert.match(s, /<animate/, 'glowing again')
+  assert.doesNotMatch(s, /NEW · CLICK TO OPEN/)
+  assert.ok(city.ticker.some(t => /billboard lit up: web changed/i.test(t.text)))
+  const ticks = city.ticker.length
+  run(city, 'Write', { file_path: `${HOME}/src/b.ts`, content: 'x' }, 'ok', T0 + 900)
+  assert.equal(city.ticker.filter(t => /billboard lit up/i.test(t.text)).length, city.ticker.slice(0, ticks).filter(t => /billboard lit up/i.test(t.text)).length, 'one ticker line while it glows, not one per edit')
+
+  city.openBillboard(id, T0 + 1000)
+  assert.doesNotMatch(svg(T0 + 1100), /<animate/, 'opened: resting again')
+
+  // Edits elsewhere, and reads here, leave it be.
+  run(city, 'Edit', { file_path: 'C:/fake/other/a.ts', old_string: 'a', new_string: 'b' }, 'ok', T0 + 1200)
+  run(city, 'Read', { file_path: `${HOME}/src/App.tsx` }, 'ok', T0 + 1300)
+  assert.doesNotMatch(svg(T0 + 1400), /<animate/)
+
+  // Its server restarting is an update; so is a new page title.
+  for (let i = 0; i < 3; i++) city.billboardProbed(id, false, T0 + 1500 + i)
+  city.billboardProbed(id, true, T0 + 1600)
+  assert.match(svg(T0 + 1700), /UPDATED · CLICK TO SEE/)
+  city.openBillboard(id, T0 + 1800)
+  city.billboardProbed(id, true, T0 + 1900, 'My App v2')
+  assert.match(svg(T0 + 2000), /UPDATED · CLICK TO SEE/)
+  assert.match(svg(T0 + 2000), /My App v2/)
 })

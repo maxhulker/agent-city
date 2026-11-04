@@ -1,7 +1,7 @@
 import { esc, item, n, p, pts, waitAt } from './geo.ts'
 import type { OverlayItem, Scene } from './geo.ts'
 import { burbGeo, spotFor } from '../layout.ts'
-import { hostOf } from '../billboards.ts'
+import { hostOf, litFor } from '../billboards.ts'
 import type { Billboard, World } from '../types.ts'
 
 // The billboards: one for each local server a session started (a front end
@@ -93,14 +93,16 @@ function screenBox(cx: number, cy: number, face: Face): [number, number, number,
 function board(b: Billboard, cx: number, cy: number): string {
   const face: Face = b.face === 'r' ? 'r' : 'l'
   const f = frameOf(cx, cy, face)
-  const fresh = b.openedAt === undefined
+  // New until first opened, updated whenever it changes after: both glow.
+  const lit = litFor(b)
+  const fresh = lit !== ''
   const u0 = -W / 2
   const u1 = W / 2
   const host = hostOf(b.url)
   const title = clip(b.title || b.name, 16)
   // The city's own hover card (data-tip-*), like its places'.
   const tipTitle = b.title ? `${b.title}` : `${b.name}'s local server`
-  const tipText = `${b.url}: ${b.name}'s local server. Click to open it${fresh ? ' (new)' : ''}; ⚙ to move, turn or take it down.`
+  const tipText = `${b.url}: ${b.name}'s local server. Click to open it${lit === 'new' ? ' (new)' : lit === 'updated' ? ' (updated since you last looked)' : ''}; ⚙ to move, turn or take it down.`
   let g = `<g class="billboard${fresh ? ' fresh' : ''}" data-billboard="${esc(b.id)}" data-url="${esc(b.url)}" data-face="${face}" data-tip-title="${esc(tipTitle)}" data-tip-text="${esc(tipText)}" style="cursor:pointer;--accent:#38bdf8">`
   // A new one lights the ground round it, flat on the grid.
   if (fresh) {
@@ -133,14 +135,14 @@ function board(b: Billboard, cx: number, cy: number): string {
     if (fresh) g += `<animate attributeName="opacity" values="1;.2;1" dur="1.2s" begin="${(i * 0.13).toFixed(2)}s" repeatCount="indefinite"/>`
     g += `</circle>`
   }
-  // A new one has a sign hung over it, on the same face.
+  // A new or updated one has a sign hung over it, on the same face.
   if (fresh) {
     const t0 = Z1 + 2.2
     const t1 = Z1 + 7.4
     g += `<g>`
     g += `<path d="M${pts([f.pt([-0.6, 0, Z1]), f.pt([-0.6, 0, t0])])}M${pts([f.pt([0.6, 0, Z1]), f.pt([0.6, 0, t0])])}" stroke="#78716c" stroke-width=".5"/>`
     g += f.poly([[u0, 0, t0], [u1, 0, t0], [u1, 0, t1], [u0, 0, t1]], '#fbbf24')
-    g += f.text(0, t0 + 1.6, 'NEW · CLICK TO OPEN', 2.1, '#1c1917', 800)
+    g += f.text(0, t0 + 1.6, lit === 'new' ? 'NEW · CLICK TO OPEN' : 'UPDATED · CLICK TO SEE', 2.1, '#1c1917', 800)
     g += `<animate attributeName="opacity" values="1;.55;1" dur="1.6s" repeatCount="indefinite"/></g>`
   }
   // The ⚙ just off its top corner, clear of the sign: the card to move, turn
