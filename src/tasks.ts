@@ -61,7 +61,7 @@ export class Tasks {
     // A task saved as running lost its watcher when the server stopped.
     this.list = (saved ?? []).slice(-KEPT).map(t =>
       t.status === 'running'
-        ? { ...t, status: 'failed', endedAt: t.endedAt ?? Date.now(), error: 'Agent City stopped while it ran; the session may have finished on its own.' }
+        ? { ...t, status: 'failed', endedAt: t.endedAt ?? Date.now(), error: 'Crosswalk stopped while it ran; the session may have finished on its own.' }
         : t,
     )
   }

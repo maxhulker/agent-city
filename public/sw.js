@@ -1,4 +1,4 @@
-// Agent City's service worker: it makes the page installable as an app (its
+// Crosswalk's service worker: it makes the page installable as an app (its
 // own window, taskbar icon and Start menu entry). It keeps nothing: the city
 // always comes live from the server on this machine.
 self.addEventListener('install', () => self.skipWaiting())

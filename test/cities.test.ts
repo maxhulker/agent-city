@@ -65,7 +65,7 @@ test('each event goes to the city that claims its account; the rest stay home', 
   // A folder of its own: its URL says so, whatever the account.
   assert.equal(cityFor(cities, 'side', desktop('max@acme.com')), 'side')
   assert.equal(cityFor(cities, 'gone', {}), undefined)
-  // AGENT_CITY, which Agent City gives the sessions it starts, beats them all.
+  // AGENT_CITY, which Crosswalk gives the sessions it starts, beats them all.
   assert.equal(cityFor(cities, null, whoOf({ 'x-agent-city': 'home', 'x-agent-city-email': 'max@acme.com' }, dir)), HOME)
   assert.equal(cityFor(cities, null, whoOf({ 'x-agent-city': 'nope', 'x-agent-city-email': 'max@acme.com' }, dir)), 'work')
   // A shell that didn't expand a variable sends its name: nobody.

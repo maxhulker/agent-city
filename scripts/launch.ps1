@@ -1,5 +1,5 @@
-# Opens Agent City in its own window, starting the server first when it isn't
-# running. The server runs in a minimized window titled "Agent City": close
+# Opens Crosswalk in its own window, starting the server first when it isn't
+# running. The server runs in a minimized window titled "Crosswalk": close
 # that window to stop it. With -Background (how it starts at login, see
 # autostart.ps1) it only starts the server, out of sight, and opens nothing:
 # the city keeps its records and its notifications come through.
@@ -22,12 +22,12 @@ function Test-City {
 if (-not (Test-City)) {
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Add-Type -AssemblyName PresentationFramework
-    [System.Windows.MessageBox]::Show('Agent City needs Node.js 22.18 or newer: https://nodejs.org', 'Agent City') | Out-Null
+    [System.Windows.MessageBox]::Show('Crosswalk needs Node.js 22.18 or newer: https://nodejs.org', 'Crosswalk') | Out-Null
     exit 1
   }
   $server = Join-Path $root 'src\server.ts'
   $style = if ($Background) { 'Hidden' } else { 'Minimized' }
-  Start-Process -FilePath $env:ComSpec -ArgumentList '/c', "title Agent City & node `"$server`"" -WorkingDirectory $root -WindowStyle $style
+  Start-Process -FilePath $env:ComSpec -ArgumentList '/c', "title Crosswalk & node `"$server`"" -WorkingDirectory $root -WindowStyle $style
   for ($i = 0; $i -lt 40 -and -not (Test-City); $i++) { Start-Sleep -Milliseconds 250 }
 }
 if ($Background) { exit 0 }

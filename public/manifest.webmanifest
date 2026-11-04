@@ -1,6 +1,6 @@
 {
-  "name": "Agent City",
-  "short_name": "Agent City",
+  "name": "Crosswalk",
+  "short_name": "Crosswalk",
   "description": "Every Claude Code session on this machine, drawn as agents at work in a city.",
   "start_url": "/",
   "scope": "/",

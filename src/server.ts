@@ -25,7 +25,7 @@ import type { Agent, Decision, District, Task, World } from './types.ts'
 import { base, City, forgetRoots, SCAFFOLD_MS } from './world.ts'
 import type { HookEvent, TickerItem } from './world.ts'
 
-// Agent City: a local server Claude Code sessions post their hook events to,
+// Crosswalk: a local server Claude Code sessions post their hook events to,
 // and a page that draws every session at work in one isometric Manhattan.
 // One city per Claude Code config folder (src/cities.ts): the page shows one
 // at a time, with a tab for each.
@@ -488,7 +488,7 @@ const server = createServer(async (req, res) => {
   const save = () => town.save()
 
   try {
-    // The status line Agent City installs posts what Claude Code gives it (the
+    // The status line Crosswalk installs posts what Claude Code gives it (the
     // session's cost, the plan's limits) and prints the Treasury's line.
     if (req.method === 'POST' && url.pathname === '/statusline') {
       if (origin) return reply(res, 403, '{}')
@@ -496,7 +496,7 @@ const server = createServer(async (req, res) => {
       try {
         line = city.statusLine(JSON.parse(await body(req)), Date.now())
       } catch {
-        line = '🏦 Agent City'
+        line = '🏦 Crosswalk'
       }
       return reply(res, 200, line, 'text/plain; charset=utf-8')
     }
@@ -769,7 +769,7 @@ const server = createServer(async (req, res) => {
 
 server.on('error', (err: Error & { code?: string }) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`agent-city: port ${PORT} is in use; is Agent City already running?`)
+    console.error(`crosswalk: port ${PORT} is in use; is Crosswalk already running?`)
     process.exit(1)
   }
   throw err
@@ -777,7 +777,7 @@ server.on('error', (err: Error & { code?: string }) => {
 
 server.listen(PORT, HOST, () => {
   mkdirSync(STATE_DIR, { recursive: true })
-  console.log(`Agent City is running: http://localhost:${PORT}`)
+  console.log(`Crosswalk is running: http://localhost:${PORT}`)
   if (towns.size > 1) console.log(`Cities: ${[...towns.values()].map(t => `${t.conf.name} (${t.conf.config})`).join(', ')}`)
   if (!existsSync(stateFile(HOME))) console.log('Waiting for the first Claude Code session to post an event.')
 })

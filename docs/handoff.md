@@ -1,4 +1,4 @@
-# Handoff: where Agent City stands
+# Handoff: where Crosswalk stands
 
 Written 2026-11-01, at the end of the first build session, for whoever (or
 whichever Claude session) picks the project up next.
@@ -146,7 +146,7 @@ room for many boroughs, with two to four rivers. Its frame is all the land;
 the page opens on the station's island (`fitIsland`, also on Rebuild and a
 new pick) and may zoom in further on a bigger map (`maxZ`).
 
-### F. Agent City as an app
+### F. Crosswalk as an app
 
 `public/manifest.webmanifest` and `public/sw.js` (served with the icons from
 `assets/`, which `npm run icon` now also writes as PNGs) make the page
@@ -157,7 +157,7 @@ started on and checks the folder every 30 s: commits made here since then
 set `restart` (the Empire State offers a restart instead of a pull, and
 `/update` restarts without pulling). Both a new main and a local restart are
 announced once by a Windows toast from the server (`src/notify.ts`, through
-PowerShell's notifier, or Agent City's own app id `AgentCity.App` once
+PowerShell's notifier, or Crosswalk's own app id `AgentCity.App` once
 `npm run notifications` has registered it under HKCU; `AGENT_CITY_NO_TOAST`
 turns it off). Two traps, both fixed: the script must go to PowerShell
 as `-EncodedCommand` (a plain `-Command` loses its backslashes on Windows),

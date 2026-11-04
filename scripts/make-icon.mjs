@@ -1,4 +1,4 @@
-// Draws the Agent City icon (an isometric tower and a brick block at night)
+// Draws the Crosswalk icon (an isometric tower and a brick block at night)
 // and writes it as a multi-size .ico, with no dependencies; given a folder as
 // a third argument, also the PNGs the installable app's manifest names.
 import { writeFileSync } from 'node:fs'
