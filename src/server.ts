@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { connect as netConnect } from 'node:net'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import * as nodeModule from 'node:module'
 import { tmpdir } from 'node:os'
@@ -14,6 +15,7 @@ import { boroughRect, burbGeo, isWaiting } from './layout.ts'
 import { HATS } from './draw/agents.ts'
 import { p, placeAt } from './draw/geo.ts'
 import { Approvals } from './approvals.ts'
+import { DEV_PORTS, portOf, titleOf } from './billboards.ts'
 import { CensusTaker } from './census.ts'
 import { changesIn } from './changes.ts'
 import { hooksInstalled } from './install.ts'
@@ -100,6 +102,8 @@ function openTown(conf: CityConf): Town {
   const file = stateFile(conf.id)
   const saved = loadWorld(file)
   const city = new City(saved)
+  // Crosswalk's own address is no session's front end.
+  city.ignorePorts.add(PORT)
   // A brand-new city starts on land of its own to lay out; the welcome offers others.
   if (!saved) city.newMap(1 + Math.floor(Math.random() * 2147483000), Date.now())
   // The tasks and app sessions started here report here, whatever their
@@ -444,6 +448,65 @@ setInterval(() => {
     }
   }
 }, 5_000)
+// The billboards' local servers (src/billboards.ts): every few seconds each
+// one spotted lately or standing is knocked on, and its page's title read
+// once. After a dev command with no address in sight, the usual dev ports
+// are watched for two minutes for one that opens (one open before the
+// command is not its server).
+function portOpen(port: number, host: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const sock = netConnect({ port, host })
+    const done = (ok: boolean) => {
+      sock.destroy()
+      resolve(ok)
+    }
+    sock.setTimeout(400, () => done(false))
+    sock.once('connect', () => done(true))
+    sock.once('error', () => done(false))
+  })
+}
+// Dev servers listen on IPv4 or IPv6 localhost, whichever the system resolves first.
+const answers = async (port: number) => (await portOpen(port, '127.0.0.1')) || (await portOpen(port, '::1'))
+async function pageTitle(url: string): Promise<string> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(1500), redirect: 'follow' })
+    if (!/html/i.test(r.headers.get('content-type') ?? '')) return ''
+    return titleOf((await r.text()).slice(0, 100_000))
+  } catch {
+    return ''
+  }
+}
+const watches: { town: Town; root: string; until: number; before: Set<number> }[] = []
+const openDevPorts = async () => new Set((await Promise.all(DEV_PORTS.map(async p => ((await answers(p)) ? p : 0)))).filter(p => p && p !== PORT))
+let probing = false
+setInterval(async () => {
+  if (probing) return
+  probing = true
+  try {
+    const now = Date.now()
+    for (const town of towns.values()) {
+      for (const hint of town.city.takeDevHints(now)) watches.push({ town, root: hint.root, until: now + 120_000, before: await openDevPorts() })
+      for (const b of town.city.billboardsToProbe(now)) {
+        const ok = await answers(portOf(b.url))
+        town.city.billboardProbed(b.id, ok, Date.now(), ok && !b.title ? await pageTitle(b.url) : undefined)
+      }
+    }
+    const open = watches.length ? await openDevPorts() : new Set<number>()
+    for (let i = watches.length - 1; i >= 0; i--) {
+      const wch = watches[i]!
+      for (const port of open) {
+        if (wch.before.has(port)) continue
+        wch.before.add(port)
+        wch.town.city.spotBillboard(wch.root, `http://localhost:${port}/`, Date.now())
+      }
+      if (Date.now() > wch.until) watches.splice(i, 1)
+    }
+  } catch (err) {
+    console.error('agent-city: billboard probe failed:', err)
+  } finally {
+    probing = false
+  }
+}, 3_000)
 // Prunes quiet sessions, and keeps the page's clocks honest.
 setInterval(dirtyAll, 60_000)
 setInterval(forgetRoots, 10 * 60_000)
@@ -700,10 +763,14 @@ const server = createServer(async (req, res) => {
     }
     if (
       req.method === 'POST' &&
-      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap')
+      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap' || url.pathname === '/billboard/open')
     ) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
+      // A billboard was opened: it stops glowing.
+      if (url.pathname === '/billboard/open') {
+        return city.openBillboard(args.id, Date.now()) ? reply(res, 200, '{"ok":true}') : reply(res, 404, '{"error":"No such billboard"}')
+      }
       // The city builder: one placement, checked by the layout's rules.
       if (url.pathname === '/build') {
         // "Build it for me" sizes the borough to the repository: git counts it.
