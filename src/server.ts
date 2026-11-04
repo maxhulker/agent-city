@@ -20,6 +20,7 @@ import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { findTranscript, listTranscripts, readConversation } from './transcripts.ts'
 import { Updates } from './updates.ts'
+import { imageBlocks, pruneUploads, saveUpload, UPLOAD_MAX } from './uploads.ts'
 import { toast } from './notify.ts'
 import type { Agent, Decision, District, Task, World } from './types.ts'
 import { base, City, forgetRoots, SCAFFOLD_MS } from './world.ts'
@@ -33,6 +34,9 @@ import type { HookEvent, TickerItem } from './world.ts'
 export const PORT = Number(process.env.AGENT_CITY_PORT ?? 4777)
 const HOST = '127.0.0.1'
 const STATE_DIR = stateDir()
+// Files attached in the page (src/uploads.ts); a month's worth is kept.
+const UPLOADS = join(STATE_DIR, 'uploads')
+pruneUploads(UPLOADS)
 const PAGE = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'index.html')
 const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_FILES: Record<string, [string, string]> = {
@@ -147,6 +151,7 @@ function openTown(conf: CityConf): Town {
       if (what === 'result' || what === 'start' || what === 'ended' || what === 'failed') save()
     },
     env,
+    UPLOADS,
   )
   city.world.appSessions = appSessions.list()
   for (const s of appSessions.list()) if (s.sessionId && s.look) city.dress(s.sessionId, s.look)
@@ -436,6 +441,10 @@ setInterval(forgetRoots, 10 * 60_000)
 // ---- http -----------------------------------------------------------------
 
 function body(req: IncomingMessage, limit = 4 * 1024 * 1024): Promise<string> {
+  return bytes(req, limit).then(b => b.toString('utf8'))
+}
+
+function bytes(req: IncomingMessage, limit: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let size = 0
     const chunks: Buffer[] = []
@@ -448,7 +457,7 @@ function body(req: IncomingMessage, limit = 4 * 1024 * 1024): Promise<string> {
         chunks.push(chunk)
       }
     })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
 }
@@ -535,6 +544,19 @@ const server = createServer(async (req, res) => {
       // Usually {}: the hook decides nothing. With messages waiting, it carries them to the lead.
       return reply(res, 200, JSON.stringify(city.apply(ev, Date.now())))
     }
+    // A file attached in the page: the raw bytes, its name in ?name=. The
+    // reply's path goes into the message (and, for an image sent to an app
+    // session, the picture itself: /app/send's images).
+    if (req.method === 'POST' && url.pathname === '/upload') {
+      if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
+      try {
+        const data = await bytes(req, UPLOAD_MAX)
+        return reply(res, 200, JSON.stringify({ ok: true, ...saveUpload(UPLOADS, url.searchParams.get('name') ?? 'file', data) }))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return reply(res, msg === 'too large' ? 413 : 400, JSON.stringify({ error: msg === 'too large' ? `Files can be up to ${UPLOAD_MAX / 1024 / 1024} MB` : msg }))
+      }
+    }
     if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname.startsWith('/app/') || url.pathname === '/decide')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 256 * 1024)) || '{}') as Record<string, unknown>
@@ -582,11 +604,11 @@ const server = createServer(async (req, res) => {
         try {
           const now = Date.now()
           if (url.pathname === '/app/start') {
-            const s = appSessions.start(args as Parameters<AppSessions['start']>[0], now)
+            const s = appSessions.start(args as Parameters<AppSessions['start']>[0], now, imageBlocks(UPLOADS, args.images))
             city.achieve('worksite', now)
             return reply(res, 200, JSON.stringify({ ok: true, id: s.id }))
           }
-          if (url.pathname === '/app/send') appSessions.send(String(args.id), String(args.text ?? ''), now)
+          if (url.pathname === '/app/send') appSessions.send(String(args.id), String(args.text ?? ''), now, imageBlocks(UPLOADS, args.images))
           else if (url.pathname === '/app/interrupt') {
             if (!appSessions.interrupt(String(args.id))) return fail('It is not working on anything')
           } else if (url.pathname === '/app/stop') appSessions.stop(String(args.id))
