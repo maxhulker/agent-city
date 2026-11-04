@@ -36,6 +36,18 @@ borough with no lots says so in **Boroughs**, with a button to lay them.
 **Make Manhattan** picks home yourself (the old Manhattan takes the new one's
 place), and **Pick automatically** hands it back.
 
+When a session starts a local server (a front end on localhost), a
+**billboard** goes up for it: by Times Square for Manhattan's project, along
+the front of a borough for the others, on the forecourt for a project still
+waiting at Grand Central. It shows the page's title and address, and a click
+opens the page in a window of its own. A new one glows, its bulbs chase and a
+"New · click to open" tag hangs over it until you first open it. Crosswalk
+spots the address in a shell's or a browser tool's work (or, for `npm run
+dev` and the like run in the background, watches the usual dev ports for one
+that opens), puts the billboard up only once the port answers, and takes it
+down a few seconds after the server stops; it comes back when the server
+does.
+
 A borough's houses are its repository. Crosswalk reads each one with git
 (every 15 seconds while its agents work, every 5 minutes otherwise) and
 gives every folder a run of houses side by side: as many as its share of the

@@ -5,7 +5,8 @@ import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
 import { FIXED, applyOp, boroughSizeFor, builtOf, burbGeo, cityBuildings, connectBorough, fillBorough, findSite, generateMap, clearBuilt, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
-import type { Agent, Burb, Census, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
+import { devCommand, hostOf, localUrls, portOf, watchedTool } from './billboards.ts'
+import type { Agent, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -241,6 +242,14 @@ function resultText(value: unknown): string {
 // ---- the city -------------------------------------------------------------
 
 const ACTIVITY_WINDOW = 10 * 60_000
+// Billboards (src/billboards.ts): a spotted address is tried for a few
+// minutes; one that stands comes down after this many closed probes in a
+// row; one dark this long is forgotten; at most this many are kept.
+const SPOT_MS = 3 * 60_000
+const HINT_MS = 2 * 60_000
+const BILLBOARD_MISSES = 3
+const BILLBOARD_FORGET_MS = 24 * 60 * 60_000
+const BILLBOARDS_MAX = 40
 
 // Departures, all through Grand Central: an idle agent that has heard nothing
 // for this long boards the train home; a finished subagent rests this long
@@ -296,6 +305,8 @@ export class City {
   private lastFollow = 0
   // The last 40 ticker items, oldest first. Not saved.
   ticker: TickerItem[] = []
+  // Ports that are never a session's server (Crosswalk's own): no billboard.
+  ignorePorts = new Set<number>()
   // What the person picked for sessions started in the app, by Claude Code
   // session id; worn as soon as the session turns up. Not saved: the server
   // dresses them again from the app sessions it loads.
@@ -1071,6 +1082,107 @@ export class City {
 
   // The repositories whose census is wanted: those with a borough, and
   // whether their agents are at work there now.
+  // ---- billboards: the local servers sessions start (src/billboards.ts) ----
+
+  // A local address in a shell's or a browser tool's work, or a dev server
+  // started: the address becomes a billboard to probe; a dev command with no
+  // port in sight becomes a hint the server watches the usual ports for.
+  private spotServers(a: Agent, tool: string, input: Record<string, unknown>, response: unknown, now: number) {
+    if (!watchedTool(tool)) return
+    const w = this.world
+    const root = (a.burb ? this.repoAt(a.burb)?.root : undefined) ?? w.homeRoot
+    if (!root) return
+    const command = str(input.command)
+    const found = localUrls([command, str(input.url), resultText(response)].join('\n'))
+    for (const { url } of found) this.spotBillboard(root, url, now)
+    const dev = tool === 'Bash' || tool === 'PowerShell' ? devCommand(command) : undefined
+    if (dev?.port) this.spotBillboard(root, `http://localhost:${dev.port}/`, now)
+    else if (dev && !found.length) {
+      w.devHints = [...(w.devHints ?? []).filter(h => now - h.at < HINT_MS), { id: `${root}|${now}`, root, at: now }].slice(-8)
+    }
+  }
+
+  // A server at url, spotted in the work on root: a billboard to probe, new
+  // or tried again.
+  spotBillboard(root: string, url: string, now: number) {
+    const w = this.world
+    const port = portOf(url)
+    if (!port || this.ignorePorts.has(port)) return
+    const id = `${root.toLowerCase()}|${port}`
+    const list = (w.billboards ??= [])
+    const b = list.find(x => x.id === id)
+    if (b) {
+      b.at = now
+      if (!b.up) b.url = url
+      return
+    }
+    const name = same(root, w.homeRoot) ? w.home : (w.repos.find(r => same(r.root, root))?.name ?? base(root))
+    list.push({ id, url, root, name, at: now })
+    // Over the limit, the dark ones longest unseen go.
+    if (list.length > BILLBOARDS_MAX) {
+      const drop = list.filter(x => !x.up).sort((x, y) => x.at - y.at).slice(0, list.length - BILLBOARDS_MAX)
+      w.billboards = list.filter(x => !drop.includes(x))
+    }
+  }
+
+  // What the server should knock on: billboards standing, and ones spotted
+  // lately that haven't answered yet. Ones dark a day are forgotten.
+  billboardsToProbe(now: number): { id: string; url: string; title?: string }[] {
+    const w = this.world
+    if (w.billboards?.some(b => !b.up && now - b.at > BILLBOARD_FORGET_MS)) w.billboards = w.billboards.filter(b => b.up || now - b.at <= BILLBOARD_FORGET_MS)
+    return (w.billboards ?? []).filter(b => b.up || now - b.at < SPOT_MS).map(b => ({ id: b.id, url: b.url, ...(b.title ? { title: b.title } : {}) }))
+  }
+
+  // A probe's answer. The first time a server answers, its billboard is
+  // built (and glows until opened); after a few misses in a row it comes down.
+  billboardProbed(id: string, ok: boolean, now: number, title?: string) {
+    const b = this.world.billboards?.find(x => x.id === id)
+    if (!b) return
+    if (title && title !== b.title) {
+      b.title = title
+      this.isDirty = true
+    }
+    if (ok) {
+      b.misses = 0
+      if (b.up) return
+      b.up = now
+      const host = hostOf(b.url)
+      if (b.builtAt === undefined) {
+        b.builtAt = now
+        this.news(`A billboard went up for ${b.name}: ${host}. Click it to open the page`, now)
+      } else this.tick(undefined, `${b.name}'s billboard lit up again: ${host}`, now)
+      this.isDirty = true
+      return
+    }
+    if (!b.up) return
+    b.misses = (b.misses ?? 0) + 1
+    if (b.misses < BILLBOARD_MISSES) return
+    delete b.up
+    b.misses = 0
+    this.tick(undefined, `${b.name}'s billboard went dark: ${hostOf(b.url)} stopped`, now)
+    this.isDirty = true
+  }
+
+  // The person opened it: it stops glowing for good.
+  openBillboard(id: unknown, now: number): boolean {
+    const b = typeof id === 'string' ? this.world.billboards?.find(x => x.id === id) : undefined
+    if (!b) return false
+    if (b.openedAt === undefined) {
+      b.openedAt = now
+      this.isDirty = true
+    }
+    return true
+  }
+
+  // The dev servers started with no address in sight, for the server to
+  // watch the usual ports for; each is handed out once.
+  takeDevHints(now: number): DevHint[] {
+    const w = this.world
+    const out = (w.devHints ?? []).filter(h => now - h.at < HINT_MS)
+    if (w.devHints?.length) w.devHints = []
+    return out
+  }
+
   censusWanted(): { root: string; census?: Census; busy: boolean }[] {
     return this.world.repos
       .filter(r => !r.left && !isWaiting(r.burb))
@@ -1311,6 +1423,7 @@ export class City {
         w.asks = w.asks.filter(q => q.id !== str(ev.tool_use_id) && q.id !== `perm:${a.id}`)
         if (a.status === 'waiting') a.status = 'working'
         const command = str(input.command)
+        if (ev.hook_event_name === 'PostToolUse') this.spotServers(a, tool, input, ev.tool_response, now)
         const isGitish = ((tool === 'Bash' || tool === 'PowerShell') && /\b(git|gh)\b/.test(command)) || /merge|sync|rebase|pull/i.test(tool)
         if (isGitish) {
           const text = resultText(ev.tool_response ?? ev.error)

@@ -3,6 +3,7 @@ import type { OverlayItem, Scene, Sprite } from './draw/geo.ts'
 import { AGENT_CSS, drawRides, drawSprites, drawTrains } from './draw/agents.ts'
 import { defs, drawMap, drawOverlay, framed, mapKey } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
+import { drawBillboards } from './draw/billboards.ts'
 import { manhattanLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
@@ -91,6 +92,8 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     ...drawTrains(world, sc),
     // Hover zones between the city and the agents, so agents keep their own hover.
     item('zones', drawPlaces(world, sc)),
+    // Local servers' billboards, over the zones so a click opens the page.
+    ...drawBillboards(world, sc),
     // Taxis last, so they drive over everyone.
     ...drawRides(world, sc),
   ]

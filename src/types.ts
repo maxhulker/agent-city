@@ -144,6 +144,33 @@ export type PastSession = {
   leftAt: number
 }
 
+// A local server as a billboard (src/billboards.ts). It stands while its port
+// answers; the first time it goes up it is built, and it glows until the
+// person first opens it.
+export type Billboard = {
+  // The repository and the port, so a server restarted comes back as itself.
+  id: string
+  // What a click opens: http://localhost:5173/ and the like.
+  url: string
+  // The repository whose session started it, and its name.
+  root: string
+  name: string
+  // The page's <title>, once read.
+  title?: string
+  // When it was last spotted in a session's work (a probe tries it from then).
+  at: number
+  // Since when it answers; none while it doesn't.
+  up?: number
+  // The first time it answered: the billboard went up.
+  builtAt?: number
+  // The first time the person opened it: it stops glowing.
+  openedAt?: number
+  // Probes in a row that found it closed.
+  misses?: number
+}
+
+export type DevHint = { id: string; root: string; at: number }
+
 // A permission prompt, question or plan approval held open for the page to
 // decide (the PermissionRequest hook waits for the answer).
 export type Pending = {
@@ -393,6 +420,12 @@ export type World = {
   // Where the conversations of sessions that have left the city are, by
   // session id, so the page can still read them (the most recent 200).
   pastSessions?: Record<string, PastSession>
+  // Local servers a session started (a front end on localhost): each is a
+  // billboard in its project's part of the city while it answers.
+  billboards?: Billboard[]
+  // Dev servers started with no address in sight (`npm run dev` in the
+  // background): the server watches the usual ports for one to open.
+  devHints?: DevHint[]
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts

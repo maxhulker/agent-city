@@ -1724,6 +1724,14 @@
   let updating = false
   let lastUpdate = null
   function drawUpdate(u) { lastUpdate = u }
+  // A billboard: its local server's page, in a window of its own. It stops glowing once opened.
+  map.addEventListener('click', e => {
+    const bb = !justDragged && e.target.closest?.('[data-billboard]')
+    if (!bb) return
+    e.stopPropagation()
+    window.open(bb.dataset.url, '_blank')
+    post('/billboard/open', { id: bb.dataset.billboard })
+  })
   // The sign over the projects waiting at Grand Central: their cards.
   map.addEventListener('click', e => {
     if (justDragged || !e.target.closest?.('g.waiting')) return
