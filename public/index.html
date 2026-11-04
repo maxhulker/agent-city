@@ -1888,6 +1888,8 @@
     const bb = !justDragged && e.target.closest?.('[data-billboard]')
     if (!bb) return
     e.stopPropagation()
+    // Its ⚙: the card to move, turn or take it down (the builder's, below).
+    if (e.target.closest('[data-bb-edit]')) { showBillboardCard(bb); return }
     window.open(bb.dataset.url, '_blank')
     post('/billboard/open', { id: bb.dataset.billboard })
   })
@@ -3467,6 +3469,8 @@
   const FACES = ['s', 'w', 'n', 'e']
   let layout = null
   let tool = 'select', placeKind = null, placeSize = null, face = 's'
+  // A billboard being moved from its card: { id, face } (tool 'billboard').
+  let movingBB = null
   let gesture = null, gestureEnded = false, hover = null, catalogHtml = ''
   const buildBar = $('build'), catalog = $('catalog'), selCard = $('sel'), sheet = $('bsheet')
   const cursorLayer = layer('ov-cursor')
@@ -3507,6 +3511,7 @@
 
   function setTool(t, kind, size) {
     tool = t
+    if (t !== 'billboard') movingBB = null
     if (t === 'place' && kind) placeSize = size || null
     placeKind = t === 'place' ? kind || placeKind || 'hall' : null
     if (!placeKind) placeSize = null
@@ -3621,7 +3626,13 @@
     if (layout && hover && tool !== 'select' && R()) {
       const { gx, gy } = hover
       const rules = R()
-      if (tool === 'place' && placeKind) {
+      if (tool === 'billboard' && movingBB) {
+        // The billboard's footprint where it would stand, its screen's side marked.
+        const x = Math.round(gx * 2) / 2, y = Math.round(gy * 2) / 2
+        note = 'Click where it should stand · R turns it · Esc cancels'
+        if (movingBB.face === 'r') g += rect(x - 0.22, y - 1.3, 0.54, 2.6, 'ok') + line(x + 0.32, y - 1.3, x + 0.32, y + 1.3, 'front')
+        else g += rect(x - 1.3, y - 0.22, 2.6, 0.54, 'ok') + line(x - 1.3, y + 0.32, x + 1.3, y + 0.32, 'front')
+      } else if (tool === 'place' && placeKind) {
         const x = Math.floor(gx), y = Math.floor(gy)
         const bad = rules.canPlace(layout, placeKind, x, y, face, placeSize || undefined)
         note = bad || ''
@@ -3728,6 +3739,13 @@
     e.stopPropagation()
     if (gestureEnded) return
     const { gx, gy } = gridAt(e)
+    // A billboard moved from its card: it stands where the click is, to the half cell.
+    if (tool === 'billboard' && movingBB) {
+      const m = movingBB
+      post('/billboard/edit', { id: m.id, x: Math.round(gx * 2) / 2, y: Math.round(gy * 2) / 2, face: m.face }).then(r => { if (r.error) toast(r.error) })
+      setTool('select')
+      return
+    }
     if (tool === 'place' && placeKind) build({ op: 'place', kind: placeKind, x: Math.floor(gx), y: Math.floor(gy), face, ...(placeSize ? { size: placeSize } : {}) })
     else if (tool === 'bulldoze') {
       const t = bulldozeTarget(e, gx, gy)
@@ -3743,6 +3761,7 @@
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return
     if (e.key === 'Escape' && (tool !== 'select' || !sheet.hidden)) { sheet.hidden = true; setTool('select'); e.stopPropagation() }
     else if ((e.key === 'r' || e.key === 'R') && tool === 'place') { face = FACES[(FACES.indexOf(face) + 1) % 4]; drawCursor() }
+    else if ((e.key === 'r' || e.key === 'R') && tool === 'billboard' && movingBB) { movingBB.face = movingBB.face === 'r' ? 'l' : 'r'; drawCursor() }
   }, true)
 
   // Grand Central can be bulldozed to move it, after a word of warning.
@@ -3763,10 +3782,45 @@
     selCard.hidden = false
   }
   function hideSel() { selCard.hidden = true; delete selCard.dataset.id }
+
+  // A billboard's card, from the ⚙ on its corner: open, move, turn, take down.
+  function showBillboardCard(el) {
+    selCard.dataset.id = el.dataset.billboard
+    selCard.dataset.url = el.dataset.url
+    selCard.dataset.face = el.dataset.face || 'l'
+    selCard.style.setProperty('--accent', '#38bdf8')
+    selCard.innerHTML = `<b>${esc(el.dataset.tipTitle)}</b>${esc(el.dataset.url)}` +
+      `<div class="row wrap"><button class="btn sm primary" type="button" data-bb-open="1">Open ↗</button><button class="btn sm" type="button" data-bb-move="1" title="Then click where it should stand; R turns it">Move</button>` +
+      `<button class="btn sm" type="button" data-bb-turn="1" title="Its screen faces the other way">Rotate</button><button class="btn sm" type="button" data-bb-destroy="1">Destroy</button>` +
+      `<button class="btn sm" type="button" data-sel-close="1">Close</button></div>`
+    selCard.hidden = false
+  }
+
   selCard.addEventListener('click', async e => {
     const b = e.target.closest('button')
     if (!b) return
+    const bbId = selCard.dataset.id
     if (b.dataset.selClose) hideSel()
+    else if (b.dataset.bbOpen) {
+      window.open(selCard.dataset.url, '_blank')
+      post('/billboard/open', { id: bbId })
+      hideSel()
+    } else if (b.dataset.bbMove) {
+      movingBB = { id: bbId, face: selCard.dataset.face || 'l' }
+      hideSel()
+      setTool('billboard')
+      toast('Click where it should stand. R turns it, Esc cancels.')
+    } else if (b.dataset.bbTurn) {
+      const face = selCard.dataset.face === 'r' ? 'l' : 'r'
+      const r = await post('/billboard/edit', { id: bbId, face })
+      if (r.error) toast(r.error)
+      else selCard.dataset.face = face
+    } else if (b.dataset.bbDestroy) {
+      if (!confirm('Take this billboard down?\n\nIt stays down while its server keeps running, and goes up again the next time the server starts.')) return
+      const r = await post('/billboard/edit', { id: bbId, destroy: true })
+      if (r.error) toast(r.error)
+      else hideSel()
+    }
     else if (b.dataset.treShow) {
       // The Treasury card in the sidebar, every session listed.
       hideSel()

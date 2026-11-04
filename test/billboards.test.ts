@@ -125,3 +125,46 @@ test('a dev command with no address in sight is a hint for the server to watch t
   city.spotBillboard(HOME, 'http://localhost:5174/', T0 + 400)
   assert.deepEqual(city.billboardsToProbe(T0 + 500).map(b => b.url), ['http://localhost:5174/'])
 })
+
+test('the person can move a billboard, turn it, and take it down until its server starts again', () => {
+  const city = started()
+  run(city, 'Bash', { command: 'npm run dev' }, 'Local: http://localhost:5173/', T0 + 100)
+  const id = city.billboardsToProbe(T0 + 200)[0]!.id
+  city.billboardProbed(id, true, T0 + 300, 'My App')
+  const svg = () => boards(city, T0 + 400)[0]?.svg ?? ''
+  assert.match(svg(), /data-bb-edit="1"/, 'its ⚙ for the card')
+  assert.match(svg(), /data-face="l"/)
+  assert.match(svg(), /skewY\(26\.565\)/, 'facing left by default')
+
+  assert.deepEqual(city.editBillboard({ id, x: 40.3, y: 51.8 }, T0 + 500), { ok: true })
+  assert.deepEqual(city.world.billboards![0]!.pos, [40.5, 52], 'to the half cell')
+  assert.deepEqual(city.editBillboard({ id, face: 'r' }, T0 + 600), { ok: true })
+  assert.match(svg(), /data-face="r"/)
+  assert.match(svg(), /skewY\(-26\.565\)/, 'its words on the other face')
+  assert.match((city.editBillboard({ id, face: 'up' }, T0) as { error: string }).error, /face/)
+  assert.match((city.editBillboard({ id, x: 1e9, y: 0 }, T0) as { error: string }).error, /Not a place/)
+  assert.match((city.editBillboard({ id: 'nope' }, T0) as { error: string }).error, /No such billboard/)
+
+  assert.deepEqual(city.editBillboard({ id, destroy: true }, T0 + 700), { ok: true })
+  assert.equal(boards(city, T0 + 800).length, 0, 'down while its server runs')
+  city.billboardProbed(id, true, T0 + 900)
+  assert.equal(boards(city, T0 + 1000).length, 0, 'still down while it keeps answering')
+  for (let i = 0; i < 3; i++) city.billboardProbed(id, false, T0 + 1100 + i)
+  city.billboardProbed(id, true, T0 + 1200)
+  assert.equal(boards(city, T0 + 1300).length, 1, 'up again once the server has stopped and started')
+  assert.match(svg(), /data-face="r"/, 'where and how the person left it')
+})
+
+test('a billboard placed by hand stands exactly there, and the others keep clear of it', () => {
+  const city = started()
+  run(city, 'Bash', { command: 'x' }, 'http://localhost:5173/ and http://localhost:5174/', T0 + 100)
+  const [a, b] = city.billboardsToProbe(T0 + 200).map(x => x.id)
+  city.billboardProbed(a!, true, T0 + 300)
+  city.billboardProbed(b!, true, T0 + 310)
+  const before = boards(city, T0 + 400).map(i => i.svg)
+  city.editBillboard({ id: b, x: 10, y: 20 }, T0 + 500)
+  const after = boards(city, T0 + 600)
+  assert.equal(after.length, 2)
+  assert.notEqual(after.find(i => i.k.endsWith('|5174'))!.svg, before[1], 'it moved')
+  assert.equal(after.find(i => i.k.endsWith('|5173'))!.svg, before[0], 'the other stays where it was')
+})
