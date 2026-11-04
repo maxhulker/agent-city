@@ -309,6 +309,34 @@
   .cv-title .name { font-size: 14px; }
   .cv-title .path, .cv-title .small { margin-left: 26px; }
   .cv-x { font-size: 16px; line-height: 1; padding: 2px 9px 4px; }
+  /* ---- a house's files ---- */
+  #map [data-folder-root] { cursor: pointer; }
+  #files { position: absolute; top: 0; right: 0; bottom: 30px; width: var(--cvw); z-index: 5; background: var(--panel);
+    border-left: 1px solid var(--line); box-shadow: -12px 0 32px #000a; display: flex; flex-direction: column; min-height: 0; }
+  @media (max-width: 700px) { #files { width: 100%; border-left: 0; } }
+  #files .cv-title .path { margin-left: 0; word-break: break-all; }
+  .fl-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--dim); flex: none; }
+  .fl-bar .field { flex: 1; min-width: 140px; font-size: 12px; padding: 3px 8px; }
+  .fl-bar a, .fl-bar .linkish { color: #7dd3fc; text-decoration: none; font-size: 11px; }
+  #fl-body { flex: 1; min-height: 0; overflow: auto; }
+  .fl-row { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #1e293b;
+    color: var(--text); padding: 5px 12px; cursor: pointer; }
+  .fl-row:hover, .fl-row:focus-visible { background: #1e293b99; outline: none; }
+  .fl-row .fp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--mono); }
+  .fl-row .fd { color: var(--dim); }
+  .fl-row .fs { color: var(--dim); font-size: 11px; white-space: nowrap; }
+  .fl-row.deleted .fp { text-decoration: line-through; color: var(--dim); }
+  .fl-badge { font-size: 10px; padding: 0 6px; border-radius: 7px; font-weight: 600; white-space: nowrap; }
+  .fl-badge.modified { background: #713f12; color: #fde68a; }
+  .fl-badge.new { background: #14532d; color: #86efac; }
+  .fl-badge.deleted { background: #7f1d1d; color: #fecaca; }
+  .fl-badge.renamed { background: #1e3a8a; color: #bfdbfe; }
+  .fl-note { padding: 10px 12px; color: var(--dim); font-size: 12px; }
+  .fl-code { margin: 0; padding: 8px 0; font: var(--mono); white-space: pre; tab-size: 2; counter-reset: ln; }
+  .fl-code .l { display: block; padding: 0 12px 0 0; }
+  .fl-code .l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 3.6em; margin-right: 12px; text-align: right; color: #475569; user-select: none; }
+  .fl-md { padding: 6px 16px 16px; }
+  .fl-img { display: block; max-width: calc(100% - 24px); margin: 12px auto; background: repeating-conic-gradient(#1e293b 0 25%, #0f172a 0 50%) 0 0 / 16px 16px; border-radius: 6px; }
   .cv-tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); align-items: flex-end; flex: none; }
   .cv-tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim); padding: 7px 10px 6px; font: inherit; cursor: pointer; }
   .cv-tab:hover { color: var(--text); }
@@ -576,6 +604,11 @@
         <div class="hint" id="cv-hint"></div>
         <div class="err" id="cv-err"></div>
       </div>
+    </section>
+    <section id="files" hidden aria-label="Files in a folder">
+      <div class="cv-head"><div class="cv-title" id="fl-title"></div><button class="btn cv-x" id="fl-close" type="button" title="Close (Esc)" aria-label="Close">×</button></div>
+      <div class="fl-bar" id="fl-bar"></div>
+      <div id="fl-body"></div>
     </section>
     <div id="float" hidden><div class="fhead" id="float-head" role="button" tabindex="0"><span id="float-n"></span><span class="xbtn" id="float-tog">Hide</span></div><div class="flist" id="float-list"></div></div>
   </div>
@@ -1450,6 +1483,132 @@
   setEt(etOpen)
   $('et-head').addEventListener('click', () => setEt(!etOpen))
   $('et-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEt(!etOpen) } })
+
+  // ---- a house's files: click a house in a borough ------------------------
+  // The folder it stands for, listed (what changed since the last commit
+  // marked), and a look inside a file: its text with line numbers, Markdown
+  // rendered, an image shown. Read-only; "Open in VS Code" for editing.
+  const FL = { panel: $('files'), title: $('fl-title'), bar: $('fl-bar'), body: $('fl-body') }
+  const fl = { root: '', folder: '', label: '', list: null, filter: '', file: null, seq: 0, img: '', md: true }
+  const CHANGE = { modified: 'changed', new: 'new', deleted: 'deleted', renamed: 'renamed' }
+  const fsize = n => n < 1024 ? `${n} B` : kb(n)
+
+  async function flGet(path) {
+    try {
+      const r = await fetch(inCity(path), { headers: { 'x-crosswalk': '1' }, cache: 'no-store' })
+      const j = await r.json().catch(() => ({}))
+      return r.ok ? j : { error: j.error || `HTTP ${r.status}` }
+    } catch (e) {
+      return { error: String(e?.message || e) }
+    }
+  }
+  const flQuery = (root, path) => `root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+  const folderName = f => f === '' ? 'Top-level files' : f === '…' ? 'Smaller folders' : `${f}/`
+
+  // From a house on the map: its repository, its folder, and its hover title ("repo: folder/").
+  function openFolder(root, folder, label) {
+    if (fl.img) { URL.revokeObjectURL(fl.img); fl.img = '' }
+    Object.assign(fl, { root, folder, label: label || folderName(folder), list: null, filter: '', file: null })
+    const seq = ++fl.seq
+    FL.panel.hidden = false
+    flDrawFolder()
+    flGet(`/folder?${flQuery(root, folder)}`).then(j => {
+      if (seq !== fl.seq) return
+      fl.list = j
+      flDrawFolder()
+    })
+  }
+
+  function closeFolder() {
+    FL.panel.hidden = true
+    fl.seq++
+    if (fl.img) { URL.revokeObjectURL(fl.img); fl.img = '' }
+  }
+
+  function flDrawFolder() {
+    fl.file = null
+    FL.title.innerHTML = `<div class="row"><span class="name">📁 ${esc(fl.label)}</span></div><div class="path">${esc(fl.root)}${fl.folder && fl.folder !== '…' ? `/${esc(fl.folder)}` : ''}</div>`
+    const j = fl.list
+    if (!j) { FL.bar.innerHTML = ''; FL.body.innerHTML = '<div class="fl-note">Reading the folder…</div>'; return }
+    if (j.error) { FL.bar.innerHTML = ''; FL.body.innerHTML = `<div class="fl-note">Couldn't read it: ${esc(j.error)}</div>`; return }
+    const changed = j.files.filter(f => f.change).length
+    FL.bar.innerHTML = `<span>${j.total} file${j.total === 1 ? '' : 's'} · ${fsize(j.bytes)}${changed ? ` · ${changed} changed since the last commit` : ''}</span>` +
+      `<input class="field" id="fl-filter" placeholder="Filter files" value="${esc(fl.filter)}" spellcheck="false" autocomplete="off">`
+    const input = $('fl-filter')
+    input.addEventListener('input', () => { fl.filter = input.value; flDrawRows() })
+    flDrawRows()
+  }
+
+  function flDrawRows() {
+    const j = fl.list
+    const q = fl.filter.trim().toLowerCase()
+    const prefix = fl.folder && fl.folder !== '…' ? fl.folder + '/' : ''
+    const rows = j.files.filter(f => !q || f.path.toLowerCase().includes(q))
+    FL.body.innerHTML = rows.map(f => {
+      const rel = prefix && f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path
+      const cut = rel.lastIndexOf('/')
+      const name = cut < 0 ? `${esc(rel)}` : `<span class="fd">${esc(rel.slice(0, cut + 1))}</span>${esc(rel.slice(cut + 1))}`
+      return `<button class="fl-row${f.change === 'deleted' ? ' deleted' : ''}" type="button" data-fl-path="${esc(f.path)}" title="${esc(f.path)}"><span class="fp">${name}</span>` +
+        `${f.change ? `<span class="fl-badge ${esc(f.change)}">${CHANGE[f.change] || esc(f.change)}</span>` : ''}<span class="fs">${f.change === 'deleted' ? '' : fsize(f.bytes)}</span></button>`
+    }).join('') + (rows.length ? '' : `<div class="fl-note">${q ? 'No file matches.' : 'No files.'}</div>`) +
+      (j.total > j.files.length ? `<div class="fl-note">Showing the first ${j.files.length} of ${j.total}.</div>` : '')
+  }
+
+  async function flOpenFile(path) {
+    const seq = ++fl.seq
+    if (fl.img) { URL.revokeObjectURL(fl.img); fl.img = '' }
+    fl.file = { path }
+    const name = path.split('/').pop()
+    FL.title.innerHTML = `<div class="row"><button class="btn sm" type="button" id="fl-back" title="Back to the folder (Esc)">← ${esc(folderName(fl.folder))}</button><span class="name">${esc(name)}</span></div><div class="path">${esc(path)}</div>`
+    $('fl-back').addEventListener('click', () => { fl.seq++; flDrawFolder() })
+    FL.bar.innerHTML = ''
+    FL.body.innerHTML = '<div class="fl-note">Opening…</div>'
+    const j = await flGet(`/file?${flQuery(fl.root, path)}`)
+    if (seq !== fl.seq) return
+    if (j.error) { FL.body.innerHTML = `<div class="fl-note">Couldn't open it: ${esc(j.error)}</div>`; return }
+    fl.file = j
+    const isMd = /\.(md|markdown)$/i.test(path) && typeof j.text === 'string'
+    const vscode = `vscode://file/${encodeURI(String(j.abs).replace(/\\/g, '/'))}`
+    FL.bar.innerHTML = `<span>${fsize(j.bytes)}${j.truncated ? ' · showing the start' : ''}</span>` +
+      (isMd ? `<button class="linkish" type="button" id="fl-mdtoggle">${fl.md ? 'Show source' : 'Show rendered'}</button>` : '') +
+      `<a href="${esc(vscode)}" title="Open it in VS Code">Open in VS Code ↗</a>` +
+      `<button class="linkish" type="button" id="fl-copy" title="${esc(j.abs)}">Copy path</button>`
+    $('fl-copy').addEventListener('click', () => { navigator.clipboard?.writeText(j.abs).then(() => toast('Path copied')) })
+    if (isMd) $('fl-mdtoggle').addEventListener('click', () => { fl.md = !fl.md; flOpenFile(path) })
+    if (j.image) {
+      try {
+        const r = await fetch(inCity(`/file/raw?${flQuery(fl.root, path)}`), { headers: { 'x-crosswalk': '1' }, cache: 'no-store' })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const url = URL.createObjectURL(await r.blob())
+        if (seq !== fl.seq) { URL.revokeObjectURL(url); return }
+        fl.img = url
+        FL.body.innerHTML = `<img class="fl-img" alt="${esc(name)}" src="${url}">`
+      } catch (e) {
+        FL.body.innerHTML = `<div class="fl-note">Couldn't show the image: ${esc(String(e?.message || e))}</div>`
+      }
+    } else if (j.binary) {
+      FL.body.innerHTML = '<div class="fl-note">A binary file: nothing to show here. Open it in VS Code or copy its path.</div>'
+    } else if (isMd && fl.md) {
+      FL.body.innerHTML = `<div class="fl-md md">${md(j.text)}</div>` + (j.truncated ? '<div class="fl-note">Only the start is shown.</div>' : '')
+    } else {
+      const lines = j.text.replace(/\r\n/g, '\n').split('\n')
+      if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
+      FL.body.innerHTML = `<pre class="fl-code">${lines.map(l => `<span class="l">${esc(l) || ' '}</span>`).join('')}</pre>` + (j.truncated ? '<div class="fl-note">Only the first 256 KB is shown.</div>' : '')
+    }
+    FL.body.scrollTop = 0
+  }
+
+  FL.body.addEventListener('click', e => {
+    const row = e.target.closest('[data-fl-path]')
+    if (row) flOpenFile(row.dataset.flPath)
+  })
+  $('fl-close').addEventListener('click', closeFolder)
+  // Esc: from a file back to its folder, then closed. Ahead of the drawer's own Esc.
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || FL.panel.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.id !== 'fl-filter') return
+    e.stopImmediatePropagation()
+    if (fl.file) { fl.seq++; flDrawFolder() } else closeFolder()
+  }, true)
 
   // ---- earlier sessions: ended ones, from Claude Code's own transcripts --
   const pastInfo = new Map() // Claude session id -> { id, cwd, title, prompt, at }
@@ -3558,6 +3717,9 @@
   map.addEventListener('click', e => {
     if (!layout) return
     if (tool === 'select') {
+      // A house: the files of the folder it stands for.
+      const house = e.target.closest && e.target.closest('[data-folder-root]')
+      if (house) { hideSel(); openFolder(house.dataset.folderRoot, house.dataset.folder, house.dataset.tipTitle); return }
       const z = e.target.closest && e.target.closest('[data-building], [data-borough]')
       if (z) showSel(z)
       else hideSel()

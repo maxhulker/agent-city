@@ -24,6 +24,9 @@ type Zone = {
   // The building or borough it stands for, for the page's selection card.
   building?: string
   borough?: string
+  // A house: the repository and the folder (census block) it stands for,
+  // whose files a click shows.
+  folder?: { root: string; path: string }
 }
 
 const ABOUT: Record<keyof typeof LABELS, string> = {
@@ -239,7 +242,14 @@ export function drawPlaces(world: World, sc: Scene): string {
     for (const run of runsOf(placeBlocks(slotsOf(sc.layout, b, g.preset), census))) {
       const block = census.blocks[run.block]!
       const tip = blockTip(block, sc.now)
-      houses.push({ box: run.box, height: run.h, title: `${repo.name}: ${tip.title}`, text: tip.text, color: block.dirty ? '#fcd34d' : block.commits ? '#fde68a' : '#94a3b8' })
+      houses.push({
+        box: run.box,
+        height: run.h,
+        title: `${repo.name}: ${tip.title}`,
+        text: `${tip.text} Click to see its files.`,
+        color: block.dirty ? '#fcd34d' : block.commits ? '#fde68a' : '#94a3b8',
+        folder: { root: repo.root, path: block.path },
+      })
     }
   }
   houses.sort((a, b) => a.box[0] + a.box[1] + a.box[3] - (b.box[0] + b.box[1] + b.box[3]))
@@ -251,7 +261,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   for (const z of zones) {
     const who = z.who ? whoLines(world, z.who) : ''
     const more = [z.extra, who].filter(Boolean).join('\n')
-    s += `<polygon class="zone${z.isUpdate ? ' update' : ''}" points="${pts(outline(z.box, z.height))}" style="--accent:${z.color ?? '#e2e8f0'}" data-tip-title="${esc(z.title)}" data-tip-text="${esc(z.text)}"${more ? ` data-tip-more="${esc(more)}"` : ''}${z.isUpdate ? ' data-update="1"' : ''}${z.building ? ` data-building="${esc(z.building)}"` : ''}${z.borough ? ` data-borough="${esc(z.borough)}"` : ''}/>`
+    s += `<polygon class="zone${z.isUpdate ? ' update' : ''}" points="${pts(outline(z.box, z.height))}" style="--accent:${z.color ?? '#e2e8f0'}" data-tip-title="${esc(z.title)}" data-tip-text="${esc(z.text)}"${more ? ` data-tip-more="${esc(more)}"` : ''}${z.isUpdate ? ' data-update="1"' : ''}${z.building ? ` data-building="${esc(z.building)}"` : ''}${z.borough ? ` data-borough="${esc(z.borough)}"` : ''}${z.folder ? ` data-folder-root="${esc(z.folder.root)}" data-folder="${esc(z.folder.path)}"` : ''}/>`
   }
   s += `</g>`
   return s
