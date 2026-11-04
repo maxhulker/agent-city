@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -9,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { cityFor, citiesOf, defaultConfig, HOME, idFor, register, stateDir, stateFile, whoOf } from './cities.ts'
 import type { CityConf, Who } from './cities.ts'
 import { BLUEPRINTS, LABELS, LANDMARKS, renderFrame } from './city.ts'
-import { burbGeo, isWaiting } from './layout.ts'
+import { boroughRect, burbGeo, isWaiting } from './layout.ts'
 import { HATS } from './draw/agents.ts'
 import { p, placeAt } from './draw/geo.ts'
 import { Approvals } from './approvals.ts'
@@ -310,6 +311,13 @@ function game({ city, connected }: Town, now: number) {
   }
 }
 
+function lotsInBorough(world: World, id: string): number {
+  const bo = world.layout?.boroughs.find(b => b.id === id)
+  if (!bo || !world.layout) return 0
+  const [x0, y0, x1, y1] = boroughRect(bo)
+  return world.layout.zoned.filter(([x, y]) => x >= x0 && x < x1 && y >= y0 && y < y1).length
+}
+
 function meta(town: Town) {
   const { city, tasks, approvals, appSessions } = town
   const world = city.world
@@ -324,7 +332,9 @@ function meta(town: Town) {
     // A repository waiting at the station for a borough gets the page's New arrival card.
     repos: world.repos.map(r => ({ ...r, borough: burbGeo(world.layout, r.burb)?.name ?? 'Grand Central', waiting: isWaiting(r.burb) })),
     // The boroughs nobody lives in now, which the card offers to move into.
-    free: (world.layout?.boroughs ?? []).filter(b => !world.repos.some(r => r.burb === b.id && !r.left)).map(b => ({ id: b.id, name: b.name })),
+    free: (world.layout?.boroughs ?? []).filter(b => !world.repos.some(r => r.burb === b.id && !r.left)).map(b => ({ id: b.id, name: b.name, lots: lotsInBorough(world, b.id) })),
+    // How many zoned lots each drawn borough has: none, and its houses have nowhere to go.
+    lots: Object.fromEntries((world.layout?.boroughs ?? []).filter(b => !b.preset).map(b => [b.id, lotsInBorough(world, b.id)])),
     sessions: world.sessions.map(s => ({
       ...s,
       agents: world.agents
@@ -439,6 +449,19 @@ setInterval(dirtyAll, 60_000)
 setInterval(forgetRoots, 10 * 60_000)
 
 // ---- http -----------------------------------------------------------------
+
+// A repository's tracked files and top-level folders, for sizing its borough;
+// nothing when git can't tell (then a middling size is used).
+function repoSize(root: string): { files?: number; folders?: number } {
+  try {
+    const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', timeout: 5000, maxBuffer: 64 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+    const files = out.split('\0').filter(Boolean)
+    const folders = new Set(files.map(f => (f.includes('/') ? f.slice(0, f.indexOf('/')) : '')))
+    return { files: files.length, folders: folders.size }
+  } catch {
+    return {}
+  }
+}
 
 function body(req: IncomingMessage, limit = 4 * 1024 * 1024): Promise<string> {
   return bytes(req, limit).then(b => b.toString('utf8'))
@@ -683,6 +706,8 @@ const server = createServer(async (req, res) => {
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
       // The city builder: one placement, checked by the layout's rules.
       if (url.pathname === '/build') {
+        // "Build it for me" sizes the borough to the repository: git counts it.
+        if ((args as { op?: unknown }).op === 'autoborough' && typeof args.root === 'string') Object.assign(args, repoSize(args.root))
         const r = city.build(args, Date.now())
         if ('error' in r) return reply(res, 400, JSON.stringify(r))
         save()
