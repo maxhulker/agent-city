@@ -21,13 +21,20 @@ bubble on hover, and send finished reports back by yellow cab. The building
 being edited goes up in scaffolding, the Statue of Liberty hops on a commit and
 launches on a push, and a Times Square news ticker runs along the bottom.
 
-Manhattan is the busiest repository. Every other repository a session works in
-arrives at Grand Central: its agents wait on the station's forecourt under a
-sign, and a **New arrival** card in the sidebar offers to lay out a borough
-for it or to move it into a free one (Brooklyn, Queens, the Bronx, Jersey
-City, or any you drew). Then its agents cross over and gather on the
-borough's square. Use **Make Manhattan** in the sidebar to pick home
-yourself, and **Pick automatically** to hand it back.
+Manhattan is the main island: the busiest repository. Every other repository
+a session works in (any file it reads or edits counts, wherever the session
+started) arrives at Grand Central: its agents wait on the station's forecourt
+under a sign, and its card goes to the top of the sidebar (click the sign to
+find it). **Build it for me** gives it a borough sized to the repository on
+the free land nearest the station, named after it, with streets, zoned lots
+and a road to the city: its houses go up as soon as it is counted. **Lay it
+out myself** lets you drag out where it goes, and lays the streets and lots
+in it for you (untick that on the form to lay them yourself). Or move it into
+a free borough (Brooklyn, Queens, the Bronx, Jersey City, or any you drew).
+Then its agents cross over and gather on the borough's square. A drawn
+borough with no lots says so in **Boroughs**, with a button to lay them.
+**Make Manhattan** picks home yourself (the old Manhattan takes the new one's
+place), and **Pick automatically** hands it back.
 
 A borough's houses are its repository. Crosswalk reads each one with git
 (every 15 seconds while its agents work, every 5 minutes otherwise) and

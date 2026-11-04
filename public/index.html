@@ -188,6 +188,15 @@
   h2:first-child { margin-top: 4px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
   .card.arrival { border-color: #fbbf24; }
+  #arrivals .card.arrival { background: #1f1a0b; }
+  #arrivals .card.arrival .name { color: #fde68a; }
+  .card.arrival .more { margin-top: 6px; padding-top: 6px; border-top: 1px solid #3f3410; }
+  .card.arrival.flash { animation: arrflash 1.2s ease-out 2; }
+  @keyframes arrflash { 0% { box-shadow: 0 0 0 3px #fbbf24; } 100% { box-shadow: 0 0 0 0 #fbbf2400; } }
+  .card.empty-burb { border-color: #b45309; }
+  .linkish { background: none; border: 0; padding: 0; color: #7dd3fc; cursor: pointer; font: inherit; font-size: 11px; }
+  #map g.waiting { cursor: pointer; }
+  #bsheet label.chk { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; margin-top: 10px; cursor: pointer; }
   /* Sessions from more than one account in this city: give one its own. */
   #accounts .acct { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; margin-top: 8px; border-top: 1px solid var(--line); }
   #accounts .acct .who { font-size: 12px; overflow-wrap: anywhere; }
@@ -536,6 +545,8 @@
       <b>NEW BOROUGH</b>
       <label for="bs-name">Name</label><input class="field" id="bs-name" maxlength="40" placeholder="Red Hook">
       <label for="bs-root">For which repository?</label><select class="field" id="bs-root"><option value="">Not yet</option></select>
+      <label class="chk"><input type="checkbox" id="bs-fill" checked> Lay streets and lots for me</label>
+      <div class="small dim" id="bs-warn" hidden>With no repository, the borough stays empty until one moves in.</div>
       <div class="row"><button class="btn sm" type="button" id="bs-ok">Lay it out</button><button class="btn sm" type="button" id="bs-cancel">Cancel</button></div>
     </div>
     <section id="convo" hidden aria-label="Conversation">
@@ -621,6 +632,7 @@
         </div>
       </div>
     </section>
+    <div id="arrivals"></div>
     <div id="needs"><h2 id="needs-h" hidden>Needs you</h2><div id="needs-pending"></div><div id="needs-rest"></div></div>
     <h2>Sessions in the app</h2>
     <div id="apps"></div>
@@ -1676,12 +1688,48 @@
     else $('tasks-empty')?.remove()
   }
 
+  // ---- new arrivals: projects waiting at Grand Central for a borough -------
+  // At the top of the sidebar, where they are seen: build one for it, lay it
+  // out by hand, move it into a free one, or make it Manhattan.
+  let arrH = ''
+  function drawArrivals(m) {
+    const free = m.free || []
+    const html = (m.repos || []).filter(r => r.waiting && !r.left).map(r => `<div class="card arrival" data-arrival="${esc(r.root)}">
+      <div class="row"><span class="name">🚉 ${esc(r.name)} is at Grand Central</span></div>
+      <div class="small">Give it a borough and its folders go up there as houses.</div>
+      <div class="row wrap" style="margin-top:6px">
+        <button class="btn sm primary" type="button" data-auto-for="${esc(r.root)}" data-auto-name="${esc(r.name)}" title="A borough sized to the project on free land near the station, with its streets and lots laid">Build it for me</button>
+        <button class="btn sm" type="button" data-layout-for="${esc(r.root)}" data-layout-name="${esc(r.name)}" title="Drag out where it goes yourself">Lay it out myself</button>
+      </div>
+      <div class="more small dim">${free.length ? `Or move it into ${free.map(b => `<button class="linkish" type="button" data-movein="${esc(b.id)}" data-root="${esc(r.root)}">${esc(b.name)}</button>`).join(', ')}, or ` : 'Or '}<button class="linkish" type="button" data-home="${esc(r.root)}" data-home-name="${esc(r.name)}" title="Manhattan is the main island, for the project you work in most">make it Manhattan</button>.</div>
+      <div class="path">${esc(r.root)}</div></div>`).join('')
+    if (html !== arrH) { $('arrivals').innerHTML = html; arrH = html }
+  }
+
+  // From the station's sign or a Grand Central line in Boroughs: the card, shown and lit up.
+  function showArrival(root) {
+    const cards = [...document.querySelectorAll('#arrivals [data-arrival]')]
+    const card = cards.find(c => c.dataset.arrival === root) || cards[0]
+    if (!card) return
+    setCollapsed(false)
+    card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    card.classList.remove('flash')
+    void card.offsetWidth
+    card.classList.add('flash')
+  }
+
   // ---- sidebar + overlays ------------------------------------------------
   // The update button is the Empire State itself: when main has something newer
   // it glows and shoots fireworks, and clicking it updates the app.
   let updating = false
   let lastUpdate = null
   function drawUpdate(u) { lastUpdate = u }
+  // The sign over the projects waiting at Grand Central: their cards.
+  map.addEventListener('click', e => {
+    if (justDragged || !e.target.closest?.('g.waiting')) return
+    e.stopPropagation()
+    showArrival('')
+  })
   map.addEventListener('click', async e => {
     if (!e.target.closest || !e.target.closest('[data-update]')) return
     e.stopPropagation()
@@ -1745,21 +1793,31 @@
     drawCities(m)
     drawAccounts(m)
 
+    drawArrivals(m)
+    // Manhattan, then each borough with its repository; a drawn borough with
+    // no lots says so, since its houses have nowhere to go.
+    const lotsOfBurb = m.lots || {}
+    const noLots = id => Object.hasOwn(lotsOfBurb, id) && !lotsOfBurb[id]
     $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">Manhattan</span>
         <span class="dim">${esc(m.home || 'the first repository seen')}</span>
-        ${m.homePinned ? '<button class="btn" style="margin-left:auto" data-home-auto="1">Pick automatically</button>' : ''}</div>
-        <div class="small dim">${m.homePinned ? 'picked by you' : 'busiest repo, automatic'}</div></div>` +
-      m.repos.filter(r => r.waiting && !r.left).map(r => `<div class="card arrival"><div class="row"><span class="name">New arrival</span>
-        <span class="dim">${esc(r.name)}</span></div>
-        <div class="small">${esc(r.name)} arrived at Grand Central. Lay out a borough for it.</div>
-        <div class="row wrap"><button class="btn sm" data-layout-for="${esc(r.root)}">Lay out a borough</button>
-        ${(m.free || []).map(b => `<button class="btn sm" data-movein="${esc(b.id)}" data-root="${esc(r.root)}">Move into ${esc(b.name)}</button>`).join('')}
-        <button class="btn sm" data-home="${esc(r.root)}">Make Manhattan</button></div>
-        <div class="path">${esc(r.root)}</div></div>`).join('') +
-      m.repos.filter(r => !r.waiting).map(r => `<div class="card"><div class="row"><span class="name">${esc(r.borough)}</span>
+        ${m.homePinned ? '<button class="btn" style="margin-left:auto" data-home-auto="1" title="Manhattan goes to whichever repository is busiest">Pick automatically</button>' : ''}</div>
+        <div class="small dim">The main island: ${m.homePinned ? 'picked by you' : 'the busiest repository, picked automatically'}. Every other project gets a borough.</div></div>` +
+      m.repos.filter(r => r.waiting && !r.left).map(r => `<div class="card"><div class="row"><span class="name">Grand Central</span>
+        <span class="dim">${esc(r.name)}</span><button class="linkish" style="margin-left:auto" data-show-arrival="${esc(r.root)}">Give it a borough ↑</button></div></div>`).join('') +
+      m.repos.filter(r => !r.waiting).map(r => {
+        const id = r.burb
+        const empty = !r.left && noLots(id)
+        return `<div class="card${empty ? ' empty-burb' : ''}"><div class="row"><span class="name">${esc(r.borough)}</span>
         <span class="dim">${esc(r.name)}${r.left ? ` · moved out ${ago(r.left)}` : ''}</span>
-        <button class="btn" style="margin-left:auto" data-home="${esc(r.root)}">Make Manhattan</button></div>
-        <div class="path">${esc(r.root)}</div></div>`).join('')
+        <button class="btn" style="margin-left:auto" data-home="${esc(r.root)}" data-home-name="${esc(r.name)}">Make Manhattan</button></div>
+        ${empty ? `<div class="small" style="color:#fbbf24;margin-top:4px">No lots zoned, so its houses have nowhere to go.</div>
+          <div class="row" style="margin-top:4px"><button class="btn sm primary" data-fill="${esc(id)}">Lay streets and lots</button></div>` : ''}
+        <div class="path">${esc(r.root)}</div></div>`
+      }).join('') +
+      (m.free || []).map(b => `<div class="card${b.lots ? '' : ' empty-burb'}"><div class="row"><span class="name">${esc(b.name)}</span>
+        <span class="dim">no project yet</span></div>
+        <div class="small dim">${b.lots ? `${b.lots} lots ready.` : 'No lots zoned yet.'} A project at Grand Central can move in from its card.</div>
+        ${b.lots ? '' : `<div class="row" style="margin-top:4px"><button class="btn sm" data-fill="${esc(b.id)}">Lay streets and lots</button></div>`}</div>`).join('')
 
     $('log').innerHTML = m.log.length ? m.log.map(l => `<li><span class="row"><span class="dot" style="background:${esc(l.color)}"></span>
       <span><b>${esc(l.who)}</b> ${esc(l.text)} <span class="dim small">${ago(l.at)}</span></span></span></li>`).join('')
@@ -1940,7 +1998,22 @@
     } else if (b.dataset.resolve) {
       post('/resolve', { id: b.dataset.resolve })
     } else if (b.dataset.home) {
+      // Say what moves: the old Manhattan takes this one's place.
+      const name = b.dataset.homeName || 'This project'
+      const old = lastMeta?.home
+      if (old && !confirm(`Make ${name} Manhattan, the main island?\n\n${old} stops being Manhattan and takes ${name}'s place (its borough, or a spot at Grand Central).`)) return
       post('/home', { root: b.dataset.home })
+    } else if (b.dataset.autoFor) {
+      b.disabled = true
+      const name = b.dataset.autoName || 'it'
+      post('/build', { op: 'autoborough', root: b.dataset.autoFor }).then(r => {
+        b.disabled = false
+        toast(r.error ? `${r.error}` : `Laid out a borough for ${name}: its houses go up as it is counted`)
+      })
+    } else if (b.dataset.fill) {
+      post('/build', { op: 'fill', id: b.dataset.fill }).then(r => toast(r.error || 'Streets and lots laid out'))
+    } else if (b.dataset.showArrival) {
+      showArrival(b.dataset.showArrival)
     } else if (b.dataset.movein) {
       post('/build', { op: 'movein', id: b.dataset.movein, root: b.dataset.root }).then(r => { if (r.error) toast(r.error) })
     } else if (b.dataset.tre) {
@@ -1956,7 +2029,7 @@
       // The Borough tool, with the sheet's repository picked already.
       sheetFor = b.dataset.layoutFor
       setTool('borough')
-      toast('Drag out the borough on the map')
+      toast(`Drag a rectangle on free land for ${b.dataset.layoutName || 'it'} (10 × 8 cells suits a small project). Streets and lots are laid in it for you.`)
     }
   })
 
@@ -3591,8 +3664,11 @@
     const seen = new Set(waiting.map(x => x.path.toLowerCase()))
     const known = ((lastMeta && lastMeta.places) || []).filter(p => !seen.has(String(p.path).toLowerCase()))
     sel.innerHTML = '<option value="">Not yet</option>' + [...waiting, ...known].map(p => `<option value="${esc(p.path)}">${esc(p.name)}</option>`).join('')
+    // Laid out for a project from its card: that one. Else the first one waiting, if any.
     if (sheetFor) sel.value = sheetFor
+    else if (waiting.length) sel.value = waiting[0].path
     sheetFor = ''
+    $('bs-warn').hidden = !!sel.value
     $('bs-name').value = ''
     sheet.hidden = false
     $('bs-name').focus()
@@ -3602,8 +3678,10 @@
     const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value ? $('bs-root').selectedOptions[0].textContent.replace(/ \(waiting at Grand Central\)$/, '') : '')
     if (!name) { $('bs-name').focus(); return }
     const root = $('bs-root').value
-    if (await build({ op: 'borough', name, ...(root ? { root } : {}), ...sheetRect })) { sheet.hidden = true; setTool('select') }
+    const fill = $('bs-fill').checked
+    if (await build({ op: 'borough', name, ...(root ? { root } : {}), ...(fill ? { fill: true } : {}), ...sheetRect })) { sheet.hidden = true; setTool('select') }
   })
+  $('bs-root').addEventListener('change', () => { $('bs-warn').hidden = !!$('bs-root').value })
   $('bs-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('bs-ok').click() })
 </script>
 <style>

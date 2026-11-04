@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
-import { FIXED, applyOp, builtOf, burbGeo, cityBuildings, generateMap, clearBuilt, isWaiting, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
+import { FIXED, applyOp, boroughSizeFor, builtOf, burbGeo, cityBuildings, connectBorough, fillBorough, findSite, generateMap, clearBuilt, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
 import type { Agent, Burb, Census, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
@@ -754,6 +754,19 @@ export class City {
       if (typeof id !== 'string' || typeof root !== 'string' || !root.trim()) return { error: 'Not a placement' }
       return this.moveIn(root.trim(), id, now)
     }
+    if (raw && typeof raw === 'object' && (raw as { op?: unknown }).op === 'autoborough') return this.autoBorough(raw as Record<string, unknown>, now)
+    if (raw && typeof raw === 'object' && (raw as { op?: unknown }).op === 'fill') {
+      const { id } = raw as { id?: unknown }
+      const bo = typeof id === 'string' ? this.layout.boroughs.find(b => b.id === id) : undefined
+      if (!bo || bo.preset) return { error: 'No such borough' }
+      const f = fillBorough(this.layout, bo.id)
+      if (!f.added) return { error: f.lots ? `${bo.name} has no room for more lots` : `There is no room for lots in ${bo.name}` }
+      w.layout = connectBorough(f.layout, bo.id)
+      this.news(`Streets and ${f.added} lots laid out in ${bo.name}`, now)
+      this.sync()
+      this.isDirty = true
+      return { ok: true }
+    }
     const op = parseOp(raw)
     if (!op) return { error: 'Not a placement' }
     if (op.op === 'borough' && op.root && w.homeRoot && same(op.root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
@@ -779,6 +792,11 @@ export class City {
       }
     }
     if (op.op === 'borough') this.achieve('borough', now)
+    // Drawn with "lay streets and lots for me": they go in at once.
+    if (op.op === 'borough' && op.fill) {
+      const id = r.layout.boroughs[r.layout.boroughs.length - 1]!.id
+      w.layout = connectBorough(fillBorough(r.layout, id).layout, id)
+    }
     // The sheet's repository moves into the borough just drawn.
     if (op.op === 'borough' && op.root) this.moveIn(op.root, r.layout.boroughs[r.layout.boroughs.length - 1]!.id, now)
     this.sync()
@@ -792,6 +810,44 @@ export class City {
         }
       }
     }
+    this.isDirty = true
+    return { ok: true }
+  }
+
+  // "Build it for me" on a New arrival card: a borough sized to the
+  // repository (files and folders, counted by the server) on the free land
+  // nearest Grand Central, named after it, with its streets and lots laid
+  // and a road to the city, and the repository moved in.
+  private autoBorough(raw: Record<string, unknown>, now: number): { ok: true } | { error: string } {
+    const w = this.world
+    const root = typeof raw.root === 'string' ? raw.root.trim() : ''
+    if (!root) return { error: 'Which repository?' }
+    if (w.homeRoot && same(root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
+    const repo = w.repos.find(r => same(r.root, root))
+    const has = repo && !repo.left && !isWaiting(repo.burb) ? burbGeo(this.layout, repo.burb) : undefined
+    if (has) return { error: `${repo!.name} lives in ${has.name} already` }
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
+    const want = lotsWanted(num(raw.files) || 60, num(raw.folders))
+    const station = cityBuildings(this.layout, 'station')[0]
+    const near: [number, number] = station ? [station.x + 1, station.y + 2] : [64, 64]
+    // The size it wants, else smaller ones down to a small borough.
+    let [bw, bh] = boroughSizeFor(want)
+    let site = findSite(this.layout, bw, bh, near)
+    while (!site && (bw > 6 || bh > 4)) {
+      if (bh > 4) bh--
+      else bw -= 4
+      site = findSite(this.layout, bw, bh, near)
+    }
+    if (!site) return { error: 'No free land is big enough: lay one out yourself' }
+    const name = (typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : repo?.name ?? base(root)).slice(0, 40)
+    const r = applyOp(this.layout, { op: 'borough', name, root, x: site[0], y: site[1], w: bw, h: bh })
+    if ('error' in r) return r
+    const id = r.layout.boroughs[r.layout.boroughs.length - 1]!.id
+    w.layout = connectBorough(fillBorough(r.layout, id, want).layout, id)
+    this.achieve('borough', now)
+    const moved = this.moveIn(root, id, now)
+    if ('error' in moved) return moved
+    this.sync()
     this.isDirty = true
     return { ok: true }
   }

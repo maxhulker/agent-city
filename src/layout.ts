@@ -486,7 +486,8 @@ export type Op =
   | { op: 'zone'; x: number; y: number }
   | { op: 'unzone'; x: number; y: number }
   | { op: 'paint'; what: 'park' | 'none'; x: number; y: number; w?: number; h?: number }
-  | { op: 'borough'; name: string; root?: string; x: number; y: number; w: number; h: number }
+  // fill: lay streets and lots in it at once (`fillBorough`), for the person.
+  | { op: 'borough'; name: string; root?: string; x: number; y: number; w: number; h: number; fill?: true }
 
 export type Applied = { layout: Layout } | { error: string }
 
@@ -544,7 +545,7 @@ export function parseOp(raw: unknown): Op | undefined {
       if (!xy || !isInt(r.w) || !isInt(r.h)) return undefined
       if (typeof r.name !== 'string' || !r.name.trim() || r.name.length > 40) return undefined
       if (r.root !== undefined && (typeof r.root !== 'string' || r.root.length > 400)) return undefined
-      return { op: 'borough', name: r.name.trim(), ...(r.root ? { root: r.root } : {}), x: r.x as number, y: r.y as number, w: r.w, h: r.h }
+      return { op: 'borough', name: r.name.trim(), ...(r.root ? { root: r.root } : {}), x: r.x as number, y: r.y as number, w: r.w, h: r.h, ...(r.fill === true ? { fill: true as const } : {}) }
     }
     default:
       return undefined
@@ -810,6 +811,170 @@ export function applyOp(layout: Layout, op: Op): Applied {
       return next({ boroughs: [...layout.boroughs, bo] })
     }
   }
+}
+
+// ---- laying a borough out for the person ---------------------------------------
+
+// A lot holds three or four houses (`lotHouses` in draw/blocks.ts).
+const LOT_HOUSES = 3.5
+
+// The lots a repository of this size wants: about four house plots per
+// square root of its files and one a folder at least (`plotsFor`), three or
+// four plots to a lot, and a couple more to grow into.
+export function lotsWanted(files: number, folders: number): number {
+  const plots = Math.max(folders, Math.round(4 * Math.sqrt(Math.max(0, files))))
+  return Math.min(80, Math.max(4, Math.ceil(plots / LOT_HOUSES) + 2))
+}
+
+// A borough's size for that many lots, as `fillBorough` lays them: avenues
+// four cells apart with two lots between each pair, a lot on every row, and
+// a margin round it with the front row left for the square.
+export function boroughSizeFor(lots: number): [w: number, h: number] {
+  const pairs = Math.min(5, Math.max(1, Math.ceil(Math.sqrt(lots / 4))))
+  const rows = Math.min(BOROUGH_MAX - 2, Math.max(2, Math.ceil(lots / (2 * pairs))))
+  return [4 * pairs + 2, rows + 2]
+}
+
+const within2 = (bo: Borough, x: number, y: number) => x >= bo.x && x < bo.x + bo.w && y >= bo.y && y < bo.y + bo.h
+
+// Streets and lots in a drawn borough, laid for the person: lots along the
+// roads already there first, then avenues four cells apart, a street every
+// third row and one along the front, and lots along them, the ones nearest
+// the square first, up to `want` lots in the borough (every one that fits
+// when no number is given). What can't be laid is skipped. The front row
+// stays clear for the square.
+export function fillBorough(layout: Layout, id: string, want = Infinity): { layout: Layout; lots: number; added: number } {
+  const bo = layout.boroughs.find(b => b.id === id)
+  if (!bo || bo.preset) return { layout, lots: 0, added: 0 }
+  let cur = layout
+  const count = () => cur.zoned.filter(([x, y]) => within2(bo, x, y)).length
+  const had = count()
+  let lots = had
+  const attempt = (op: Op): boolean => {
+    const r = applyOp(cur, op)
+    if ('error' in r) return false
+    cur = r.layout
+    return true
+  }
+  const x0 = bo.x + 1
+  const y0 = bo.y + 1
+  const front = bo.y + bo.h - 1
+  const xEnd = bo.x + bo.w - 1
+  const sq: Pt2 = [bo.x + bo.w / 2, front]
+  // Lots in line with the avenues first, then the nearest to the square.
+  const spots: [number, number][] = []
+  for (let y = y0; y < front; y++) for (let x = bo.x; x + 2 <= bo.x + bo.w; x++) spots.push([x, y])
+  const off = (x: number) => (((x - x0) % 2) + 2) % 2
+  const dist = ([x, y]: [number, number]) => Math.abs(x + 1 - sq[0]) + Math.abs(y + 0.5 - sq[1]) * 1.2
+  spots.sort((a, b) => off(a[0]) - off(b[0]) || dist(a) - dist(b) || a[0] - b[0])
+  const zone = () => {
+    for (const [x, y] of spots) {
+      if (lots >= want) return
+      if (attempt({ op: 'zone', x, y })) lots++
+    }
+  }
+  zone()
+  if (lots < want) {
+    for (let ax = x0; ax <= xEnd; ax += 4) for (let y = y0; y < front; y++) attempt({ op: 'road', x: ax, y, dir: 0 })
+    const street = (y: number) => {
+      for (let x = x0; x < xEnd; x++) attempt({ op: 'road', x, y, dir: 1 })
+    }
+    for (let y = y0; y < front; y += 3) street(y)
+    street(front)
+    zone()
+  }
+  if (cur === layout) return { layout, lots, added: 0 }
+  return { layout: { ...cur, rev: layout.rev + 1 }, lots, added: lots - had }
+}
+
+// A free place for a w × h borough, as near `near` as can be (measured to the
+// middle of its front edge): all land, clear of the city's buildings, lots,
+// parks and the rails, and a cell away from any other borough.
+export function findSite(layout: Layout, w: number, h: number, near: Pt2): Rect | undefined {
+  if (!layout.land.length) return undefined
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const [y, a, b] of layout.land) {
+    minX = Math.min(minX, a)
+    maxX = Math.max(maxX, b)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y + 1)
+  }
+  const W = maxX - minX
+  const H = maxY - minY
+  if (W < w || H < h) return undefined
+  const ok = new Uint8Array(W * H)
+  for (const [y, a, b] of layout.land) for (let x = a; x < b; x++) ok[(y - minY) * W + (x - minX)] = 1
+  const clear = (x: number, y: number) => {
+    if (x >= minX && x < maxX && y >= minY && y < maxY) ok[(y - minY) * W + (x - minX)] = 0
+  }
+  const clearRect = ([x0, y0, x1, y1]: Rect, pad: number) => {
+    for (let y = y0 - pad; y < y1 + pad; y++) for (let x = x0 - pad; x < x1 + pad; x++) clear(x, y)
+  }
+  for (const b of layout.buildings) if (!b.burb) for (const r of cellsOf(b)) clearRect(r, 1)
+  for (const bo of layout.boroughs) clearRect(boroughRect(bo), 1)
+  for (const [x, y] of layout.zoned) clearRect([x, y, x + 2, y + 1], 0)
+  for (const [y, a, b] of layout.park) clearRect([a, y, b, y + 1], 0)
+  if (cityBuildings(layout, 'station').length) {
+    const t = trackOf(layout)
+    clearRect([Math.floor(t.x0), Math.floor(t.y) - 1, Math.ceil(t.x1), Math.floor(t.y) + 1], 0)
+  }
+  // Sums over the free cells, so each rectangle is counted at once.
+  const S = new Int32Array((W + 1) * (H + 1))
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) S[(y + 1) * (W + 1) + x + 1] = ok[y * W + x]! + S[y * (W + 1) + x + 1]! + S[(y + 1) * (W + 1) + x]! - S[y * (W + 1) + x]!
+  const free = (x: number, y: number) => S[(y + h) * (W + 1) + x + w]! - S[y * (W + 1) + x + w]! - S[(y + h) * (W + 1) + x]! + S[y * (W + 1) + x]!
+  let best: Rect | undefined
+  let bestD = Infinity
+  for (let y = 0; y + h <= H; y++) {
+    for (let x = 0; x + w <= W; x++) {
+      if (free(x, y) !== w * h) continue
+      const gx = minX + x
+      const gy = minY + y
+      const d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h - near[1])
+      if (d < bestD) {
+        bestD = d
+        best = [gx, gy, gx + w, gy + h]
+      }
+    }
+  }
+  return best
+}
+
+// A road from a borough's front street to the nearest road outside it, so
+// its agents walk there along the roads: down (or up) then across, else
+// across then down. Nothing changes when neither way can be laid.
+export function connectBorough(layout: Layout, id: string): Layout {
+  const bo = layout.boroughs.find(b => b.id === id)
+  if (!bo) return layout
+  const front = bo.y + bo.h - 1
+  const mid = Math.round(bo.x + bo.w / 2)
+  let target: Pt2 | undefined
+  let bestD = 41
+  for (const [x, y, dir] of layout.roads) {
+    for (const [px, py] of dir === 0 ? [[x, y], [x, y + 1]] : [[x, y], [x + 1, y]]) {
+      if (px! >= bo.x && px! <= bo.x + bo.w && py! >= bo.y && py! <= bo.y + bo.h) continue
+      const d = Math.abs(px! - mid) + Math.abs(py! - front)
+      if (d < bestD) {
+        bestD = d
+        target = [px!, py!]
+      }
+    }
+  }
+  if (!target) return layout
+  const [tx, ty] = target
+  const run = (l: Layout, x: number, y: number, dir: 0 | 1, len: number): Layout | undefined => {
+    if (len === 0) return l
+    const sx = dir === 0 ? x : len > 0 ? x : x + len
+    const sy = dir === 0 ? (len > 0 ? y : y + len) : y
+    const r = applyOp(l, { op: 'road', x: sx, y: sy, dir, len: Math.abs(len) })
+    if ('layout' in r) return r.layout
+    return r.error === 'There is a road here already' ? l : undefined
+  }
+  const down = run(layout, mid, front, 0, ty - front)
+  const a = down && run(down, mid, ty, 1, tx - mid)
+  if (a) return a
+  const across = run(layout, mid, front, 1, tx - mid)
+  const b = across && run(across, tx, front, 0, ty - front)
+  return b ?? layout
 }
 
 // Spans sorted by row and start, with touching ones joined.
