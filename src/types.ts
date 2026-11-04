@@ -167,6 +167,14 @@ export type Billboard = {
   openedAt?: number
   // Probes in a row that found it closed.
   misses?: number
+  // Where the person moved it (grid cell, in halves), and which way its
+  // screen faces: 'l' the front-left face (along gx), 'r' the front-right
+  // (along gy). None: placed for them, facing left.
+  pos?: [number, number]
+  face?: 'l' | 'r'
+  // The person took it down: it stays down while its server keeps running,
+  // and goes up again the next time the server starts.
+  destroyedAt?: number
 }
 
 export type DevHint = { id: string; root: string; at: number }

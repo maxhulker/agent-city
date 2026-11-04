@@ -774,13 +774,20 @@ const server = createServer(async (req, res) => {
     }
     if (
       req.method === 'POST' &&
-      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap' || url.pathname === '/billboard/open')
+      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap' || url.pathname === '/billboard/open' || url.pathname === '/billboard/edit')
     ) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
       // A billboard was opened: it stops glowing.
       if (url.pathname === '/billboard/open') {
         return city.openBillboard(args.id, Date.now()) ? reply(res, 200, '{"ok":true}') : reply(res, 404, '{"error":"No such billboard"}')
+      }
+      // Moved, turned or taken down from its card.
+      if (url.pathname === '/billboard/edit') {
+        const r = city.editBillboard(args, Date.now())
+        if ('error' in r) return reply(res, 400, JSON.stringify(r))
+        save()
+        return reply(res, 200, '{"ok":true}')
       }
       // The city builder: one placement, checked by the layout's rules.
       if (url.pathname === '/build') {

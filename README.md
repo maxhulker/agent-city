@@ -46,7 +46,12 @@ spots the address in a shell's or a browser tool's work (or, for `npm run
 dev` and the like run in the background, watches the usual dev ports for one
 that opens), puts the billboard up only once the port answers, and takes it
 down a few seconds after the server stops; it comes back when the server
-does.
+does. The **⚙** beside a billboard opens its card: **Move** (click where it
+should stand; `R` turns it while you move it, `Esc` cancels), **Rotate** (its
+screen faces the other way: front-left or front-right), and **Destroy** (it
+stays down while that server keeps running, and goes up again the next time
+the server starts). A billboard you moved stays where you put it, and the
+others keep clear of it.
 
 A borough's houses are its repository. Crosswalk reads each one with git
 (every 15 seconds while its agents work, every 5 minutes otherwise) and

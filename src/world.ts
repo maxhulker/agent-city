@@ -1159,8 +1159,39 @@ export class City {
     if (b.misses < BILLBOARD_MISSES) return
     delete b.up
     b.misses = 0
-    this.tick(undefined, `${b.name}'s billboard went dark: ${hostOf(b.url)} stopped`, now)
+    // One the person took down was only down while this server ran: the next
+    // time it starts, it goes up again.
+    if (b.destroyedAt !== undefined) delete b.destroyedAt
+    else this.tick(undefined, `${b.name}'s billboard went dark: ${hostOf(b.url)} stopped`, now)
     this.isDirty = true
+  }
+
+  // The person moved, turned or took down a billboard: { id, x, y } puts it
+  // at a grid cell (to the half), { face } turns its screen ('l' or 'r'),
+  // { destroy: true } takes it down while its server keeps running.
+  editBillboard(raw: unknown, now: number): { ok: true } | { error: string } {
+    const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const b = typeof r.id === 'string' ? this.world.billboards?.find(x => x.id === r.id) : undefined
+    if (!b) return { error: 'No such billboard' }
+    if (r.destroy === true) {
+      b.destroyedAt = now
+      this.tick(undefined, `${b.name}'s billboard came down: ${hostOf(b.url)}`, now)
+      this.isDirty = true
+      return { ok: true }
+    }
+    const coord = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= -60 && v <= 140 ? Math.round(v * 2) / 2 : undefined)
+    if (r.x !== undefined || r.y !== undefined) {
+      const x = coord(r.x)
+      const y = coord(r.y)
+      if (x === undefined || y === undefined) return { error: 'Not a place on the map' }
+      b.pos = [x, y]
+    }
+    if (r.face !== undefined) {
+      if (r.face !== 'l' && r.face !== 'r') return { error: 'face must be l or r' }
+      b.face = r.face
+    }
+    this.isDirty = true
+    return { ok: true }
   }
 
   // The person opened it: it stops glowing for good.
