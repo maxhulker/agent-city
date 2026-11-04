@@ -218,10 +218,15 @@ export class AppSessions {
   // What a city adds to its sessions' environment (src/cities.ts): AGENT_CITY,
   // so their hooks report to it, and a config folder of its own if it has one.
   private env: Record<string, string>
+  // The folder attached files are saved in (src/uploads.ts): every process
+  // gets it with --add-dir, so reading one never asks. '' for none.
+  private uploads: string
 
-  constructor(saved: AppSession[] | undefined, onChange: (s: AppSession, what: string) => void, env: Record<string, string> = {}) {
+  constructor(saved: AppSession[] | undefined, onChange: (s: AppSession, what: string) => void, env: Record<string, string> = {}, uploads = '') {
     this.onChange = onChange
     this.env = env
+    // It reaches a shell on Windows: a path with a quote is left out.
+    this.uploads = uploads && !/["%^&|<>]/.test(uploads) ? uploads : ''
     // Their processes went with the server; each wakes on its next message.
     this.sessions = (saved ?? []).map(s => {
       const out: AppSession = { ...s }
@@ -251,7 +256,7 @@ export class AppSessions {
   }
 
   // Starts a session in cwd; throws with a message for the page when it can't.
-  start(args: StartArgs, now: number): AppSession {
+  start(args: StartArgs, now: number, images: Record<string, unknown>[] = []): AppSession {
     const prompt = args.prompt == null || args.prompt === '' ? '' : checkText(args.prompt)
     const level = args.level as TaskLevel
     if (typeof level !== 'string' || !Object.hasOwn(LEVELS, level)) throw new Error('level must be read, ask, edit or run')
@@ -292,13 +297,14 @@ export class AppSessions {
     this.sessions.push(s)
     this.prune()
     this.spawn(s, resume ? ['--resume', resume, '--fork-session'] : [])
-    if (prompt) this.write(s, prompt)
+    if (prompt) this.write(s, prompt, images)
     this.onChange(s, 'start')
     return s
   }
 
-  // A message, idle or busy; an asleep session wakes for it.
-  send(id: string, text: unknown, now: number): AppSession {
+  // A message, idle or busy; an asleep session wakes for it. images are
+  // content blocks that go in with it (attached images, src/uploads.ts).
+  send(id: string, text: unknown, now: number, images: Record<string, unknown>[] = []): AppSession {
     const s = this.sessions.find(x => x.id === id)
     if (!s) throw new Error('No such session')
     const msg = checkText(text)
@@ -312,7 +318,7 @@ export class AppSessions {
       s.status = 'starting'
     }
     s.lastAt = now
-    this.write(s, msg)
+    this.write(s, msg, images)
     this.onChange(s, 'send')
     return s
   }
@@ -405,6 +411,7 @@ export class AppSessions {
       ...(s.model === 'default' ? [] : ['--model', s.model]),
       ...(!s.effort || s.effort === 'default' ? [] : ['--effort', s.effort]),
       ...LEVELS[s.level],
+      ...(this.uploads ? ['--add-dir', IS_WINDOWS && this.uploads.includes(' ') ? `"${this.uploads}"` : this.uploads] : []),
       ...how,
     ]
     // CLAUDECODE marks a shell inside a session; a server started from one shouldn't pass it on.
@@ -478,12 +485,13 @@ export class AppSessions {
     return true
   }
 
-  private write(s: AppSession, text: string) {
+  private write(s: AppSession, text: string, images: Record<string, unknown>[] = []) {
     const p = this.procs.get(s.id)
     if (!p) throw new Error('This session has no process')
     const uuid = randomUUID()
     const busy = s.status === 'working' || p.unread.size > 0
-    if (!this.line(p, { type: 'user', uuid, session_id: '', parent_tool_use_id: null, message: { role: 'user', content: text } })) {
+    const content = images.length ? [{ type: 'text', text }, ...images] : text
+    if (!this.line(p, { type: 'user', uuid, session_id: '', parent_tool_use_id: null, message: { role: 'user', content } })) {
       throw new Error('This session is not taking messages')
     }
     p.unread.set(uuid, busy)

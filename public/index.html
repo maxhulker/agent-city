@@ -348,6 +348,21 @@
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .cv-reply { border-top: 1px solid var(--line); padding: 8px 12px 10px; flex: none; background: var(--panel); }
   .cv-reply .compose { margin-top: 0; }
+  .cv-reply .compose .cv-att { padding: 2px 7px; }
+  #cv-files { display: flex; flex-wrap: wrap; gap: 6px; }
+  #cv-files:not(:empty) { margin-bottom: 6px; }
+  .att { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px 4px 3px 4px; font-size: 11px; }
+  .att img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; }
+  .att .ic { width: 28px; height: 28px; display: grid; place-items: center; background: var(--panel); border-radius: 4px; font-size: 9px; font-weight: 700; color: var(--dim); }
+  .att .an { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+  .att .as { color: var(--dim); }
+  .att.up .as::after { content: ' · uploading…'; }
+  .att.bad { border-color: var(--red); }
+  .att.bad .as { color: var(--red); }
+  .att .ax { background: none; border: 0; color: var(--dim); cursor: pointer; font: inherit; font-size: 13px; padding: 0 4px; }
+  .att .ax:hover { color: var(--text); }
+  #convo.drop::after { content: 'Drop files to attach'; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 12px;
+    display: grid; place-items: center; background: #0b1224cc; color: var(--text); font-weight: 600; z-index: 20; pointer-events: none; }
   #cv-in { max-height: 160px; font-size: 13px; padding: 6px 9px; }
   .cv-reply .msgs { max-height: 90px; overflow-y: auto; margin-bottom: 6px; }
   .cv-reply .msgs:empty { display: none; }
@@ -545,7 +560,8 @@
         <div id="cv-state"></div>
         <div id="cv-turns"></div>
         <div class="msgs" id="cv-msgs"></div>
-        <div class="compose"><textarea id="cv-in" rows="1" placeholder="Reply…" aria-label="Reply"></textarea><button class="btn primary" id="cv-send" type="button">Send</button></div>
+        <div id="cv-files"></div>
+        <div class="compose"><button class="btn cv-att" id="cv-att" type="button" title="Attach files (or drop them here, or paste an image)" aria-label="Attach files">📎</button><input type="file" id="cv-file" multiple hidden><textarea id="cv-in" rows="1" placeholder="Reply…" aria-label="Reply"></textarea><button class="btn primary" id="cv-send" type="button">Send</button></div>
         <div class="hint" id="cv-hint"></div>
         <div class="err" id="cv-err"></div>
       </div>
@@ -2057,7 +2073,8 @@
 
   // ---- conversation drawer -----------------------------------------------
   // cv.sid is the page's key: a Claude session id, or 'app:<id>' for a session that lives in the app.
-  const cv = { open: false, sid: '', agent: '', tab: 'talk', key: '', count: 0, seq: 0, busy: false, drafts: new Map(),
+  // files: what is attached to the message being written (fileDrafts keeps each session's).
+  const cv = { open: false, sid: '', agent: '', tab: 'talk', key: '', count: 0, seq: 0, busy: false, drafts: new Map(), files: [], fileDrafts: new Map(),
     headH: null, agentsKey: null, turnsH: null, msgsH: null, stateH: null, lastS: null, lastApp: null, convSid: null, mode: '', changesSid: '',
     outH: null, qH: null, liveH: null, held: '', heldKey: '', heldAt: 0 }
   const CV = { panel: $('convo'), title: $('cv-title'), log: $('cv-log'), pill: $('cv-pill'), talk: $('cv-talk'), ch: $('cv-changes'),
@@ -2089,6 +2106,9 @@
     sid = keyFor(lastMeta, sid)
     if (sid !== cv.sid) {
       if (cv.sid) cv.drafts.set(cv.sid, CV.ta.value)
+      if (cv.sid) cv.fileDrafts.set(cv.sid, cv.files)
+      cv.files = cv.fileDrafts.get(sid) || []
+      drawFiles()
       // null, not '': an empty value for the new session must still replace the old one's.
       Object.assign(cv, { sid, agent: '', key: '', count: 0, busy: false, headH: null, agentsKey: null, turnsH: null, msgsH: null, stateH: null,
         lastS: null, lastApp: null, convSid: null, mode: '', changesSid: '', outH: null, qH: null, liveH: null, held: '', heldKey: '', heldAt: 0 })
@@ -2362,10 +2382,104 @@
             : 'Enter sends; Shift+Enter for a new line.'
   }
 
+  // ---- attachments: saved by the server, listed in the message by path ----
+  // Any session can open them with its Read tool; an app session also gets
+  // the images themselves with the message, as Claude sees a pasted image.
+  const kb = n => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`
+  const IMG = /\.(png|jpe?g|gif|webp)$/i
+
+  function drawFiles() {
+    const box = $('cv-files')
+    for (const el of [...box.children]) if (!cv.files.some(f => f.el === el)) el.remove()
+    for (const f of cv.files) {
+      if (!f.el) {
+        f.el = document.createElement('div')
+        const ext = (/\.([a-z0-9]{1,5})$/i.exec(f.name)?.[1] || 'file').toUpperCase()
+        f.el.innerHTML = (f.preview ? `<img alt="" src="${esc(f.preview)}">` : `<span class="ic">${esc(ext)}</span>`) +
+          `<span class="an" title="${esc(f.name)}">${esc(f.name)}</span><span class="as"></span><button class="ax" type="button" title="Remove" aria-label="Remove ${esc(f.name)}">×</button>`
+        f.el.querySelector('.ax').addEventListener('click', () => {
+          cv.files = cv.files.filter(x => x !== f)
+          if (f.preview) URL.revokeObjectURL(f.preview)
+          drawFiles()
+        })
+      }
+      f.el.className = `att${f.state === 'up' ? ' up' : f.state === 'bad' ? ' bad' : ''}`
+      f.el.querySelector('.as').textContent = f.state === 'bad' ? f.error : kb(f.size)
+      if (f.el.parentNode !== box) box.appendChild(f.el)
+    }
+  }
+
+  async function attach(list) {
+    if (!cv.sid) return
+    for (const file of [...list].slice(0, 20)) {
+      const name = file.name && file.name !== 'image.png' ? file.name : `pasted-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${(file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`
+      const f = { name, size: file.size, state: 'up', path: '', image: false, preview: /^image\//.test(file.type) ? URL.createObjectURL(file) : '' }
+      if (file.size > 30 * 1024 * 1024) { f.state = 'bad'; f.error = 'over 30 MB' }
+      cv.files.push(f)
+      drawFiles()
+      if (f.state === 'bad') continue
+      try {
+        const r = await fetch(inCity(`/upload?name=${encodeURIComponent(name)}`), { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file })
+        const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
+        if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`)
+        Object.assign(f, { state: 'ok', path: j.path, name: j.name, image: !!j.image })
+      } catch (e) {
+        Object.assign(f, { state: 'bad', error: String(e?.message || e) })
+      }
+      // The drawer may be on another session by now: f.el is its own either way.
+      drawFiles()
+    }
+  }
+
+  // What an app session gets as a picture with the message (src/uploads.ts INLINE_MAX).
+  const INLINE_MAX = Math.floor((5 * 1024 * 1024 * 3) / 4) - 1024
+  const inlined = (f, app) => app && f.image && f.size <= INLINE_MAX
+
+  // The message as sent: what was written, then the attached files' paths.
+  function withFiles(text, files, app) {
+    if (!files.length) return text
+    const list = files.map(f => `- ${f.path}${inlined(f, app) ? ' (image, already shown in this message)' : ''}`).join('\n')
+    const head = files.every(f => inlined(f, app)) ? `Attached file${files.length > 1 ? 's' : ''}:` : `Attached file${files.length > 1 ? 's' : ''} (open with the Read tool):`
+    return `${text || 'Have a look at the attached file' + (files.length > 1 ? 's.' : '.')}\n\n${head}\n${list}`
+  }
+
+  CV.attBtn = $('cv-att')
+  CV.file = $('cv-file')
+  CV.attBtn.addEventListener('click', () => CV.file.click())
+  CV.file.addEventListener('change', () => { attach(CV.file.files); CV.file.value = '' })
+  CV.ta.addEventListener('paste', e => {
+    const files = [...(e.clipboardData?.files || [])]
+    if (!files.length) return
+    e.preventDefault()
+    attach(files)
+  })
+  let dragDepth = 0
+  const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files')
+  CV.panel.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; CV.panel.classList.add('drop') })
+  CV.panel.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault() })
+  CV.panel.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; CV.panel.classList.remove('drop') } })
+  CV.panel.addEventListener('drop', e => {
+    if (!hasFiles(e)) return
+    e.preventDefault()
+    dragDepth = 0
+    CV.panel.classList.remove('drop')
+    attach(e.dataTransfer.files)
+  })
+
   async function cvSend() {
-    const text = CV.ta.value.trim()
-    if (!text || !cv.sid || CV.send.disabled) return
+    const typed = CV.ta.value.trim()
+    if (!cv.sid || CV.send.disabled) return
+    if (cv.files.some(f => f.state === 'up')) { CV.err.textContent = 'Still uploading; send again in a moment.'; return }
+    const files = cv.files.filter(f => f.state === 'ok')
+    if (!typed && !files.length) return
     const sid = cv.sid
+    const text = withFiles(typed, files, isAppKey(sid))
+    const images = files.filter(f => inlined(f, true)).map(f => f.path)
+    const sent = () => {
+      const left = (cv.sid === sid ? cv.files : cv.fileDrafts.get(sid) || []).filter(f => !files.includes(f))
+      if (cv.sid === sid) { cv.files = left; drawFiles() } else cv.fileDrafts.set(sid, left)
+      for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview)
+    }
     CV.err.textContent = ''
     if (isAppKey(sid)) {
       const a = appOf(lastMeta, sid) || cv.lastApp
@@ -2376,14 +2490,14 @@
       CV.ta.value = ''; growCv()
       cv.drafts.delete(sid)
       CV.log.scrollTop = CV.log.scrollHeight
-      const r = await post('/app/send', { id, text })
+      const r = await post('/app/send', { id, text, images })
       ackOutbox(id, text, r)
       if (r.error || r.ok === false) {
         if (cv.sid === sid) {
           CV.err.textContent = r.error || 'Not sent.'
-          if (!CV.ta.value.trim()) { CV.ta.value = text; growCv() }
+          if (!CV.ta.value.trim()) { CV.ta.value = typed; growCv() }
         }
-      }
+      } else sent()
       return
     }
     const task = taskFor(lastMeta, sid)
@@ -2392,8 +2506,9 @@
     const r = cont ? await post('/task/continue', { id: task.id, prompt: text }) : await post('/message', { session: sid, text })
     CV.send.disabled = false
     if (r.error || r.ok === false) { if (cv.sid === sid) CV.err.textContent = r.error || 'Not sent.'; return }
-    if (cv.sid === sid && CV.ta.value.trim() === text) { CV.ta.value = ''; growCv() }
+    if (cv.sid === sid && CV.ta.value.trim() === typed) { CV.ta.value = ''; growCv() }
     cv.drafts.delete(sid)
+    sent()
     if (cont) setTimeout(() => { if (cv.sid === sid) loadConvo(true) }, 700)
   }
 

@@ -65,6 +65,13 @@ The idea: you never need the terminal or the Claude window.
   have ended, newest first, from Claude Code's own records: its title, your
   first prompt, the folder and when. Click one to read its conversation, and
   **Continue in the app** to pick it up again with its full history.
+- **Attach files** to a message in the conversation: the 📎 button, drop
+  them on the drawer, or paste an image. Each is saved in
+  `~/.agent-city/uploads` (up to 30 MB, cleared after a month) and the
+  message lists its path, so Claude opens it with its Read tool: images,
+  PDFs, notebooks, code and text. Sessions in the app see an image with the
+  message itself, as in Claude, and read the folder without asking; a session
+  in another window may ask you first, since the folder is outside its own.
 - **Approve, answer and review plans** from the "Needs you" cards: Allow or
   Deny a permission request (with a reason Claude sees), answer Claude's
   multiple-choice questions, approve or send back a plan. Unanswered after
