@@ -58,7 +58,8 @@ The idea: you never need the terminal or the Claude window.
 
 - **Read the conversation.** Click a session (on the map or its card) to open
   its conversation: your prompts, Claude's replies, and its tool calls folded
-  into one-liners, read live from the session's transcript. The **Changes**
+  into one-liners, read live from the session's transcript. It stays readable
+  after the session ends or takes the last train home. The **Changes**
   tab shows the git diff of what it changed.
 - **Approve, answer and review plans** from the "Needs you" cards: Allow or
   Deny a permission request (with a reason Claude sees), answer Claude's
