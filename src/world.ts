@@ -5,8 +5,8 @@ import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
 import { FIXED, applyOp, boroughSizeFor, builtOf, burbGeo, cityBuildings, connectBorough, fillBorough, findSite, generateMap, clearBuilt, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
-import { devCommand, hostOf, localUrls, portOf, watchedTool } from './billboards.ts'
-import type { Agent, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
+import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
+import type { Agent, Billboard, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
@@ -1139,6 +1139,8 @@ export class City {
     const b = this.world.billboards?.find(x => x.id === id)
     if (!b) return
     if (title && title !== b.title) {
+      // A new title on a page already showing is an update.
+      if (b.title && b.up) this.billboardUpdated(b, now, 'its page has a new title')
       b.title = title
       this.isDirty = true
     }
@@ -1150,7 +1152,7 @@ export class City {
       if (b.builtAt === undefined) {
         b.builtAt = now
         this.news(`A billboard went up for ${b.name}: ${host}. Click it to open the page`, now)
-      } else this.tick(undefined, `${b.name}'s billboard lit up again: ${host}`, now)
+      } else this.billboardUpdated(b, now, 'its server is back up')
       this.isDirty = true
       return
     }
@@ -1194,15 +1196,34 @@ export class City {
     return { ok: true }
   }
 
-  // The person opened it: it stops glowing for good.
+  // The person opened it: it stops glowing until it is next updated.
   openBillboard(id: unknown, now: number): boolean {
     const b = typeof id === 'string' ? this.world.billboards?.find(x => x.id === id) : undefined
     if (!b) return false
-    if (b.openedAt === undefined) {
-      b.openedAt = now
-      this.isDirty = true
-    }
+    if (litFor(b)) this.isDirty = true
+    b.openedAt = Math.max(now, (b.updatedAt ?? 0) + 1)
     return true
+  }
+
+  // What a billboard shows changed: it lights up and glows until opened. The
+  // ticker says so when it starts glowing, not at every edit after.
+  private billboardUpdated(b: Billboard, now: number, why: string) {
+    const was = litFor(b)
+    b.updatedAt = now
+    if (!was) this.tick(undefined, `${b.name}'s billboard lit up: ${why}. Click it to see ${hostOf(b.url)}`, now)
+    this.isDirty = true
+  }
+
+  // A session edited a file: the billboards of that file's repository that
+  // stand light up, since the page they show is likely to have changed.
+  private editedFor(path: string | undefined, now: number) {
+    if (!path) return
+    const key = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    const file = key(path)
+    for (const b of this.world.billboards ?? []) {
+      if (b.up === undefined || b.destroyedAt !== undefined || !file.startsWith(key(b.root) + '/')) continue
+      this.billboardUpdated(b, now, `${b.name} changed`)
+    }
   }
 
   // The dev servers started with no address in sight, for the server to
@@ -1454,7 +1475,10 @@ export class City {
         w.asks = w.asks.filter(q => q.id !== str(ev.tool_use_id) && q.id !== `perm:${a.id}`)
         if (a.status === 'waiting') a.status = 'working'
         const command = str(input.command)
-        if (ev.hook_event_name === 'PostToolUse') this.spotServers(a, tool, input, ev.tool_response, now)
+        if (ev.hook_event_name === 'PostToolUse') {
+          this.spotServers(a, tool, input, ev.tool_response, now)
+          if (EDITS.test(tool)) this.editedFor(pathOf(tool, input, str(ev.cwd) || s.cwd), now)
+        }
         const isGitish = ((tool === 'Bash' || tool === 'PowerShell') && /\b(git|gh)\b/.test(command)) || /merge|sync|rebase|pull/i.test(tool)
         if (isGitish) {
           const text = resultText(ev.tool_response ?? ev.error)

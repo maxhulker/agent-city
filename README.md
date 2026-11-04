@@ -41,7 +41,10 @@ When a session starts a local server (a front end on localhost), a
 the front of a borough for the others, on the forecourt for a project still
 waiting at Grand Central. It shows the page's title and address, and a click
 opens the page in a window of its own. A new one glows, its bulbs chase and a
-"New · click to open" tag hangs over it until you first open it. Crosswalk
+"New · click to open" tag hangs over it until you first open it. It lights up
+the same way, with "Updated · click to see", whenever what it shows changes
+after you last opened it: a session edits a file in its project, its server
+comes back up, or its page's title changes. Crosswalk
 spots the address in a shell's or a browser tool's work (or, for `npm run
 dev` and the like run in the background, watches the usual dev ports for one
 that opens), puts the billboard up only once the port answers, and takes it

@@ -2,6 +2,14 @@
 // Pure: the server probes what this finds (src/server.ts) and the city keeps
 // the billboards (src/world.ts).
 
+// Whether a billboard glows, its bulbs chase and a sign hangs over it: until
+// the person first opens it ('new'), and again whenever it is updated after
+// they last did ('updated'); otherwise it is plainly lit ('').
+export function litFor(b: { openedAt?: number; updatedAt?: number }): '' | 'new' | 'updated' {
+  if (b.openedAt === undefined) return 'new'
+  return (b.updatedAt ?? 0) > b.openedAt ? 'updated' : ''
+}
+
 // A local address: localhost, 127.0.0.1, 0.0.0.0 or [::1], with a port and a
 // path if it has them. Trailing punctuation is not part of it.
 // A path stops at a template placeholder (${id}, {{x}}): that is code, not an address.

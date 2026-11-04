@@ -163,8 +163,12 @@ export type Billboard = {
   up?: number
   // The first time it answered: the billboard went up.
   builtAt?: number
-  // The first time the person opened it: it stops glowing.
+  // When the person last opened it: it stops glowing until it is updated.
   openedAt?: number
+  // When what it shows last changed while it stood: a session edited a file
+  // in its repository, its server came back up, or its page's title changed.
+  // It lights up and glows again until the person opens it.
+  updatedAt?: number
   // Probes in a row that found it closed.
   misses?: number
   // Where the person moved it (grid cell, in halves), and which way its
