@@ -148,6 +148,29 @@ test('SessionEnd sends the whole session to the train', () => {
   assert.equal(city.world.trains?.filter(t => t.kind !== 'arrive').length, 1, 'one train for the session')
 })
 
+test('a session that leaves keeps where its conversation is', () => {
+  const city = new City()
+  city.apply(ev('SessionStart', 'S1', { transcript_path: 'C:/t/S1.jsonl' }), T0)
+  city.apply(ev('SubagentStop', 'S1', { agent_id: 'a1', agent_transcript_path: 'C:/t/a1.jsonl' }), T0 + 500)
+  idleSession(city, 'S2', T0)
+  city.apply(ev('SessionEnd', 'S1'), T0 + 1000)
+  assert.ok(city.sendHome('S2', T0 + 2000))
+  assert.equal(city.world.sessions.length, 0)
+  assert.deepEqual(city.world.pastSessions?.S1, {
+    root: HOME, leftAt: T0 + 1000, transcriptPath: 'C:/t/S1.jsonl', agentTranscripts: { a1: 'C:/t/a1.jsonl' },
+  })
+  assert.equal(city.world.pastSessions?.S2?.leftAt, T0 + 2000)
+  // The most recent 200 are kept, newest last.
+  for (let i = 0; i < 205; i++) {
+    idleSession(city, `X${i}`, T0 + 3000 + i)
+    city.sendHome(`X${i}`, T0 + 3000 + i)
+  }
+  const ids = Object.keys(city.world.pastSessions ?? {})
+  assert.equal(ids.length, 200)
+  assert.equal(ids.at(-1), 'X204')
+  assert.ok(!ids.includes('S1'), 'the oldest went first')
+})
+
 test('a borough packs up after an hour of quiet, and its repository moves straight back in', () => {
   const city = new City()
   idleSession(city, 'S1', T0)

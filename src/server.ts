@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import * as nodeModule from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,7 +18,7 @@ import { changesIn } from './changes.ts'
 import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
-import { readConversation } from './transcripts.ts'
+import { findTranscript, listTranscripts, readConversation } from './transcripts.ts'
 import { Updates } from './updates.ts'
 import { toast } from './notify.ts'
 import type { Agent, Decision, District, Task, World } from './types.ts'
@@ -709,19 +710,35 @@ const server = createServer(async (req, res) => {
     }
     // A session's conversation, read from its transcript (a subagent's with &agent=).
     // Read-only, and a page on another site can't read the reply (no CORS headers).
+    // A session that has left the city is still read: from where the city
+    // kept its transcript, else from Claude Code's own folder.
     if (req.method === 'GET' && url.pathname === '/conversation') {
-      const s = city.world.sessions.find(one => one.id === url.searchParams.get('session'))
-      if (!s) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
+      const id = url.searchParams.get('session') ?? ''
       const agent = url.searchParams.get('agent')
-      const path = agent ? s.agentTranscripts?.[agent] : s.transcriptPath
-      if (!path || !path.endsWith('.jsonl')) return reply(res, 200, JSON.stringify({ entries: [], updatedAt: s.updatedAt }))
-      return reply(res, 200, JSON.stringify({ entries: readConversation(path, { limit: 300 }), updatedAt: s.updatedAt }))
+      const s = city.world.sessions.find(one => one.id === id)
+      const past = s ? undefined : city.world.pastSessions?.[id]
+      const known = s ?? past
+      let path = agent ? known?.agentTranscripts?.[agent] : known?.transcriptPath
+      if (!s && !path && !agent) path = findTranscript(town.conf.config, id)
+      if (!s && !path) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
+      const updatedAt = s ? s.updatedAt : past?.leftAt
+      if (!path || !path.endsWith('.jsonl')) return reply(res, 200, JSON.stringify({ entries: [], updatedAt }))
+      return reply(res, 200, JSON.stringify({ entries: readConversation(path, { limit: 300 }), updatedAt, ...(s ? {} : { gone: true }) }))
+    }
+    // Earlier sessions, newest first, from Claude Code's own folder: any
+    // that are not in the city or the app now, so the page can reopen them.
+    if (req.method === 'GET' && url.pathname === '/past') {
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 30))
+      const skip = new Set<string>(city.world.sessions.map(s => s.id))
+      for (const a of appSessions.list()) if (a.sessionId) skip.add(a.sessionId)
+      return reply(res, 200, JSON.stringify({ sessions: listTranscripts(town.conf.config, { limit, skip, hideUnder: [tmpdir()] }) }))
     }
     // What a session has changed in its repository.
     if (req.method === 'GET' && url.pathname === '/changes') {
-      const s = city.world.sessions.find(one => one.id === url.searchParams.get('session'))
-      if (!s) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
-      return reply(res, 200, JSON.stringify(await changesIn(s.root)))
+      const id = url.searchParams.get('session') ?? ''
+      const root = city.world.sessions.find(one => one.id === id)?.root ?? city.world.pastSessions?.[id]?.root ?? appSessions.list().find(a => a.sessionId === id)?.cwd
+      if (!root) return reply(res, 404, JSON.stringify({ error: 'No such session' }))
+      return reply(res, 200, JSON.stringify(await changesIn(root)))
     }
     // The hats a new session's lead can wear, for the form's picker.
     if (req.method === 'GET' && url.pathname === '/hats') {

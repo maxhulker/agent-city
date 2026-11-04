@@ -135,6 +135,15 @@ export type Session = {
   agentTranscripts?: Record<string, string>
 }
 
+// What the city keeps of a session after it leaves: where its conversation
+// and its repository are.
+export type PastSession = {
+  root: string
+  transcriptPath?: string
+  agentTranscripts?: Record<string, string>
+  leftAt: number
+}
+
 // A permission prompt, question or plan approval held open for the page to
 // decide (the PermissionRequest hook waits for the answer).
 export type Pending = {
@@ -381,6 +390,9 @@ export type World = {
   // The plan's usage limits as Claude Code last reported them (Pro, Max and
   // Ultra plans, or a gateway's spend limit), from the status line.
   limits?: Limits
+  // Where the conversations of sessions that have left the city are, by
+  // session id, so the page can still read them (the most recent 200).
+  pastSessions?: Record<string, PastSession>
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts

@@ -430,6 +430,14 @@
   .opt-tag { font-size: 10px; color: #64748b; margin-left: 4px; }
   #earlier .fold { margin-top: 18px; }
   #earlier.shut #tasks { display: none; }
+  #pastsess .fold { margin-top: 18px; }
+  #pastsess.shut #past { display: none; }
+  .pastrow { display: block; width: 100%; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 9px; margin-bottom: 6px; color: var(--text); font: inherit; cursor: pointer; }
+  .pastrow:hover { border-color: #334155; }
+  .pastrow.on { border-color: var(--accent); }
+  .pastrow .pt { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pastrow .pp, .pastrow .pm { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .appcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; cursor: pointer; }
   .appcard:hover { border-color: #334155; }
   .appcard.selected { border-color: var(--accent); }
@@ -602,6 +610,10 @@
     <div id="apps"></div>
     <h2>Sessions in other windows</h2>
     <div id="sessions"></div>
+    <section id="pastsess">
+      <h2 class="fold" id="ps-head" role="button" tabindex="0" title="Sessions that have ended, from Claude Code's own records"><span class="chev">&#9662;</span>Earlier sessions<span class="tcount" id="ps-count"></span></h2>
+      <div id="past"></div>
+    </section>
     <section id="earlier" hidden>
       <h2 class="fold" id="et-head" role="button" tabindex="0"><span class="chev">&#9662;</span>Earlier tasks<span class="tcount" id="et-count"></span></h2>
       <div id="tasks"></div>
@@ -1411,6 +1423,60 @@
   $('et-head').addEventListener('click', () => setEt(!etOpen))
   $('et-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEt(!etOpen) } })
 
+  // ---- earlier sessions: ended ones, from Claude Code's own transcripts --
+  const pastInfo = new Map() // Claude session id -> { id, cwd, title, prompt, at }
+  let psOpen = true, psLimit = 30, psBusy = false, psAt = 0, psHtml = null, psList = []
+  try { psOpen = localStorage.getItem('agent-city-past') !== '0' } catch {}
+  const pastWhen = at => {
+    const d = new Date(at), now = new Date()
+    const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    if (d.toDateString() === now.toDateString()) return `today ${hm}`
+    if (now - d < 6 * 864e5) return `${d.toLocaleDateString([], { weekday: 'short' })} ${hm}`
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+  function setPs(open) {
+    psOpen = open
+    $('pastsess').classList.toggle('shut', !open)
+    $('ps-head').classList.toggle('shut', !open)
+    try { localStorage.setItem('agent-city-past', open ? '1' : '0') } catch {}
+    if (open) loadPast(true)
+  }
+  async function loadPast(force) {
+    if (psBusy || (!force && (!psOpen || document.hidden || Date.now() - psAt < 30_000))) return
+    psBusy = true
+    try {
+      const r = await fetch(inCity(`/past?limit=${psLimit}`), { cache: 'no-store' })
+      const j = await r.json()
+      psAt = Date.now()
+      psList = Array.isArray(j.sessions) ? j.sessions : []
+      for (const p of psList) pastInfo.set(p.id, p)
+      drawPast()
+    } catch {} finally { psBusy = false }
+  }
+  function drawPast() {
+    const list = psList
+    $('ps-count').textContent = list.length ? (list.length >= psLimit ? `${list.length}+` : String(list.length)) : ''
+    const base = c => String(c || '').split(/[\\/]/).filter(Boolean).pop() || c
+    const html = list.length
+      ? list.map(p => `<button class="pastrow${cv.open && cv.sid === p.id ? ' on' : ''}" type="button" data-past="${esc(p.id)}" title="${esc(p.cwd)}">` +
+          `<div class="pt">${esc(p.title || p.prompt)}</div>${p.title ? `<div class="pp">${esc(p.prompt)}</div>` : ''}` +
+          `<div class="pm">${esc(base(p.cwd))} · ${esc(pastWhen(p.at))}</div></button>`).join('') +
+        (list.length >= psLimit ? '<button class="tre-more" type="button" data-past-more="1">Show more</button>' : '')
+      : '<div class="empty">No earlier sessions.</div>'
+    if (html !== psHtml) { $('past').innerHTML = html; psHtml = html }
+  }
+  $('past').addEventListener('click', e => {
+    const b = e.target.closest('[data-past]')
+    if (b) { openSession(b.dataset.past); drawPast(); return }
+    if (e.target.closest('[data-past-more]')) { psLimit += 30; loadPast(true) }
+  })
+  $('ps-head').addEventListener('click', () => setPs(!psOpen))
+  $('ps-head').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPs(!psOpen) } })
+  // Every few seconds: the highlight follows the drawer; the list itself is asked for every 30 s.
+  setInterval(() => { if (psHtml !== null) drawPast(); loadPast(false) }, 5000)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadPast(false) })
+  setPs(psOpen)
+
   // ---- sessions in the app ----------------------------------------------
   const firstPrompts = new Map() // app id -> the prompt it was started with here
   // What the person sent that the conversation doesn't show yet: app id -> [{ text, at, base, sent, after }]
@@ -1728,7 +1794,7 @@
         ${chart(s.days || [], dayNames)}
         ${s.root ? `<div class="dim fp">${esc(s.root)}</div>` : ''}
         <div class="dim">${esc([span, agents].filter(Boolean).join(' · '))}</div>
-        ${s.here ? `<div class="row" style="margin-top:4px"><button class="btn sm" type="button" data-tre-open="${esc(s.id)}">Open its conversation</button></div>` : ''}
+        <div class="row" style="margin-top:4px"><button class="btn sm" type="button" data-tre-open="${esc(s.id)}">Open its conversation</button></div>
       </div>`
     }
     const row = s => {
@@ -2131,7 +2197,10 @@
           ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
         <div class="path">${esc(s.cwd)}</div>
         ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}${who}${order}${route}${sitePlan}`
-      : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
+      : pastInfo.has(cv.sid)
+        ? (p => `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name" title="${esc(p.title || p.prompt)}">${esc(p.title || p.prompt)}</span><span class="status">ended</span></div>
+          <div class="path">${esc(p.cwd)}</div><div class="small dim">Last active ${esc(pastWhen(p.at))}</div>`)(pastInfo.get(cv.sid))
+        : `<div class="row"><span class="dot" style="background:#64748b"></span><span class="name">Session ${esc(cv.sid.slice(0, 8))}</span><span class="status">ended</span></div>`
     if (head !== cv.headH) { CV.title.innerHTML = head; cv.headH = head }
     drawAgentPicker(s)
     drawReply(m, live)
@@ -2148,7 +2217,7 @@
       CV.ta.placeholder = mode === 'continue' ? 'Reply to continue this task…' : 'Message this session…'
     }
     // Any session from another window (or an old task) can move into the app, as a copy.
-    CV.cont.hidden = !(cv.lastS?.cwd)
+    CV.cont.hidden = !(cv.lastS?.cwd || pastInfo.get(cv.sid)?.cwd)
     CV.hint.textContent = mode === 'continue'
       ? `Enter sends a new turn of the task in ${baseName(task.cwd)}; Shift+Enter for a new line.`
       : busy ? 'It is working on a turn: your message reaches it at its next step.'
@@ -2329,7 +2398,7 @@
   }
 
   CV.contBtn.addEventListener('click', () => {
-    const s = cv.lastS
+    const s = cv.lastS || pastInfo.get(cv.sid)
     if (s && !isAppKey(cv.sid)) continueInApp(s.cwd, s.id, CV.contBtn)
   })
 

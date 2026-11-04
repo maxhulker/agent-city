@@ -272,6 +272,8 @@ const MESSAGE_KEPT = 10 * 60_000
 // that spent last), and the page is sent the costliest of them.
 const LEDGER_MAX = 200
 const LEDGER_SHOWN = 100
+// Sessions that have left whose conversations the city can still find.
+const PAST_MAX = 200
 
 // What a hook reply carries: Claude reads it as a note from the person.
 function frame(m: Message): string {
@@ -1438,11 +1440,18 @@ export class City {
   }
 
   // A whole session leaves: its agents board, and it is forgotten, so that it
-  // arrives fresh if it ever speaks again.
+  // arrives fresh if it ever speaks again. Where its conversation is stays
+  // known, so the page can still show it.
   private departSession(s: Session, now: number, why: string) {
     const w = this.world
     this.depart(w.agents.filter(a => a.session === s.id), now, why)
     w.sessions = w.sessions.filter(one => one !== s)
+    const past = { ...w.pastSessions }
+    delete past[s.id]
+    past[s.id] = { root: s.root, leftAt: now, ...(s.transcriptPath ? { transcriptPath: s.transcriptPath } : {}), ...(s.agentTranscripts ? { agentTranscripts: s.agentTranscripts } : {}) }
+    const ids = Object.keys(past)
+    for (const id of ids.slice(0, Math.max(0, ids.length - PAST_MAX))) delete past[id]
+    w.pastSessions = past
     this.spawns.delete(s.id)
     this.isDirty = true
   }
