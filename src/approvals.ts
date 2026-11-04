@@ -12,7 +12,7 @@ import type { HookEvent, HookReply } from './world.ts'
 // Below the hook's 600 s timeout, so we answer before Claude Code gives up on us.
 const HOLD_MS = 540_000
 const INPUT_BUDGET = 2000
-const DECLINED = 'The user declined this in Agent City.'
+const DECLINED = 'The user declined this in Crosswalk.'
 
 type Held = {
   pending: Pending

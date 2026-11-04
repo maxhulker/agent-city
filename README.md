@@ -1,4 +1,4 @@
-# Agent City
+# Crosswalk
 
 Watch every Claude Code session on this machine at work in one isometric
 Manhattan at night. Each session gets a crowned lead in its own color, and its
@@ -29,7 +29,7 @@ City, or any you drew). Then its agents cross over and gather on the
 borough's square. Use **Make Manhattan** in the sidebar to pick home
 yourself, and **Pick automatically** to hand it back.
 
-A borough's houses are its repository. Agent City reads each one with git
+A borough's houses are its repository. Crosswalk reads each one with git
 (every 15 seconds while its agents work, every 5 minutes otherwise) and
 gives every folder a run of houses side by side: as many as its share of the
 files, as tall as its size, lit if it had commits in the last two weeks and
@@ -43,7 +43,7 @@ commit, or over the borough for the repository at a glance. In a borough you
 drew, the zoned lots take the folders. Manhattan keeps its districts.
 
 When a newer version is on GitHub's `main`, the Empire State Building lights up
-gold and shoots fireworks: click it to update. Agent City pulls the new version
+gold and shoots fireworks: click it to update. Crosswalk pulls the new version
 (a clean fast-forward only) and restarts itself; app sessions wake up with their
 memory on your next message.
 
@@ -160,7 +160,7 @@ with numbered stops, and listed in the drawer: Library and Garment District
 back and forth reads as debugging. A session's task checklist is its **site
 plan**: a hoarding beside its lead shows how much is done, and the drawer
 lists it. A plan you approve from plan mode is posted at City Hall as the
-zoning plan. Run `npm run connect` again to send Agent City the task
+zoning plan. Run `npm run connect` again to send Crosswalk the task
 events; the checklist tools already feed it.
 
 Once the city stands, the card turns to **Run the city**: answer at City
@@ -215,8 +215,8 @@ Open http://localhost:4777.
 npm run shortcut
 ```
 
-This puts an **Agent City** shortcut on the desktop. Opening it starts the
-server if it isn't running, in a minimized window titled "Agent City" (close
+This puts an **Crosswalk** shortcut on the desktop. Opening it starts the
+server if it isn't running, in a minimized window titled "Crosswalk" (close
 that window to stop the server), and opens the city in its own Edge app window,
 or in the default browser where Edge isn't installed. Opening it again while
 the server runs just opens another window.
@@ -224,7 +224,7 @@ the server runs just opens another window.
 ### As an app, with update notifications
 
 - **Install it.** Open http://localhost:4777 in Edge or Chrome and choose
-  *Install Agent City* (the install icon in the address bar, or the menu's
+  *Install Crosswalk* (the install icon in the address bar, or the menu's
   *Apps*). It gets its own window, taskbar icon and Start menu entry.
 - **Start it at login.** `npm run autostart` starts the server, out of
   sight, whenever you sign in to Windows, so the city keeps its records and
@@ -234,7 +234,7 @@ the server runs just opens another window.
   new commits since the server started (you or Claude committed here),
   Windows shows a notification once; clicking it opens the city, and the
   lit Empire State updates or restarts it in one click. `npm run
-  notifications` gives them Agent City's own name and icon (otherwise they
+  notifications` gives them Crosswalk's own name and icon (otherwise they
   come from Windows PowerShell) and its own entry in Windows' notification
   settings. A notification that never pops up but sits in the notification
   centre (Win+N) means Do Not Disturb is on. Set `AGENT_CITY_NO_TOAST=1` to
@@ -248,10 +248,10 @@ npm run connect
 
 This adds HTTP hooks to `~/.claude/settings.json` (backed up first to
 `settings.json.agent-city-backup`). It leaves every other setting and hook as
-it is. Sessions started afterwards report to Agent City; restart any that are
+it is. Sessions started afterwards report to Crosswalk; restart any that are
 open.
 
-To stop Claude Code printing a failure line when Agent City isn't running, add
+To stop Claude Code printing a failure line when Crosswalk isn't running, add
 `--quiet`:
 
 ```bash
@@ -260,7 +260,7 @@ npm run connect -- --quiet
 
 This installs command hooks that post the same events with `curl` and always
 succeed silently. It needs `curl` in the shell Claude Code runs hooks in (Git
-Bash on Windows has it). The trade-off: while Agent City is closed, each event
+Bash on Windows has it). The trade-off: while Crosswalk is closed, each event
 waits up to a third of a second for it, where the HTTP hooks fail at once.
 Running `npm run connect` again, with or without `--quiet`, switches modes.
 
@@ -282,7 +282,7 @@ claude --settings hooks.json
 Signed in to Claude as more than one account, say a personal one and a
 work one? Each can have a city of its own, with a tab for each in the header.
 
-The hooks tell Agent City which account each session is signed in as: a
+The hooks tell Crosswalk which account each session is signed in as: a
 session the Claude desktop app starts says so itself, and one in a terminal
 is whichever account the CLI is signed into (`~/.claude.json`). Run
 `npm run connect` again once to get hooks that say so (they share
@@ -316,7 +316,7 @@ started from its page run with that folder.
 
 - Everything stays on this machine. The server listens on 127.0.0.1 only,
   refuses other hosts, and refuses hook posts that come from a web page.
-- When Agent City isn't running, sessions carry on at full speed. Claude Code
+- When Crosswalk isn't running, sessions carry on at full speed. Claude Code
   may print one `ECONNREFUSED` line for the failed hook; connect with
   `--quiet` (see above) to avoid it.
 - State is kept in `~/.agent-city/state.json`, so a restart keeps the city.

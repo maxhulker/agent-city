@@ -44,8 +44,8 @@ const KEPT_DONE = 20
 const STOP_GRACE_MS = 3000
 const LIVE_EVERY_MS = 250
 const INPUT_BUDGET = 2000
-const DECLINED = 'The user declined this in Agent City.'
-const READ_ONLY = 'This session can only read (Agent City level "read"); ask the user to raise its level for this.'
+const DECLINED = 'The user declined this in Crosswalk.'
+const READ_ONLY = 'This session can only read (Crosswalk level "read"); ask the user to raise its level for this.'
 const IS_WINDOWS = process.platform === 'win32'
 
 const READ_TOOLS = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch']
@@ -576,7 +576,7 @@ export class AppSessions {
         const req = (m.request ?? {}) as Record<string, unknown>
         if (req.subtype !== 'can_use_tool') {
           // Nothing else is asked of a host here; an answer keeps Claude from waiting on it.
-          this.line(p, { type: 'control_response', response: { subtype: 'error', request_id: requestId, error: `Agent City does not handle ${str(req.subtype) || 'this request'}` } })
+          this.line(p, { type: 'control_response', response: { subtype: 'error', request_id: requestId, error: `Crosswalk does not handle ${str(req.subtype) || 'this request'}` } })
           return
         }
         this.hold(s, p, requestId, req)

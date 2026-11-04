@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent City</title>
-<!-- Installable as an app: Edge or Chrome's "Install Agent City" (manifest + service worker). -->
+<title>Crosswalk</title>
+<!-- Installable as an app: Edge or Chrome's "Install Crosswalk" (manifest + service worker). -->
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.ico">
 <meta name="theme-color" content="#0b1224">
@@ -474,7 +474,7 @@
 </head>
 <body>
 <header>
-  <h1>AGENT CITY</h1>
+  <h1>CROSSWALK</h1>
   <nav id="cities" aria-label="Cities" hidden></nav>
   <button class="btn" id="fit" title="Reset zoom (0)">Fit</button>
   <button class="btn" id="lastcall" type="button" title="Everyone idle takes the last train home now">Last call</button>
@@ -487,11 +487,11 @@
   <div id="stage">
     <div id="map"><div id="city"></div></div>
     <div id="hud">
-      <div id="title"><b>AGENT CITY</b><div class="sub" id="sub">Manhattan</div><div id="counts"></div></div>
+      <div id="title"><b>CROSSWALK</b><div class="sub" id="sub">Manhattan</div><div id="counts"></div></div>
       <div id="pills"></div>
     </div>
     <div id="welcome" hidden>
-      <b>WELCOME TO AGENT CITY</b>
+      <b>WELCOME TO CROSSWALK</b>
       <p>Every Claude Code session on this machine, drawn as agents at work in a city. You lay the city out; your sessions bring it to life.</p>
       <p>Your lead arrives by train at the station. Lay a road from it, place City Hall, then the districts: the First district card keeps the list.</p>
       <p id="w-next">Next step: run <code>npm run connect</code> in the agent-city folder, then start a Claude Code session.</p>
@@ -1128,7 +1128,7 @@
   let tickAt = null, tickHtml = '', pendingHtml = null, tx = 0, segW = 0, lastT = 0
 
   function tickerSeg(items) {
-    if (!items.length) return '<span class="seg"><span class="it">AGENT CITY</span><span class="sep">◆</span><span class="it">ALL QUIET IN THE CITY</span><span class="sep">◆</span></span>'
+    if (!items.length) return '<span class="seg"><span class="it">CROSSWALK</span><span class="sep">◆</span><span class="it">ALL QUIET IN THE CITY</span><span class="sep">◆</span></span>'
     return '<span class="seg">' + items.map(t =>
       `<span class="it">${bullet(t.bullet, t.color, true)}<span>${esc(t.who)} ${esc(t.text)}</span></span><span class="sep">◆</span>`).join('') + '</span>'
   }
@@ -1676,11 +1676,11 @@
     const local = !u.available && u.restart
     const what = local ? (u.restart.latest ? `\n\nNewest here: ${u.restart.latest}` : '') : u.latest ? `\n\nNewest on main: ${u.latest}` : ''
     const ask = local
-      ? `Restart Agent City to apply ${u.restart.count} new commit${u.restart.count === 1 ? '' : 's'} in this copy?${what}`
-      : `Update Agent City to the latest version on main (${u.behind || 'some'} new)?${what}`
+      ? `Restart Crosswalk to apply ${u.restart.count} new commit${u.restart.count === 1 ? '' : 's'} in this copy?${what}`
+      : `Update Crosswalk to the latest version on main (${u.behind || 'some'} new)?${what}`
     if (!confirm(`${ask}\n\nIt restarts, and your app sessions pick up where they left off.`)) return
     updating = true
-    toast(local ? 'Restarting Agent City…' : 'Updating Agent City…')
+    toast(local ? 'Restarting Crosswalk…' : 'Updating Crosswalk…')
     const r = await post('/update', {})
     if (r.error || r.ok === false) {
       updating = false
@@ -1830,7 +1830,7 @@
       st.className = 'wstate' + (g.connected ? ' on' : '')
       st.lastElementChild.textContent = g.connected
         ? 'Connected: the rails are laid. Start a Claude Code session and your lead arrives by train.'
-        : 'Not connected yet: no Agent City hooks in ~/.claude/settings.json.'
+        : 'Not connected yet: no Crosswalk hooks in ~/.claude/settings.json.'
       $('w-next').hidden = g.connected
     }
     const MARK = { blueprint: '◻', building: '▲', built: '✓', done: '✓', next: '★', todo: '◻', locked: '🔒' }
@@ -2965,7 +2965,7 @@
   function setTitle(m) {
     const away = (m.cities || []).reduce((n, c) => n + (c.here ? 0 : c.needs), 0)
     const n = (m.pending || []).length + visibleAsks(m).length + (m.conflicts || []).length + away
-    const name = isMulti(m) ? `Agent City · ${m.city.name}` : 'Agent City'
+    const name = isMulti(m) ? `Crosswalk · ${m.city.name}` : 'Crosswalk'
     const t = n ? `(${n}) ${name}` : name
     if (document.title !== t) document.title = t
   }

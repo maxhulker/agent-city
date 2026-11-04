@@ -39,7 +39,7 @@ test('a commit made in the folder after the server started asks for a restart, o
   assert.deepEqual(u.state.restart, { count: 1, latest: 'Bigger maps' })
   assert.equal(changes, 1, 'the city redraws')
   assert.equal(told.length, 1)
-  assert.equal(told[0]![0], 'Agent City: restart to apply')
+  assert.equal(told[0]![0], 'Crosswalk: restart to apply')
   assert.match(told[0]![1], /1 new commit in this copy: Bigger maps/)
   await u.checkLocal(true)
   assert.equal(told.length, 1, 'said once')
@@ -49,8 +49,8 @@ test('a commit made in the folder after the server started asks for a restart, o
 })
 
 test("the notification's text is XML-safe and a click opens the city", () => {
-  const xml = toastXml('Agent City <update> & more', 'It\'s "new"', 'http://localhost:4777/')
+  const xml = toastXml('Crosswalk <update> & more', 'It\'s "new"', 'http://localhost:4777/')
   assert.ok(xml.includes('launch="http://localhost:4777/"'))
-  assert.ok(xml.includes('Agent City &lt;update&gt; &amp; more'))
+  assert.ok(xml.includes('Crosswalk &lt;update&gt; &amp; more'))
   assert.ok(xml.includes('It&apos;s &quot;new&quot;'))
 })

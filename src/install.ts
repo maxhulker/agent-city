@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { cityQuery, citiesOf, HOME, HOOKS_MARK, register, WHO_HEADERS } from './cities.ts'
 import type { CityConf } from './cities.ts'
 
-// Connects every Claude Code session on this machine to Agent City by adding
+// Connects every Claude Code session on this machine to Crosswalk by adding
 // HTTP hooks to the user settings file, or removes them with --uninstall.
 // --quiet installs command hooks that post with curl instead: Claude Code
 // prints a failure line for an HTTP hook whenever the server is down, and the
@@ -21,7 +21,7 @@ import type { CityConf } from './cities.ts'
 
 const PORT = Number(process.env.AGENT_CITY_PORT ?? 4777)
 
-// Events Agent City listens to. Tool events take a matcher; the rest none.
+// Events Crosswalk listens to. Tool events take a matcher; the rest none.
 const TOOL_EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest']
 const EVENTS = [
   'SessionStart',
@@ -81,7 +81,7 @@ const curl = (url: string, maxSeconds: number) =>
 //
 // The status line: Claude Code hands it the session's cost and the plan's
 // usage limits, which the City Treasury keeps; it prints the Treasury's line
-// (or nothing while Agent City is closed). Set only when there is no status
+// (or nothing while Crosswalk is closed). Set only when there is no status
 // line already: the person's own stays as it is.
 const statusCommand = (query: string) => curl(`http://127.0.0.1:${PORT}/statusline${query}`, 1)
 const isOurStatus = (v: unknown) =>
@@ -99,7 +99,7 @@ function saysWho(h: Handler): boolean {
   return typeof h.command === 'string' && h.command.includes(`${HOOKS_MARK.header}: ${HOOKS_MARK.value}`)
 }
 
-// True when the settings file carries Agent City's hooks for this port and
+// True when the settings file carries Crosswalk's hooks for this port and
 // city (one with a folder of its own: its ?city=). The server shows it on the
 // welcome card, and lays the rails into Grand Central. With byAccount, only
 // hooks that say who their session is count: a city that claims an account
@@ -184,7 +184,7 @@ function main() {
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true })
   } else if (!existsSync(backup)) {
-    // The first backup only: it keeps the settings as they were before Agent City.
+    // The first backup only: it keeps the settings as they were before Crosswalk.
     copyFileSync(path, backup)
     console.log(`Backed up ${path} to ${backup}`)
   }
@@ -192,8 +192,8 @@ function main() {
   const claims = conf.accounts.length ? `\nThe ${conf.name} city hears sessions signed in as ${conf.accounts.join(', ')}.` : ''
   console.log(
     isUninstall
-      ? `Removed Agent City's hooks from ${path}.`
-      : `Added Agent City's hooks to ${path} (${EVENTS.length} events → ${hookUrl(query)}; ${isQuiet ? 'quiet mode, curl command hooks' : 'HTTP hooks'}).${claims}\nSessions started from now on report to Agent City; restart any that are open.`,
+      ? `Removed Crosswalk's hooks from ${path}.`
+      : `Added Crosswalk's hooks to ${path} (${EVENTS.length} events → ${hookUrl(query)}; ${isQuiet ? 'quiet mode, curl command hooks' : 'HTTP hooks'}).${claims}\nSessions started from now on report to Crosswalk; restart any that are open.`,
   )
 }
 

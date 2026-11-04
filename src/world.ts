@@ -277,7 +277,7 @@ const PAST_MAX = 200
 
 // What a hook reply carries: Claude reads it as a note from the person.
 function frame(m: Message): string {
-  return `Message from the user, sent through Agent City (a dashboard on their machine): ${m.text}`
+  return `Message from the user, sent through Crosswalk (a dashboard on their machine): ${m.text}`
 }
 
 // A hook's answer to Claude Code: {} decides nothing.

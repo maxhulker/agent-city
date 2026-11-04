@@ -101,7 +101,7 @@ export class Updates {
     if (restart) {
       this.announce(
         `here:${head}`,
-        'Agent City: restart to apply',
+        'Crosswalk: restart to apply',
         `${restart.count} new commit${restart.count === 1 ? '' : 's'} in this copy${restart.latest ? `: ${restart.latest}` : ''}. Click the Empire State to restart.`,
       )
     }
@@ -132,7 +132,7 @@ export class Updates {
         const tip = await git(this.root, ['rev-parse', 'origin/main']).catch(() => latest ?? '')
         this.announce(
           `main:${tip}`,
-          'Agent City update ready',
+          'Crosswalk update ready',
           `${behind} new on main${latest ? `: ${latest}` : ''}. Click the Empire State to update.`,
         )
       }
@@ -165,11 +165,11 @@ export class Updates {
   }
 
   // Starts a fresh server once this one has let go of the port, in a window of
-  // its own titled "Agent City" (closing it stops the server, as before).
+  // its own titled "Crosswalk" (closing it stops the server, as before).
   relaunch() {
     const server = join(this.root, 'src', 'server.ts')
     if (process.platform === 'win32') {
-      const line = `ping -n 3 127.0.0.1 >nul & start "Agent City" /min "${process.execPath}" "${server}"`
+      const line = `ping -n 3 127.0.0.1 >nul & start "Crosswalk" /min "${process.execPath}" "${server}"`
       spawn(process.env.ComSpec || 'cmd.exe', ['/c', line], { cwd: this.root, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref()
     } else {
       spawn('sh', ['-c', `sleep 2; exec "${process.execPath}" "${server}"`], { cwd: this.root, detached: true, stdio: 'ignore' }).unref()

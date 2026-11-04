@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 
 // A desktop notification from the server itself, so it reaches the person
-// with no Agent City window open. On Windows it is a toast through
+// with no Crosswalk window open. On Windows it is a toast through
 // PowerShell's own notifier (nothing to install); clicking it opens `url`.
 // Elsewhere, and with AGENT_CITY_NO_TOAST set (tests, sandboxed servers),
 // it does nothing.
@@ -17,7 +17,7 @@ export function toastXml(title: string, body: string, url: string): string {
   )
 }
 
-// Windows shows a toast only for an app it knows: Agent City's own id once
+// Windows shows a toast only for an app it knows: Crosswalk's own id once
 // `npm run notifications` has registered it, else PowerShell's.
 const OWN = 'AgentCity.App'
 const POWERSHELL = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'

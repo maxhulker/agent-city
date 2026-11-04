@@ -12,7 +12,7 @@ import { dirname, join, resolve } from 'node:path'
 //   whose settings' hooks post to /hook?city=<id>.
 //
 // A session started with AGENT_CITY=<id> in its environment goes to that
-// city whatever its account (the sessions Agent City starts itself do).
+// city whatever its account (the sessions Crosswalk starts itself do).
 //
 // ~/.agent-city/cities.json lists the cities beyond the first:
 //
