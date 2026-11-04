@@ -58,8 +58,14 @@ Folders with uncommitted changes go up in scaffolding (with a crane while an
 agent edits there). The line under the sign shows the branch, commits ahead
 (↑) and behind (↓) its upstream, the fortnight's commits and what is
 uncommitted. Hover over a house for its folder's files, size and latest
-commit, or over the borough for the repository at a glance. In a borough you
-drew, the zoned lots take the folders. Manhattan keeps its districts.
+commit, or over the borough for the repository at a glance. **Click a house**
+to open its folder: every file in it with its size, the ones changed since
+the last commit marked (changed, new, deleted, renamed), and a filter. Click
+a file to look inside: its text with line numbers, Markdown rendered (or its
+source), an image shown, and **Open in VS Code** or **Copy path** to take it
+further. It is read-only, and only for the repositories the city knows. In a
+borough you drew, the zoned lots take the folders. Manhattan keeps its
+districts.
 
 When a newer version is on GitHub's `main`, the Empire State Building lights up
 gold and shoots fireworks: click it to update. Crosswalk pulls the new version

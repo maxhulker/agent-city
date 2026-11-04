@@ -18,6 +18,7 @@ import { Approvals } from './approvals.ts'
 import { DEV_PORTS, portOf, titleOf } from './billboards.ts'
 import { CensusTaker } from './census.ts'
 import { changesIn } from './changes.ts'
+import { IMAGE_MAX, listFolder, lookAt } from './folders.ts'
 import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
@@ -313,6 +314,16 @@ function game({ city, connected }: Town, now: number) {
       return { id, ...BLUEPRINTS[id], state, ...(at === undefined ? {} : { at }) }
     }),
   }
+}
+
+const sameRoot = (a: string, b: string) => a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+
+// A repository the city knows (one with a borough or waiting for one, or
+// Manhattan's), as the city has it; nothing for any other folder.
+function knownRoot(world: World, root: string): string | undefined {
+  if (!root) return undefined
+  if (world.homeRoot && sameRoot(world.homeRoot, root)) return world.homeRoot
+  return world.repos.find(r => sameRoot(r.root, root))?.root
 }
 
 function lotsInBorough(world: World, id: string): number {
@@ -846,6 +857,28 @@ const server = createServer(async (req, res) => {
       const skip = new Set<string>(city.world.sessions.map(s => s.id))
       for (const a of appSessions.list()) if (a.sessionId) skip.add(a.sessionId)
       return reply(res, 200, JSON.stringify({ sessions: listTranscripts(town.conf.config, { limit, skip, hideUnder: [tmpdir()] }) }))
+    }
+    // What is inside a house: its folder's files, a look inside one, and an
+    // image's bytes (src/folders.ts). Only in the repositories the city
+    // knows, and only for the page itself: it sends x-crosswalk, which
+    // another site can't without a preflight this server never answers.
+    if (req.method === 'GET' && (url.pathname === '/folder' || url.pathname === '/file' || url.pathname === '/file/raw')) {
+      if (req.headers['x-crosswalk'] !== '1') return reply(res, 403, '{"error":"Not from the page"}')
+      const root = knownRoot(city.world, url.searchParams.get('root') ?? '')
+      if (!root) return reply(res, 404, '{"error":"Not a repository the city knows"}')
+      const path = url.searchParams.get('path') ?? ''
+      if (url.pathname === '/folder') {
+        const census = city.world.repos.find(r => sameRoot(r.root, root))?.census
+        const keys = census?.blocks.map(b => b.path) ?? []
+        if (!keys.includes(path)) return reply(res, 404, '{"error":"No such folder in its census"}')
+        return reply(res, 200, JSON.stringify({ root, ...(await listFolder(root, path, keys)) }))
+      }
+      const look = lookAt(root, path)
+      if (!look) return reply(res, 404, '{"error":"No such file"}')
+      if (url.pathname === '/file') return reply(res, 200, JSON.stringify(look))
+      if (!look.image || look.bytes > IMAGE_MAX) return reply(res, 415, '{"error":"Not an image to show"}')
+      res.writeHead(200, { 'content-type': look.image, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'" })
+      return res.end(readFileSync(look.abs))
     }
     // What a session has changed in its repository.
     if (req.method === 'GET' && url.pathname === '/changes') {
