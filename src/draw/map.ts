@@ -49,7 +49,7 @@ const STYLE =
   `.spr{transform:scale(var(--zs,1));transform-box:fill-box;transform-origin:center}` +
   `.road{fill:none;stroke:#191d26}.st{stroke-width:2.2px}.av{stroke-width:3.4px}` +
   `.cl{fill:none;stroke:#6b5a2e;stroke-width:.5px;stroke-dasharray:3 4;opacity:.55}` +
-  `.lamp,.lamph{fill:none;stroke-linecap:round;stroke-dasharray:0 5.59}` +
+  `.lamp,.lamph{fill:none;stroke-linecap:round;stroke-dasharray:0 11.18}` +
   `.lamp{stroke:#ffe6a8;stroke-width:1.1px}.lamph{stroke:#ffb347;stroke-width:3.6px;opacity:.15}` +
   `.zebra{fill:none;stroke:#cbd5e1;stroke-width:1.1px;stroke-dasharray:.5 .5;opacity:.4}` +
   `.scaf{fill:none;stroke:#cdb27a;stroke-width:.45px}.plank{fill:none;stroke:#a16207;stroke-width:1px}` +
