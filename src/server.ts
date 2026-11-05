@@ -22,6 +22,8 @@ import { IMAGE_MAX, listFolder, lookAt } from './folders.ts'
 import { breakGround, checkGround, foundationsPrompt, projectsDir, unbreak } from './groundbreak.ts'
 import type { Ground } from './groundbreak.ts'
 import { Timelapses } from './timelapse.ts'
+import { checkFreight, cloneProject } from './freight.ts'
+import type { Freight } from './freight.ts'
 import { framesHouses, stageOf } from './draw/timelapse.ts'
 import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
@@ -661,7 +663,7 @@ const server = createServer(async (req, res) => {
         return reply(res, msg === 'too large' ? 413 : 400, JSON.stringify({ error: msg === 'too large' ? `Files can be up to ${UPLOAD_MAX / 1024 / 1024} MB` : msg }))
       }
     }
-    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname.startsWith('/app/') || url.pathname === '/decide' || url.pathname === '/groundbreak')) {
+    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname.startsWith('/app/') || url.pathname === '/decide' || url.pathname === '/groundbreak' || url.pathname === '/freight')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 256 * 1024)) || '{}') as Record<string, unknown>
       const fail = (error: string) => reply(res, 400, JSON.stringify({ error }))
@@ -683,6 +685,28 @@ const server = createServer(async (req, res) => {
       }
       // Break ground: a new project's folder and repository, its borough, and
       // a session to lay its foundations (src/groundbreak.ts).
+      // Freight: a project brought in from its address (src/freight.ts). Its
+      // borough is laid out and its train pulls in at once; it is cloned
+      // meanwhile, and counted as soon as it is unloaded.
+      if (url.pathname === '/freight') {
+        let f: Freight
+        try {
+          f = checkFreight(args, projectsDir(city.world.homeRoot, homedir()))
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err))
+        }
+        // Its borough is named as the person said, else after the repository.
+        const name = typeof args.name === 'string' && args.name.trim() ? args.name.trim().slice(0, 40) : f.name
+        const placed = city.freightArrives(f.path, name, args, Date.now())
+        if ('error' in placed) return fail(placed.error)
+        save()
+        cloneProject(f, error => {
+          censusTaker.forget(f.path)
+          city.freightDone(f.path, name, placed, error, Date.now())
+          save()
+        })
+        return reply(res, 200, JSON.stringify({ ok: true, root: f.path, borough: placed.borough }))
+      }
       if (url.pathname === '/groundbreak') {
         const now = Date.now()
         let ground: Ground

@@ -286,6 +286,15 @@ export class CensusTaker {
     }
   }
 
+  // Forgets what it knew of a repository (a failed read, its tree): a folder
+  // that just became one (a clone arriving) is counted at the next chance.
+  forget(root: string) {
+    const key = root.toLowerCase()
+    this.failed.delete(key)
+    this.trees.delete(key)
+    this.ages.delete(key)
+  }
+
   // When each folder was last committed to, at any time: what weathers a
   // quiet one (src/draw/map.ts). One `git log -1` a folder, kept per HEAD.
   private ages = new Map<string, { head: string; at: Map<string, number> }>()

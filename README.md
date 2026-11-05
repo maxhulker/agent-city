@@ -220,6 +220,26 @@ house's files panel, opens the New session form made out for that
 repository (the prompt begun with the house's folder), with a hard hat on
 its lead.
 
+## Bring in a project by freight
+
+A project that lives somewhere else can be brought in. Drag out a borough
+and pick **A project from GitHub: bring it in by freight**, or click a
+borough nobody lives in and choose **🚂 Bring in a project**. Give the
+repository's address: `https://github.com/owner/repo`, the address of any
+page in it, `github.com/owner/repo`, another host's `https://` address, or
+`git@host:owner/repo.git`. Its borough is laid out right away. A freight
+train with the project's name on its boxcars pulls into Grand Central and
+stands there while git clones it into the projects folder (the same one
+Break ground uses). Once it's unloaded the train leaves, and the houses go up
+as soon as the project is counted. If the clone fails, the borough drawn for
+it is taken back and the ticker says why.
+
+Only `https://` and `git@` addresses are accepted, never `file://` or
+git's `ext::`, which can run commands. Git is never left waiting for a
+password: a private repository needs access already set up (the Git
+Credential Manager, or an SSH key). A clone that takes more than 15 minutes
+is stopped. A folder that already exists is never touched.
+
 ## Permits, inspections and ribbon cuttings
 
 Each project's work goes through a builder's stages, read from what its

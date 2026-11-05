@@ -95,8 +95,8 @@ test('a new project gets a borough drawn for it, or one nobody lives in, and mov
   const site = findSite(city.layout, 10, 8, [st.x + 1, st.y + 2])!
   const root = 'C:/fake/red-hook'
   const r = city.groundFor(root, 'Red Hook', { x: site[0], y: site[1], w: 10, h: 8, fill: true }, T0)
-  assert.deepEqual(r, { ok: true, borough: 'Red Hook' })
   const bo = city.layout.boroughs.at(-1)!
+  assert.deepEqual(r, { ok: true, borough: 'Red Hook', id: bo.id, drawn: true })
   const repo = city.world.repos.find(x => x.root === root)!
   assert.equal(repo.burb, bo.id, 'moved in')
   assert.ok(city.world.layout!.zoned.length > 0, 'streets and lots laid')
@@ -108,7 +108,7 @@ test('a new project gets a borough drawn for it, or one nobody lives in, and mov
   const site2 = findSite(city.layout, 10, 8, [st.x + 1, st.y + 2])!
   assert.deepEqual(city.build({ op: 'borough', name: 'Gowanus', x: site2[0], y: site2[1], w: 10, h: 8 }, T0 + 20), { ok: true })
   const empty = city.layout.boroughs.at(-1)!
-  assert.deepEqual(city.groundFor('C:/fake/canal', 'Canal', { id: empty.id }, T0 + 30), { ok: true, borough: 'Gowanus' })
+  assert.deepEqual(city.groundFor('C:/fake/canal', 'Canal', { id: empty.id }, T0 + 30), { ok: true, borough: 'Gowanus', id: empty.id, drawn: false })
   assert.ok(city.toasts.includes('Ground broken for Canal in Gowanus'))
   assert.equal(city.world.repos.find(x => x.root === 'C:/fake/canal')!.burb, empty.id)
   assert.match((city.groundFor('C:/fake/x', 'X', { id: 'nope' }, T0 + 40) as { error: string }).error, /No such borough/)

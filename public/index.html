@@ -580,10 +580,16 @@
       <label for="bs-name">Name</label><input class="field" id="bs-name" maxlength="40" placeholder="Red Hook">
       <div id="bs-for"><label for="bs-root">For which repository?</label><select class="field" id="bs-root"><option value="">Not yet</option></select></div>
       <div id="bs-new" hidden>
+        <div id="bs-url-block" hidden>
+          <label for="bs-url">The repository's address</label>
+          <input class="field" id="bs-url" placeholder="https://github.com/owner/repo" spellcheck="false" autocomplete="off">
+        </div>
         <label for="bs-folder">Its folder</label>
         <div class="bs-path"><span class="path" id="bs-parent-show" title="Where new projects go"></span><button class="linkish" type="button" id="bs-parent-edit">Change</button></div>
         <input class="field" id="bs-parent" placeholder="Full path of the folder it goes in" spellcheck="false" hidden>
         <input class="field" id="bs-folder" maxlength="64" placeholder="red-hook" spellcheck="false" autocomplete="off">
+        <div class="small dim" id="bs-freight-note" hidden>A freight train brings it in: it stands at Grand Central while git clones it into that folder (git asks for nothing, so a private repository needs access already set up), and its houses go up once it is unloaded.</div>
+        <div id="bs-brief-block">
         <label for="bs-brief">What is it for?</label>
         <textarea class="field" id="bs-brief" rows="4" placeholder="A small web app that… (Claude starts from this brief)"></textarea>
         <label for="bs-level">Permissions</label>
@@ -593,6 +599,7 @@
           <option value="run">Can edit and run commands</option>
         </select>
         <div class="small dim">Crosswalk makes the folder, a git repository with the brief in CLAUDE.md, and starts a session in a hard hat to lay the foundations. It is asked to commit once the first version works: that is when the houses go up.</div>
+        </div>
       </div>
       <label class="chk" id="bs-fill-row"><input type="checkbox" id="bs-fill" checked> Lay streets and lots for me</label>
       <div class="small dim" id="bs-warn" hidden>With no repository, the borough stays empty until one moves in.</div>
@@ -3977,7 +3984,7 @@
     const living = burbId && ((lastMeta && lastMeta.repos) || []).find(r => r.burb === burbId && !r.left)
     const free = burbId && !living && ((lastMeta && lastMeta.free) || []).find(f => f.id === burbId)
     const work = living ? `<button class="btn sm primary" type="button" data-commission="${esc(living.root)}" title="Start a session on ${esc(living.name)}">👷 Commission work</button>`
-      : free ? `<button class="btn sm primary" type="button" data-ground="${esc(free.id)}" data-ground-name="${esc(free.name)}" title="Start a new project here">⛏ Break ground here</button>` : ''
+      : free ? `<button class="btn sm primary" type="button" data-ground="${esc(free.id)}" data-ground-name="${esc(free.name)}" title="Start a new project here">⛏ Break ground here</button><button class="btn sm" type="button" data-freight="${esc(free.id)}" title="Bring in a project from its address (GitHub)">🚂 Bring in a project</button>` : ''
     const replay = living && living.census && living.census.head ? `<button class="btn sm" type="button" data-timelapse="${esc(living.root)}" title="Watch ${esc(living.name)} built, commit by commit">▶ Time-lapse</button>` : ''
     selCard.innerHTML = `<b>${esc(z.dataset.tipTitle)}</b>${esc(z.dataset.tipText)}` +
       (noRoad ? `<div class="note">No road along its front: lay one so its agents can reach it.</div>` : '') +
@@ -4014,6 +4021,9 @@
     } else if (b.dataset.ground) {
       hideSel()
       openSheet(null, { id: b.dataset.ground, name: b.dataset.groundName || '' })
+    } else if (b.dataset.freight) {
+      hideSel()
+      openSheet(null, { id: b.dataset.freight, name: '' }, FREIGHT)
     } else if (b.dataset.bbOpen) {
       window.open(selCard.dataset.url, '_blank')
       post('/billboard/open', { id: bbId })
@@ -4097,6 +4107,9 @@
   // here"): its id. None while the sheet lays out a new rectangle.
   let sheetBurb = ''
   const NEW_PROJECT = '__new'
+  // A project brought in from its address by freight (src/freight.ts).
+  const FREIGHT = '__freight'
+  const repoNameOf = url => url.trim().replace(/\/+$/, '').replace(/\.git$/, '').replace(/\/(tree|blob)\/.*$/, '').split(/[/:]/).pop() || ''
   // A folder name from a project's name, as the server makes one (src/groundbreak.ts).
   const slugFor = name => name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').replace(/-{2,}/g, '-').slice(0, 64)
@@ -4105,19 +4118,25 @@
   try { projectsParent = localStorage.getItem('agent-city-projects-dir') || '' } catch {}
   const parentNow = () => $('bs-parent').value.trim() || projectsParent || (lastMeta && lastMeta.projectsDir) || ''
   function syncSheet() {
-    const isNew = $('bs-root').value === NEW_PROJECT
-    $('bs-new').hidden = !isNew
-    $('bs-warn').hidden = isNew || !!$('bs-root').value
+    const v = $('bs-root').value
+    const isNew = v === NEW_PROJECT, isFreight = v === FREIGHT
+    $('bs-new').hidden = !isNew && !isFreight
+    $('bs-url-block').hidden = !isFreight
+    $('bs-freight-note').hidden = !isFreight
+    $('bs-brief-block').hidden = !isNew
+    $('bs-warn').hidden = isNew || isFreight || !!v
     $('bs-for').hidden = !!sheetBurb
     $('bs-fill-row').hidden = !!sheetBurb
-    $('bs-head').textContent = sheetBurb ? 'BREAK GROUND' : isNew ? 'NEW BOROUGH · BREAK GROUND' : 'NEW BOROUGH'
-    $('bs-ok').textContent = isNew ? 'Break ground' : 'Lay it out'
-    $('bs-name').placeholder = isNew ? 'Name the project' : 'Red Hook'
+    $('bs-head').textContent = sheetBurb ? (isFreight ? 'BRING IN A PROJECT' : 'BREAK GROUND') : isFreight ? 'NEW BOROUGH · BY FREIGHT' : isNew ? 'NEW BOROUGH · BREAK GROUND' : 'NEW BOROUGH'
+    $('bs-ok').textContent = isFreight ? 'Send for it' : isNew ? 'Break ground' : 'Lay it out'
+    $('bs-name').placeholder = isFreight ? 'Named after the repository' : isNew ? 'Name the project' : 'Red Hook'
     if (isNew && !folderTouched) $('bs-folder').value = slugFor($('bs-name').value)
+    if (isFreight && !folderTouched) $('bs-folder').value = repoNameOf($('bs-url').value)
     const parent = parentNow()
     $('bs-parent-show').textContent = parent ? `In ${parent}` : 'Pick where it goes'
   }
-  function openSheet(r, burb) {
+  // mode, for a borough already drawn: NEW_PROJECT (break ground) or FREIGHT.
+  function openSheet(r, burb, mode = NEW_PROJECT) {
     sheetRect = r
     sheetBurb = burb ? burb.id : ''
     const sel = $('bs-root')
@@ -4125,10 +4144,11 @@
     const waiting = ((lastMeta && lastMeta.repos) || []).filter(x => x.waiting).map(x => ({ path: x.root, name: `${x.name} (waiting at Grand Central)` }))
     const seen = new Set(waiting.map(x => x.path.toLowerCase()))
     const known = ((lastMeta && lastMeta.places) || []).filter(p => !seen.has(String(p.path).toLowerCase()))
-    sel.innerHTML = '<option value="">Not yet</option>' + `<option value="${NEW_PROJECT}">A new project: break ground</option>` +
+    sel.innerHTML = '<option value="">Not yet</option>' + `<option value="${NEW_PROJECT}">A new project: break ground</option>` + `<option value="${FREIGHT}">A project from GitHub: bring it in by freight</option>` +
       [...waiting, ...known].map(p => `<option value="${esc(p.path)}">${esc(p.name)}</option>`).join('')
+    $('bs-url').value = ''
     // Laid out for a project from its card: that one. Else the first one waiting, if any.
-    if (sheetBurb) sel.value = NEW_PROJECT
+    if (sheetBurb) sel.value = mode
     else if (sheetFor) sel.value = sheetFor
     else if (waiting.length) sel.value = waiting[0].path
     sheetFor = ''
@@ -4141,15 +4161,33 @@
     folderTouched = false
     syncSheet()
     sheet.hidden = false
-    $(burb ? 'bs-brief' : 'bs-name').focus()
+    $(burb ? (mode === FREIGHT ? 'bs-url' : 'bs-brief') : 'bs-name').focus()
   }
   function closeSheet() { sheet.hidden = true; sheetBurb = '' }
   $('bs-cancel').addEventListener('click', closeSheet)
   $('bs-ok').addEventListener('click', async () => {
     const isNew = $('bs-root').value === NEW_PROJECT
+    const fill = $('bs-fill').checked
+    // By freight: the repository's address, cloned while its train waits.
+    if ($('bs-root').value === FREIGHT) {
+      const url = $('bs-url').value.trim()
+      if (!url) { $('bs-url').focus(); return }
+      const parent = parentNow()
+      const btn = $('bs-ok')
+      btn.disabled = true
+      $('bs-err').textContent = ''
+      const where = sheetBurb ? { id: sheetBurb } : { ...sheetRect, ...(fill ? { fill: true } : {}) }
+      const name = $('bs-name').value.trim()
+      const r = await post('/freight', { url, folder: $('bs-folder').value.trim(), parent, ...(name ? { name } : {}), ...where })
+      btn.disabled = false
+      if (r.error || !r.ok) { $('bs-err').textContent = r.error || 'It was not sent for.'; return }
+      if (parent) { projectsParent = parent; try { localStorage.setItem('agent-city-projects-dir', parent) } catch {} }
+      closeSheet()
+      setTool('select')
+      return
+    }
     const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value && !isNew ? $('bs-root').selectedOptions[0].textContent.replace(/ \(waiting at Grand Central\)$/, '') : '')
     if (!name) { $('bs-name').focus(); return }
-    const fill = $('bs-fill').checked
     if (!isNew) {
       const root = $('bs-root').value
       if (await build({ op: 'borough', name, ...(root ? { root } : {}), ...(fill ? { fill: true } : {}), ...sheetRect })) { closeSheet(); setTool('select') }
@@ -4178,6 +4216,8 @@
   $('bs-root').addEventListener('change', syncSheet)
   $('bs-name').addEventListener('input', syncSheet)
   $('bs-folder').addEventListener('input', () => { folderTouched = true })
+  $('bs-url').addEventListener('input', syncSheet)
+  $('bs-url').addEventListener('keydown', e => { if (e.key === 'Enter') $('bs-ok').click() })
   $('bs-parent').addEventListener('input', syncSheet)
   $('bs-parent-edit').addEventListener('click', () => {
     const input = $('bs-parent')
