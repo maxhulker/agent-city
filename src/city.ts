@@ -6,6 +6,7 @@ import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import { drawBillboards } from './draw/billboards.ts'
 import { drawSites } from './draw/sites.ts'
 import { drawLinks } from './draw/links.ts'
+import { costsByRoot } from './costs.ts'
 import { manhattanLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
@@ -73,6 +74,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     connected: opts.connected ?? true,
     layout,
     rev: layout.rev,
+    costs: costsByRoot(world),
   }
 
   const key = mapKey(sc)

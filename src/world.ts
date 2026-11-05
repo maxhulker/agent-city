@@ -7,6 +7,7 @@ import { FIXED, applyOp, boroughSizeFor, builtOf, burbGeo, cityBuildings, connec
 import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
 import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
+import { costsByRoot } from './costs.ts'
 import type { Agent, Billboard, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
@@ -583,6 +584,15 @@ export class City {
       days,
       sessions: sessions.sort((a, b) => b.usd - a.usd).slice(0, LEDGER_SHOWN),
       count: sessions.length,
+      // What each project has cost to build (src/costs.ts), costliest first.
+      projects: [...costsByRoot(w)]
+        .map(([key, c]) => {
+          const root = same(key, w.homeRoot) ? w.homeRoot : (w.repos.find(r => same(r.root, key))?.root ?? key)
+          const name = same(root, w.homeRoot) ? w.home : (w.repos.find(r => same(r.root, root))?.name ?? base(root))
+          return { root, name, usd: c.usd, sessions: c.sessions, home: same(root, w.homeRoot) }
+        })
+        .sort((a, b) => b.usd - a.usd)
+        .slice(0, 12),
       limits,
       ...(lim ? { limitsAt: lim.at } : {}),
     }

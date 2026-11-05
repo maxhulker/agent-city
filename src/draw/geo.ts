@@ -1,6 +1,7 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
 import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, cellsOf, deltaOf, doorOf, edges, isWaiting, lots, roomOf, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
+import type { Cost } from '../costs.ts'
 
 // The map's geometry, shared by every layer: the projection, the island and
 // its neighbours, where districts and boroughs are, and how agents walk. The
@@ -404,6 +405,8 @@ export type Scene = {
   // revision is in the map's hash, since a placement changes the map.
   layout: Layout
   rev: number
+  // What each project has cost to build, by lower-cased root (src/costs.ts).
+  costs?: Map<string, Cost>
 }
 
 // ---- layers (docs/frames.md) ---------------------------------------------

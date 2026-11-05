@@ -254,6 +254,16 @@ the work stops it goes dark. Hover over it to see how many sessions crossed
 and when. A project waiting at Grand Central gets its line once it has a
 borough.
 
+## What it cost to build
+
+Each project's construction cost is what its sessions have spent, from the
+City Treasury's books. It shows in green on the line under its borough's
+sign ("$13 to build") and in the borough's hover text, which Manhattan's hover
+text has too. The **City Treasury** card lists every project under **Cost to
+build each project**, costliest first. A session counts toward the project it
+started in, even if it went on to work in others. Like the rest of the
+Treasury, it is Claude Code's estimate at list price.
+
 ## Work orders and site plans
 
 Click an agent to see why it exists and how it works. A subagent carries a
