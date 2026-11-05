@@ -242,6 +242,18 @@ history is cut down to 60 evenly spaced commits, always including the first
 and the latest. Space plays and pauses, the arrow keys step through
 commits, the slider picks any of them, and `Esc` closes it.
 
+## Power lines
+
+Projects worked on together are wired together. The first time a session
+that started in one project reads or edits a file in another, a power line
+goes up between them, on lattice pylons from one's square to the other's
+(Manhattan's end stands by City Hall), and the ticker says so. It carries one
+cable for each session that has crossed, up to three. While work is crossing
+it (within the last three minutes) it is lit and sparks run along it; when
+the work stops it goes dark. Hover over it to see how many sessions crossed
+and when. A project waiting at Grand Central gets its line once it has a
+borough.
+
 ## Work orders and site plans
 
 Click an agent to see why it exists and how it works. A subagent carries a

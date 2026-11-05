@@ -5,6 +5,7 @@ import { defs, drawMap, drawOverlay, framed, mapKey } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import { drawBillboards } from './draw/billboards.ts'
 import { drawSites } from './draw/sites.ts'
+import { drawLinks } from './draw/links.ts'
 import { manhattanLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
@@ -93,6 +94,8 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     ...drawTrains(world, sc),
     // Hover zones between the city and the agents, so agents keep their own hover.
     item('zones', drawPlaces(world, sc)),
+    // Power lines between projects worked on together, over the zones so they hover.
+    ...drawLinks(world, sc),
     // Local servers' billboards, over the zones so a click opens the page.
     ...drawBillboards(world, sc),
     // Each project's construction site: its permit, its inspection, its ribbon cutting.
