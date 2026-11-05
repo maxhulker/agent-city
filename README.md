@@ -264,6 +264,20 @@ build each project**, costliest first. A session counts toward the project it
 started in, even if it went on to work in others. Like the rest of the
 Treasury, it is Claude Code's estimate at list price.
 
+## Weathering
+
+A folder that no commit has touched in a long time shows its age on its
+houses. After two months, ivy climbs its walls. After six, planks are nailed
+across its windows. After a year it stands derelict, its walls dark and
+streaked with rust. The census checks once each time HEAD moves when each
+folder was last committed to, at any point in history. A folder with
+uncommitted changes doesn't weather. The house's hover text says how long it
+has been. Its files panel says so too, and adds **🧹 Restore**, which fills
+in the New session form for that repository with a brief to bring the folder
+up to date: update outdated code and dependencies, fix what is broken,
+remove what is dead, make sure its tests pass, and ask before deleting
+anything substantial.
+
 ## Work orders and site plans
 
 Click an agent to see why it exists and how it works. A subagent carries a

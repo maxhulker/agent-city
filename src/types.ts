@@ -365,6 +365,8 @@ export type Block = {
   lastAt?: number
   // Files in it with uncommitted changes.
   dirty: number
+  // The latest commit that touched it, ever: a folder quiet for months weathers.
+  touchedAt?: number
   // Its most common file extension.
   ext?: string
 }

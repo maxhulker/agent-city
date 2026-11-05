@@ -275,9 +275,38 @@ export class CensusTaker {
       }
       const [lc] = last ? parseLog('\x01' + last.trim()) : []
       if (lc) facts.last = { at: lc.at, who: lc.who, subject: lc.subject.length > 72 ? lc.subject.slice(0, 71) + '…' : lc.subject }
-      return censusFrom(entries, parseLog(log ?? ''), parseStatus(status), facts, now)
+      const census = censusFrom(entries, parseLog(log ?? ''), parseStatus(status), facts, now)
+      if (head) await this.touched(dir, key, head, census)
+      return census
     } finally {
       this.running.delete(key)
+    }
+  }
+
+  // When each folder was last committed to, at any time: what weathers a
+  // quiet one (src/draw/map.ts). One `git log -1` a folder, kept per HEAD.
+  private ages = new Map<string, { head: string; at: Map<string, number> }>()
+
+  private async touched(dir: string, key: string, head: string, census: Census) {
+    let kept = this.ages.get(key)
+    if (kept?.head !== head) {
+      kept = { head, at: new Map() }
+      this.ages.set(key, kept)
+    }
+    const at = kept.at
+    const missing = census.blocks.map(b => b.path).filter(p => p !== REST && !at.has(p))
+    await Promise.all(
+      missing.map(async path => {
+        // The root's own files: those with no folder, as a pathspec.
+        const spec = path === '' ? ':(glob)*' : `:(literal)${path}`
+        const out = await git(dir, ['log', '-1', '--format=%ct', 'HEAD', '--', spec])
+        const t = Number(out?.trim()) * 1000
+        at.set(path, t > 0 ? t : 0)
+      }),
+    )
+    for (const b of census.blocks) {
+      const t = at.get(b.path)
+      if (t) b.touchedAt = t
     }
   }
 }

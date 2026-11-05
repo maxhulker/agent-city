@@ -1583,13 +1583,29 @@
 
   function flDrawFolder() {
     fl.file = null
+    // A folder quiet for two months or more has weathered: it can be restored.
+    const repo = ((lastMeta && lastMeta.repos) || []).find(r => samePath(r.root, fl.root))
+    const block = repo && repo.census && repo.census.blocks.find(b => b.path === fl.folder)
+    // The map's thresholds (WEATHER_DAYS in src/draw/blocks.ts): 60, 180 and 365 days.
+    const days = block && block.touchedAt && !block.dirty && block.path !== '…' ? (Date.now() - block.touchedAt) / 86_400_000 : 0
+    const months = Math.floor(days / 30)
+    const stale = days >= 60
     FL.title.innerHTML = `<div class="row"><span class="name">📁 ${esc(fl.label)}</span></div><div class="path">${esc(fl.root)}${fl.folder && fl.folder !== '…' ? `/${esc(fl.folder)}` : ''}</div>` +
-      `<div class="row" style="margin-top:6px"><button class="btn sm" type="button" id="fl-commission" title="Start a session on this folder: renovate it, extend it, fix it">👷 Commission work here</button></div>`
+      (stale ? `<div class="small" style="color:#86efac;margin-top:4px">🌿 Untouched for ${months} months: ${days >= 365 ? 'it stands derelict' : days >= 180 ? 'its windows are boarded up' : 'ivy is climbing its walls'}.</div>` : '') +
+      `<div class="row wrap" style="margin-top:6px">${stale ? `<button class="btn sm primary" type="button" id="fl-restore" title="Start a session to bring this folder up to date">🧹 Restore</button>` : ''}<button class="btn sm" type="button" id="fl-commission" title="Start a session on this folder: renovate it, extend it, fix it">👷 Commission work here</button></div>`
+    const folderNow = () => (fl.folder && fl.folder !== '…' ? fl.folder : '')
     $('fl-commission').addEventListener('click', () => {
-      const folder = fl.folder && fl.folder !== '…' ? fl.folder : ''
+      const folder = folderNow()
       const root = fl.root
       closeFolder()
       commission(root, folder ? `In \`${folder}/\`: ` : '')
+    })
+    if (stale) $('fl-restore').addEventListener('click', () => {
+      const folder = folderNow()
+      const root = fl.root
+      const where = folder ? `\`${folder}/\`` : 'the files at the top of this repository'
+      closeFolder()
+      commission(root, `Nobody has touched ${where} in ${months} months. Restore it: bring outdated code and dependencies up to date, fix what is broken, remove what is dead, and make sure its tests pass. Ask me before deleting anything substantial.`)
     })
     const j = fl.list
     if (!j) { FL.bar.innerHTML = ''; FL.body.innerHTML = '<div class="fl-note">Reading the folder…</div>'; return }

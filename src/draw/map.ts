@@ -3,7 +3,7 @@ import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, IS
 import type { OverlayItem, Pt, Scene } from './geo.ts'
 import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
-import { houses, lotHouses, placeBlocks, signLine, slotsOf } from './blocks.ts'
+import { houses, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
 import type { Placed } from './blocks.ts'
 import { censusShape } from '../census.ts'
 import { costOf, signCost } from '../costs.ts'
@@ -804,6 +804,55 @@ function burb(b: PresetBurb, census?: Census): string {
   return g
 }
 
+// Every house of a weathered folder, back to front.
+function weatheredHouses(placed: Placed[], census: Census, now: number): string {
+  return placed
+    .filter(h => h.block >= 0)
+    .sort((a, b) => a.x + a.y0 - (b.x + b.y0))
+    .map(h => weathered(h, weatherOf(census.blocks[h.block]!, now)))
+    .join('')
+}
+
+// A house's age on its walls (weatherOf in src/draw/blocks.ts): ivy climbing
+// its two walls, higher the older it is; planks nailed across its windows;
+// and for a derelict one, its walls gone dark and streaked with rust.
+function weathered(h: Placed, level: number): string {
+  if (level <= 0) return ''
+  const { x, y0, w, d } = h
+  const fy = y0 + d + 0.01 // the front-left wall, along x
+  const fx = x + w + 0.01 // the front-right wall, along y
+  let g = ''
+  if (level >= 3) {
+    const dark = 'fill="#0b1020" opacity=".5"'
+    g += `<polygon points="${pts([p(x, fy), p(x + w, fy), p(x + w, fy, h.h), p(x, fy, h.h)])}" ${dark}/>`
+    g += `<polygon points="${pts([p(fx, y0 + d), p(fx, y0), p(fx, y0, h.h), p(fx, y0 + d, h.h)])}" ${dark}/>`
+    for (const u of [0.3, 0.7]) g += `<path d="M${xy(p(x + w * u, fy, h.h - 0.5))}L${xy(p(x + w * u, fy, h.h * 0.35))}" stroke="#9a3412" stroke-width=".5" opacity=".7"/>`
+  }
+  if (level >= 2) {
+    // Two planks across the front wall, a little askew.
+    for (const [z, tilt] of [[0.62, 0.6], [0.38, -0.5]] as const) {
+      const zz = h.h * z
+      g += `<polygon points="${pts([p(x + 0.04, fy, zz - tilt), p(x + w - 0.04, fy, zz + tilt), p(x + w - 0.04, fy, zz + tilt + 1.1), p(x + 0.04, fy, zz - tilt + 1.1)])}" fill="#a16207" stroke="#713f12" stroke-width=".2"/>`
+    }
+  }
+  // Ivy: leafy clumps up from the ground on both walls, seeded so a house keeps its own.
+  const reach = Math.min(0.9, 0.25 + level * 0.2) * h.h
+  const leaves: string[] = []
+  for (let i = 0; i < 5 + level * 3; i++) {
+    const q = seeded(x * 3.1 + i, y0 * 1.7 + i * 0.37)
+    const q2 = seeded(y0 + i * 0.9, x + i)
+    const onFront = i % 3 !== 2
+    const z = q2 * reach
+    const [cx, cy] = onFront ? p(x + 0.06 + q * (w - 0.12), fy, z) : p(fx, y0 + 0.06 + q * (d - 0.12), z)
+    // Leaves a tenth of a house wide or so: the wall shows through them.
+    const r = 0.45 + q * 0.45
+    leaves.push(`<ellipse cx="${n(cx)}" cy="${n(cy)}" rx="${n(r)}" ry="${n(r * 1.2)}" fill="${q > 0.5 ? '#166534' : '#22c55e'}" opacity="${q > 0.5 ? 0.95 : 0.8}"/>`)
+  }
+  // A stem up the front corner, to the highest leaves.
+  g += `<path d="M${xy(p(x + 0.08, fy, 0))}L${xy(p(x + 0.1, fy, reach))}" stroke="#14532d" stroke-width=".6"/>`
+  return `<g class="weather" opacity=".92">${g}${leaves.join('')}</g>`
+}
+
 // The line under a repository's sign, from its census: branch, sync, the
 // fortnight's commits and what is uncommitted; then what it has cost to
 // build so far (src/costs.ts), when anything.
@@ -831,6 +880,7 @@ function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
     g += GRID + gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, 'none', ` rx=".3" stroke="#fde68a" stroke-width=".05"`) + '</g>'
   }
   if (census) {
+    g += weatheredHouses(burbHouses(b, census), census, sc.now)
     dirtyHouses(burbHouses(b, census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
   } else if (isBuilding) {
     const corner = houses(b).find(h => h.corner)
@@ -876,6 +926,7 @@ function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
   const census = repo?.census
   if (census) {
     const isBuilding = here.some(a => a.at === 'workshop')
+    g += weatheredHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census, sc.now)
     dirtyHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
   }
   if (repo) {
