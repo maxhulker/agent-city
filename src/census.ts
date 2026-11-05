@@ -194,7 +194,10 @@ export function censusFrom(tree: Entry[], commits: Commit[], dirty: string[], fa
 // and whether each has been worked on lately. Uncommitted changes and the
 // counts go on the overlay instead, so they don't redraw the map.
 export function censusShape(c: Census | undefined): unknown {
-  return c ? c.blocks.map(b => [b.path, b.files, b.bytes, b.commits > 0]) : null
+  if (!c) return null
+  const shape: unknown[] = c.blocks.map(b => [b.path, b.files, b.bytes, b.commits > 0])
+  // Where the person moved folders to: a move redraws the map.
+  return c.pins && Object.keys(c.pins).length ? [...shape, c.pins] : shape
 }
 
 // Two censuses that would draw and read the same.

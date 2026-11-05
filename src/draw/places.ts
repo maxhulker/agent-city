@@ -253,7 +253,7 @@ export function drawPlaces(world: World, sc: Scene): string {
         box: run.box,
         height: run.h,
         title: `${repo.name}: ${tip.title}`,
-        text: `${tip.text} Click to see its files.`,
+        text: `${tip.text} Click to see its files; hold the mouse on it to pick it up and move it.`,
         color: block.dirty ? '#fcd34d' : block.commits ? '#fde68a' : '#94a3b8',
         folder: { root: repo.root, path: block.path },
       })

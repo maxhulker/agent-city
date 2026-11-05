@@ -115,7 +115,9 @@ export function plotsFor(census: Census, total: number): number {
 // The census on a borough's plots. The front plots fill first (the back stays
 // empty for a small repository), the biggest folders at the back of what
 // stands, so the tall ones don't hide the short ones; each folder takes a
-// run of plots by its share of the files (one at least).
+// run of plots by its share of the files (one at least). A folder the person
+// pinned somewhere (census.pins) takes its run from the plot nearest its pin
+// first; the rest fill in around it as before.
 export function placeBlocks(slots: Slot[], census: Census): Placed[] {
   const total = slots.length
   const used = plotsFor(census, total)
@@ -128,29 +130,50 @@ export function placeBlocks(slots: Slot[], census: Census): Placed[] {
   let left = used - count.reduce((s, c) => s + c, 0)
   const order = want.map((w, i) => [w - Math.floor(w), i] as const).sort((a, b) => b[0] - a[0])
   for (let k = 0; left > 0 && order.length; k++, left--) count[order[k % order.length]![1]]!++
-  const out: Placed[] = []
-  let bi = 0
-  let run = 0
-  slots.forEach((s, i) => {
-    if (i < total - used) {
-      out.push({ ...s, block: -1, lit: false })
-      return
-    }
-    while (bi < blocks.length && run >= count[bi]!) {
-      bi++
-      run = 0
-    }
+
+  // Which folder stands on each plot: -1 for none.
+  const owner: number[] = new Array(total).fill(-1)
+  const pins = census.pins ?? {}
+  const pinned = new Set<number>()
+  blocks.forEach((b, bi) => {
+    const pin = pins[b.path]
+    if (!pin) return
+    const free = owner.map((o, i) => (o < 0 ? i : -1)).filter(i => i >= 0)
+    if (free.length < count[bi]!) return
+    // The free plot nearest the pin, then the next free ones after it, round to the start.
+    const start = free.reduce((best, i) => (dist(slots[i]!, pin) < dist(slots[best]!, pin) ? i : best), free[0]!)
+    const run = [...free.filter(i => i >= start), ...free.filter(i => i < start)].slice(0, count[bi])
+    for (const i of run) owner[i] = bi
+    pinned.add(bi)
+  })
+  // The rest on the frontmost free plots, in order, as with no pins at all.
+  const rest = blocks.map((_, bi) => bi).filter(bi => !pinned.has(bi))
+  const need = rest.reduce((s, bi) => s + count[bi]!, 0)
+  const plots = owner.map((o, i) => (o < 0 ? i : -1)).filter(i => i >= 0).slice(-need || total)
+  let k = 0
+  for (const bi of rest) for (let c = 0; c < count[bi]! && k < plots.length; c++) owner[plots[k++]!] = bi
+
+  return slots.map((s, i) => {
+    const bi = owner[i]!
     const b = blocks[bi]
-    if (!b) {
-      out.push({ ...s, block: -1, lit: false })
-      return
-    }
-    run++
+    if (bi < 0 || !b) return { ...s, block: -1, lit: false }
     // A storey or so between neighbours, so a run reads as a terrace.
     const jitter = (seeded(s.x * 5.3, s.y0 * 2.1) - 0.5) * 1.6
-    out.push({ ...s, block: bi, h: Math.max(3, heightOf(b.bytes) + jitter), pal: palOf(b), lit: b.commits > 0, corner: false })
+    return { ...s, block: bi, h: Math.max(3, heightOf(b.bytes) + jitter), pal: palOf(b), lit: b.commits > 0, corner: false }
   })
-  return out
+}
+
+const dist = (s: Slot, [x, y]: [number, number]) => Math.hypot(s.x + s.w / 2 - x, s.y0 + s.d / 2 - y)
+
+// The plot nearest a point on the grid, and how far it is (cells): where a
+// house dropped there would stand.
+export function nearestSlot(slots: Slot[], at: [number, number]): { i: number; d: number } | undefined {
+  let best: { i: number; d: number } | undefined
+  slots.forEach((s, i) => {
+    const d = dist(s, at)
+    if (!best || d < best.d) best = { i, d }
+  })
+  return best
 }
 
 // Each folder's houses as boxes for its hover zone: one per row it runs along.

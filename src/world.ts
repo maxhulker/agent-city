@@ -8,6 +8,7 @@ import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
 import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
 import { costsByRoot } from './costs.ts'
+import { nearestSlot, placeBlocks, slotsOf } from './draw/blocks.ts'
 import type { Agent, Billboard, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
@@ -1086,9 +1087,51 @@ export class City {
   setCensus(root: string, census: Census) {
     const repo = this.world.repos.find(r => same(r.root, root))
     if (!repo) return
+    // The folders the person moved stay where they put them.
+    if (repo.pins && Object.keys(repo.pins).length) census.pins = repo.pins
     const changed = !sameCensus(repo.census, census)
     repo.census = census
     if (changed) this.isDirty = true
+  }
+
+  // A house moved on the map (or let go): its folder's houses stand from the
+  // plot nearest (x, y) in its borough. Dropped on a folder the person had
+  // moved before, the two swap. `unpin` hands it back to the census.
+  moveHouse(raw: unknown): { ok: true } | { error: string } {
+    const { root, folder, x, y, unpin } = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const w = this.world
+    const repo = typeof root === 'string' ? w.repos.find(r => same(r.root, root) && !r.left) : undefined
+    const geo = repo && !isWaiting(repo.burb) ? burbGeo(this.layout, repo.burb) : undefined
+    const census = repo?.census
+    if (!repo || !geo || !census) return { error: 'Not a project with a borough' }
+    if (typeof folder !== 'string' || !census.blocks.some(b => b.path === folder)) return { error: 'No such folder in its census' }
+    const pins = { ...(repo.pins ?? {}) }
+    if (unpin === true) {
+      delete pins[folder]
+    } else {
+      if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return { error: 'Where to?' }
+      const slots = slotsOf(this.layout, repo.burb, !!geo.preset)
+      const near = nearestSlot(slots, [x, y])
+      if (!near || near.d > 1.6) return { error: `Drop it on a lot in ${geo.name}` }
+      const mid = (i: number): [number, number] => {
+        const s = slots[i]!
+        return [Math.round((s.x + s.w / 2) * 100) / 100, Math.round((s.y0 + s.d / 2) * 100) / 100]
+      }
+      // Who stands there now, and where this folder stands now: a moved one there trades places.
+      const placed = placeBlocks(slots, census)
+      const there = placed[near.i]!.block
+      const thereFolder = there >= 0 ? census.blocks[there]!.path : undefined
+      const mine = census.blocks.findIndex(b => b.path === folder)
+      const from = placed.findIndex(s => s.block === mine)
+      if (thereFolder && thereFolder !== folder && pins[thereFolder] && from >= 0) pins[thereFolder] = mid(from)
+      pins[folder] = mid(near.i)
+    }
+    if (Object.keys(pins).length) repo.pins = pins
+    else delete repo.pins
+    if (repo.pins) census.pins = repo.pins
+    else delete census.pins
+    this.isDirty = true
+    return { ok: true }
   }
 
   // The repositories whose census is wanted: those with a borough, and
@@ -1346,6 +1389,11 @@ export class City {
     }
     const was = repo.burb
     const moving = was !== id || !!repo.left
+    // Its houses' places were the old borough's: in a new one the census places them again.
+    if (was !== id && repo.pins) {
+      delete repo.pins
+      if (repo.census) delete repo.census.pins
+    }
     repo.burb = id
     delete repo.left
     if (was !== id) for (const a of w.agents) if (a.burb === was) a.burb = id

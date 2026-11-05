@@ -351,7 +351,19 @@ export type TaskTurn = {
 // still known: it moves straight back in, to the same borough when nobody else
 // has, as soon as a session works there again. Its census is what its
 // borough's buildings show.
-export type Repo = { root: string; name: string; burb: Burb; lastSeen: number; left?: number; census?: Census }
+export type Repo = {
+  root: string
+  name: string
+  burb: Burb
+  lastSeen: number
+  left?: number
+  census?: Census
+  // Folders the person moved, by path: the grid point (a plot's middle) their
+  // houses stand from. Reset when the repository moves to another borough.
+  pins?: Pins
+}
+
+export type Pins = Record<string, [number, number]>
 
 // What a borough's repository holds and what is going on in it, from git
 // (src/census.ts). Each block is a folder ('' for the root's own files, '…'
@@ -385,6 +397,8 @@ export type Census = {
   dirty: number
   last?: { at: number; who: string; subject: string }
   blocks: Block[]
+  // The repository's pins (Repo.pins), carried along for placing its houses.
+  pins?: Pins
 }
 
 export type Conflict = {
