@@ -1159,7 +1159,12 @@
   async function post(path, args) {
     try {
       const r = await fetch(inCity(path), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
-      return await r.json().catch(() => ({ error: r.ok ? '' : `HTTP ${r.status}` }))
+      const j = await r.json().catch(() => ({}))
+      // A refusal with nothing to say is still a refusal. A 404 is mostly a
+      // page newer than the server running it (the page is read from disk on
+      // each load; the server only changes when it restarts).
+      if (!r.ok && !j.error) j.error = r.status === 404 ? 'The Crosswalk server running now is older than this page: restart it (the Empire State, or restart the app) to use this.' : `HTTP ${r.status}`
+      return j
     } catch (e) {
       return { error: String(e?.message || e) }
     }
