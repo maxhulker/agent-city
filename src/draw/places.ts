@@ -2,7 +2,8 @@ import type { Agent, District, Landmark, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
 import { SIZES, boroughRect, cellsOf, deltaOf } from '../layout.ts'
-import { blockTip, censusText, placeBlocks, runsOf, slotsOf } from './blocks.ts'
+import { blockTip, blueprintPlots, censusText, placeBlocks, runsOf, slotsOf } from './blocks.ts'
+import { unbuilt } from '../blueprints.ts'
 import type { Kind } from '../layout.ts'
 import { costOf } from '../costs.ts'
 
@@ -246,7 +247,23 @@ export function drawPlaces(world: World, sc: Scene): string {
     const census = repo.census
     const g = burbGeo(sc.layout, b)
     if (!census || !g) continue
-    for (const run of runsOf(placeBlocks(slotsOf(sc.layout, b, g.preset), census))) {
+    const placed = placeBlocks(slotsOf(sc.layout, b, g.preset), census)
+    // Its blueprints: the folders it is about to get.
+    const planned = unbuilt(repo.blueprints, census, sc.now)
+    for (const { path, plots } of blueprintPlots(placed, planned.map(p => p.path))) {
+      const bp = planned.find(p => p.path === path)!
+      for (const i of plots) {
+        const s = placed[i]!
+        houses.push({
+          box: [s.x, s.y0, s.x + s.w, s.y0 + s.d],
+          height: 7,
+          title: `${repo.name}: ${path}/ (planned)`,
+          text: `${bp.from === 'plan' ? 'Named in a plan' : 'A session is writing its first files'} ${ago(sc.now - bp.at)}. A blueprint until its files are committed: then its houses go up here.`,
+          color: '#7dd3fc',
+        })
+      }
+    }
+    for (const run of runsOf(placed)) {
       const block = census.blocks[run.block]!
       const tip = blockTip(block, sc.now)
       houses.push({

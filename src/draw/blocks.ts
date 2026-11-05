@@ -163,6 +163,24 @@ export function placeBlocks(slots: Slot[], census: Census): Placed[] {
   })
 }
 
+// Where a borough's blueprints go: free plots, two to a planned folder (one
+// when plots are short). First the ones with no house standing in front of
+// them (a blueprint is drawn over the city, so a house in front couldn't hide
+// it), nearest the front first; then the rest.
+export function blueprintPlots(placed: Placed[], planned: string[]): { path: string; plots: number[] }[] {
+  const inFront = (s: Placed) =>
+    placed.some(h => h.block >= 0 && h.y0 > s.y0 + 0.01 && h.y0 - s.y0 < 3 && h.x < s.x + s.w && s.x < h.x + h.w)
+  const freeAll = placed.map((s, i) => (s.block < 0 ? i : -1)).filter(i => i >= 0).reverse()
+  const free = [...freeAll.filter(i => !inFront(placed[i]!)), ...freeAll.filter(i => inFront(placed[i]!))]
+  const each = free.length >= planned.length * 2 ? 2 : 1
+  const out: { path: string; plots: number[] }[] = []
+  planned.forEach((path, k) => {
+    const plots = free.slice(k * each, k * each + each).sort((a, b) => a - b)
+    if (plots.length) out.push({ path, plots })
+  })
+  return out
+}
+
 const dist = (s: Slot, [x, y]: [number, number]) => Math.hypot(s.x + s.w / 2 - x, s.y0 + s.d / 2 - y)
 
 // The plot nearest a point on the grid, and how far it is (cells): where a

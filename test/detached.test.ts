@@ -34,8 +34,8 @@ test('a detached launch runs the command on its own', { skip: process.platform !
 })
 
 test("a relaunched server gets Crosswalk's own settings, through WMI too", { skip: process.platform !== 'win32' && 'Windows only' }, async () => {
-  const line = relaunchLine('C:\node.exe', 'C:\app\src\server.ts', { AGENT_CITY_PORT: '4788', AGENT_CITY_NO_TOAST: '1', CLAUDE_CONFIG_DIR: 'C:\cfg', PATH: 'x', AGENT_CITY_BAD: 'a&b' }, true)
-  assert.equal(line, 'cmd.exe /c set "AGENT_CITY_PORT=4788" & set "AGENT_CITY_NO_TOAST=1" & set "CLAUDE_CONFIG_DIR=C:\cfg" & title Crosswalk & "C:\node.exe" "C:\app\src\server.ts"')
+  const line = relaunchLine('C:/node.exe', 'C:/app/src/server.ts', { AGENT_CITY_PORT: '4788', AGENT_CITY_NO_TOAST: '1', CLAUDE_CONFIG_DIR: 'C:/cfg', PATH: 'x', AGENT_CITY_BAD: 'a&b' }, true)
+  assert.equal(line, 'cmd.exe /c set "AGENT_CITY_PORT=4788" & set "AGENT_CITY_NO_TOAST=1" & set "CLAUDE_CONFIG_DIR=C:/cfg" & title Crosswalk & "C:/node.exe" "C:/app/src/server.ts"')
 
   // For real: a stand-in for the server writes down what it was given.
   const dir = mkdtempSync(join(tmpdir(), 'crosswalk-relaunch-'))
