@@ -6,6 +6,7 @@ import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import { drawBillboards } from './draw/billboards.ts'
 import { drawSites } from './draw/sites.ts'
 import { drawLinks } from './draw/links.ts'
+import { drawShips } from './draw/ships.ts'
 import { costsByRoot } from './costs.ts'
 import { manhattanLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
@@ -102,6 +103,8 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     ...drawBillboards(world, sc),
     // Each project's construction site: its permit, its inspection, its ribbon cutting.
     ...drawSites(world, sc),
+    // Deploys: a ship leaving the Seaport, a LIVE sign on the square.
+    ...drawShips(world, sc),
     // Taxis last, so they drive over everyone.
     ...drawRides(world, sc),
   ]

@@ -1,4 +1,6 @@
 import type { Census, Site } from './types.ts'
+import { shippedOf } from './deploys.ts'
+import type { Shipped } from './deploys.ts'
 
 // A project's construction site: the lifecycle of its work, as a builder
 // would see it. A branch other than the main one is a permit applied for; a
@@ -89,6 +91,7 @@ export type SiteEvent =
   | { kind: 'permit'; pr: number; url: string }
   | { kind: 'inspection'; passed: boolean; what: string; detail?: string }
   | { kind: 'opened'; pr?: number; url?: string }
+  | Shipped
 
 export function siteEventOf(code: string, output: string, failed: boolean): SiteEvent | undefined {
   if (PR_CREATE.test(code)) {
@@ -111,7 +114,8 @@ export function siteEventOf(code: string, output: string, failed: boolean): Site
     if (!v) return undefined
     return { kind: 'inspection', passed: v.passed, what: isChecks ? 'checks' : 'tests', ...(v.detail ? { detail: v.detail } : {}) }
   }
-  return undefined
+  // A deploy: the project ships (src/deploys.ts).
+  return shippedOf(code, output, failed)
 }
 
 // The branch a census says is checked out, when it isn't the main one: work
@@ -125,6 +129,7 @@ export function branchAtWork(census: Census | undefined): string | undefined {
 export function applySiteEvent(site: Site, e: SiteEvent, branch: string | undefined, now: number): Site {
   if (e.kind === 'permit') site.permit = { pr: e.pr, url: e.url, ...(branch ? { branch } : {}), at: now }
   else if (e.kind === 'inspection') site.inspection = { at: now, passed: e.passed, what: e.what, ...(e.detail ? { detail: e.detail } : {}) }
+  else if (e.kind === 'shipped') site.shipped = { at: now, target: e.target, prod: e.prod, ...(e.url ? { url: e.url } : {}), ...(e.version ? { version: e.version } : {}) }
   else {
     const pr = e.pr ?? site.permit?.pr
     const url = e.url ?? (site.permit && (!e.pr || e.pr === site.permit.pr) ? site.permit.url : undefined)
