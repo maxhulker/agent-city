@@ -4,6 +4,7 @@ import { AGENT_CSS, drawRides, drawSprites, drawTrains } from './draw/agents.ts'
 import { defs, drawMap, drawOverlay, framed, mapKey } from './draw/map.ts'
 import { PLACES_CSS, drawPlaces } from './draw/places.ts'
 import { drawBillboards } from './draw/billboards.ts'
+import { drawSites } from './draw/sites.ts'
 import { manhattanLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
@@ -94,6 +95,8 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
     item('zones', drawPlaces(world, sc)),
     // Local servers' billboards, over the zones so a click opens the page.
     ...drawBillboards(world, sc),
+    // Each project's construction site: its permit, its inspection, its ribbon cutting.
+    ...drawSites(world, sc),
     // Taxis last, so they drive over everyone.
     ...drawRides(world, sc),
   ]

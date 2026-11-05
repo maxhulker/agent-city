@@ -46,13 +46,13 @@ const clip = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) +
 // are slanted to lie flat on whichever it is.
 
 type P3 = [number, number, number]
-type Face = 'l' | 'r'
+export type Face = 'l' | 'r'
 
 const W = 2.6 // along the board
 const Z0 = 10 // the board's bottom and top, above the ground
 const Z1 = 24
 
-function frameOf(cx: number, cy: number, face: Face) {
+export function frameOf(cx: number, cy: number, face: Face) {
   // Grid point of a local one.
   const at = (u: number, v: number): [number, number] => (face === 'l' ? [cx + u, cy + v] : [cx + v, cy - u])
   const pt = ([u, v, z]: P3) => p(...at(u, v), z)

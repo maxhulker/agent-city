@@ -1940,6 +1940,13 @@
     window.open(bb.dataset.url, '_blank')
     post('/billboard/open', { id: bb.dataset.billboard })
   })
+  // A construction site's board with a pull request: the pull request.
+  map.addEventListener('click', e => {
+    const site = !justDragged && e.target.closest?.('[data-site-url]')
+    if (!site) return
+    e.stopPropagation()
+    window.open(site.dataset.siteUrl, '_blank')
+  })
   // The sign over the projects waiting at Grand Central: their cards.
   map.addEventListener('click', e => {
     if (justDragged || !e.target.closest?.('g.waiting')) return
