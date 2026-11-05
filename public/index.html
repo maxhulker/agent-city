@@ -626,6 +626,16 @@
       <div class="fl-bar" id="fl-bar"></div>
       <div id="fl-body"></div>
     </section>
+    <section id="timelapse" hidden aria-label="Time-lapse">
+      <div class="tl-head"><div><b id="tl-title"></b><div class="dim small" id="tl-sub"></div></div><button class="btn cv-x" id="tl-close" type="button" title="Close (Esc)" aria-label="Close">×</button></div>
+      <svg id="tl-stage" preserveAspectRatio="xMidYMax meet"><g id="tl-ground"></g><g id="tl-houses"></g></svg>
+      <div class="tl-cap"><span class="tl-date" id="tl-date"></span><span class="tl-subject" id="tl-subject"></span><span class="tl-stats dim" id="tl-stats"></span></div>
+      <div class="tl-bar">
+        <button class="btn sm" type="button" id="tl-play" title="Play or pause (space)">⏸</button>
+        <input type="range" id="tl-scrub" min="0" max="0" value="0" aria-label="Commit">
+        <select class="field" id="tl-speed" aria-label="Speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select>
+      </div>
+    </section>
     <div id="float" hidden><div class="fhead" id="float-head" role="button" tabindex="0"><span id="float-n"></span><span class="xbtn" id="float-tog">Hide</span></div><div class="flist" id="float-list"></div></div>
   </div>
   <aside id="side">
@@ -3498,6 +3508,18 @@
   #bsheet label { display: block; font-size: 11px; color: var(--dim); margin: 8px 0 3px; }
   #bsheet .row { display: flex; gap: 6px; margin-top: 10px; }
   #bsheet textarea { resize: vertical; min-height: 64px; }
+  #timelapse { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; width: min(760px, 92%); height: min(620px, 88%);
+    display: flex; flex-direction: column; background: #0b1224f5; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 12px 40px #000c; padding: 12px 14px; }
+  #timelapse[hidden] { display: none; }
+  #timelapse .tl-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  #timelapse .tl-head b { letter-spacing: .12em; font-size: 13px; color: #fde68a; }
+  #tl-stage { flex: 1; min-height: 0; width: 100%; margin: 6px 0; background: radial-gradient(ellipse at 50% 80%, #1e293b 0%, #0b1224 70%); border-radius: 8px; }
+  #timelapse .tl-cap { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 12px; min-height: 34px; }
+  #timelapse .tl-date { font-family: ui-monospace, monospace; color: #fbbf24; }
+  #timelapse .tl-subject { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #timelapse .tl-bar { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  #timelapse .tl-bar input[type=range] { flex: 1; accent-color: #fbbf24; }
+  #timelapse .tl-bar select { width: auto; margin: 0; }
   #bsheet .bs-path { display: flex; align-items: baseline; gap: 6px; font-size: 11px; margin-bottom: 4px; }
   #bsheet .bs-path .path { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--dim); }
   #bsheet .small { margin-top: 8px; }
@@ -3841,9 +3863,10 @@
     const free = burbId && !living && ((lastMeta && lastMeta.free) || []).find(f => f.id === burbId)
     const work = living ? `<button class="btn sm primary" type="button" data-commission="${esc(living.root)}" title="Start a session on ${esc(living.name)}">👷 Commission work</button>`
       : free ? `<button class="btn sm primary" type="button" data-ground="${esc(free.id)}" data-ground-name="${esc(free.name)}" title="Start a new project here">⛏ Break ground here</button>` : ''
+    const replay = living && living.census && living.census.head ? `<button class="btn sm" type="button" data-timelapse="${esc(living.root)}" title="Watch ${esc(living.name)} built, commit by commit">▶ Time-lapse</button>` : ''
     selCard.innerHTML = `<b>${esc(z.dataset.tipTitle)}</b>${esc(z.dataset.tipText)}` +
       (noRoad ? `<div class="note">No road along its front: lay one so its agents can reach it.</div>` : '') +
-      `<div class="row wrap">${work}${b?.kind === 'treasury' ? `<button class="btn sm" type="button" data-tre-show="1">What each session spent</button>` : ''}<button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
+      `<div class="row wrap">${work}${replay}${b?.kind === 'treasury' ? `<button class="btn sm" type="button" data-tre-show="1">What each session spent</button>` : ''}<button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
       `<button class="btn sm" type="button" data-sel-close="1">Close</button></div>`
     selCard.hidden = false
   }
@@ -3870,6 +3893,9 @@
     else if (b.dataset.commission) {
       hideSel()
       commission(b.dataset.commission, '')
+    } else if (b.dataset.timelapse) {
+      hideSel()
+      openTimelapse(b.dataset.timelapse)
     } else if (b.dataset.ground) {
       hideSel()
       openSheet(null, { id: b.dataset.ground, name: b.dataset.groundName || '' })
@@ -4044,6 +4070,96 @@
     if (!input.hidden) { input.value = input.value || parentNow(); input.focus() }
   })
   $('bs-name').addEventListener('keydown', e => { if (e.key === 'Enter' && $('bs-root').value !== NEW_PROJECT) $('bs-ok').click() })
+
+  // ---- a borough's time-lapse ---------------------------------------------
+  // Its repository's history replayed on a stage of its own (src/timelapse.ts):
+  // the server draws each sampled commit's houses; this plays them in turn,
+  // holds a moment on the last, and lets the scrubber pick any.
+  const tl = { data: null, i: 0, playing: false, timer: 0, seq: 0 }
+  const tlDate = t => new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  function tlShow(i) {
+    const d = tl.data
+    if (!d || !d.frames.length) return
+    tl.i = Math.max(0, Math.min(d.frames.length - 1, i))
+    const f = d.frames[tl.i]
+    $('tl-houses').innerHTML = f.houses
+    $('tl-scrub').value = String(tl.i)
+    $('tl-date').textContent = `${tlDate(f.at)} · ${f.sha}`
+    $('tl-subject').textContent = f.subject
+    $('tl-subject').title = `${f.subject} (${f.who})`
+    $('tl-stats').textContent = `commit ${f.n} of ${f.total} · ${f.files} file${f.files === 1 ? '' : 's'} · ${kb(f.bytes)} · ${f.folders} folder${f.folders === 1 ? '' : 's'}`
+  }
+  function tlStop() {
+    clearTimeout(tl.timer)
+    tl.playing = false
+    $('tl-play').textContent = '▶'
+  }
+  function tlStep() {
+    const d = tl.data
+    if (!tl.playing || !d) return
+    const last = tl.i >= d.frames.length - 1
+    if (last) { tlStop(); return }
+    tlShow(tl.i + 1)
+    const speed = Number($('tl-speed').value) || 1
+    // The last frame is today: it holds there.
+    tl.timer = setTimeout(tlStep, 520 / speed)
+  }
+  function tlPlay() {
+    const d = tl.data
+    if (!d) return
+    if (tl.i >= d.frames.length - 1) tlShow(0)
+    tl.playing = true
+    $('tl-play').textContent = '⏸'
+    clearTimeout(tl.timer)
+    tl.timer = setTimeout(tlStep, 700)
+  }
+  async function openTimelapse(root) {
+    const seq = ++tl.seq
+    tlStop()
+    tl.data = null
+    $('timelapse').hidden = false
+    $('tl-title').textContent = 'TIME-LAPSE'
+    $('tl-sub').textContent = 'Reading its history…'
+    $('tl-ground').innerHTML = ''
+    $('tl-houses').innerHTML = ''
+    for (const id of ['tl-date', 'tl-subject', 'tl-stats']) $(id).textContent = ''
+    let j
+    try {
+      const r = await fetch(inCity(`/timelapse?root=${encodeURIComponent(root)}`), { headers: { 'x-crosswalk': '1' }, cache: 'no-store' })
+      j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
+      if (!r.ok && !j.error) j.error = `HTTP ${r.status}`
+    } catch (e) {
+      j = { error: String(e?.message || e) }
+    }
+    if (seq !== tl.seq) return
+    if (j.error) { $('tl-sub').textContent = `Couldn't replay it: ${j.error}`; return }
+    tl.data = j
+    $('tl-title').textContent = `${j.borough.toUpperCase()} · TIME-LAPSE`
+    const first = j.frames[0], last = j.frames[j.frames.length - 1]
+    const total = last ? last.total : 0
+    $('tl-sub').textContent = `${j.name}, from its first commit (${tlDate(first.at)}) to now: ${total} commit${total === 1 ? '' : 's'}${j.frames.length < total ? `, ${j.frames.length} of them shown` : ''}. Scaffolding marks the folders each commit changed.`
+    $('tl-stage').setAttribute('viewBox', j.viewBox)
+    $('tl-ground').innerHTML = j.ground
+    $('tl-scrub').max = String(j.frames.length - 1)
+    tlShow(0)
+    tlPlay()
+  }
+  function closeTimelapse() {
+    tl.seq++
+    tlStop()
+    tl.data = null
+    $('timelapse').hidden = true
+  }
+  $('tl-close').addEventListener('click', closeTimelapse)
+  $('tl-play').addEventListener('click', () => (tl.playing ? tlStop() : tlPlay()))
+  $('tl-scrub').addEventListener('input', e => { tlStop(); tlShow(Number(e.target.value)) })
+  window.addEventListener('keydown', e => {
+    if ($('timelapse').hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.id !== 'tl-scrub') return
+    if (e.key === 'Escape') { e.stopImmediatePropagation(); closeTimelapse() }
+    else if (e.key === ' ') { e.preventDefault(); tl.playing ? tlStop() : tlPlay() }
+    else if (e.key === 'ArrowRight' && e.target.id !== 'tl-scrub') { tlStop(); tlShow(tl.i + 1) }
+    else if (e.key === 'ArrowLeft' && e.target.id !== 'tl-scrub') { tlStop(); tlShow(tl.i - 1) }
+  }, true)
 </script>
 <style>
   #tip { position: fixed; z-index: 20; max-width: 300px; pointer-events: none; display: none;

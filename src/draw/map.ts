@@ -248,7 +248,7 @@ function spireLights(sc: Scene): string {
   return g
 }
 
-function tree(gx: number, gy: number, r: number): string {
+export function tree(gx: number, gy: number, r: number): string {
   const [x, y] = p(gx, gy)
   return `<circle cx="${n(x)}" cy="${n(y - r)}" r="${n(r)}" fill="${seeded(gx, gy) > 0.5 ? '#166534' : '#15803d'}"/>`
 }
@@ -262,7 +262,7 @@ function lamp(gx: number, gy: number): string {
 // Scaffolding hugging a box's two visible walls, a hoist running up its side
 // and a tower crane slewing on the roof: someone is editing in there. Without
 // the crane, just the scaffolding: work started and not yet committed.
-function scaffold(x0: number, y0: number, w: number, d: number, h: number, crane = true): string {
+export function scaffold(x0: number, y0: number, w: number, d: number, h: number, crane = true): string {
   const o = 0.09
   const fy = y0 + d + o // the south wall, stood off a little
   const fx = x0 + w + o // the east wall
@@ -336,7 +336,7 @@ function palAt(y: number, h: number, r: number): Pal {
 export type Item = { depth: number; svg: string }
 
 // Ground to keep in view: [gx0, gy0, gx1, gy1, how much of it may hide].
-type Keep = [number, number, number, number, number]
+export type Keep = [number, number, number, number, number]
 
 // Where each district's agents mostly stand, and the low landmarks behind
 // them, which the buildings in front must not hide (the landmarks' lower half
@@ -436,7 +436,7 @@ function censused(sc: Scene): Map<Burb, Census> {
 
 // A house of the census: lit windows for a folder worked on lately, dark
 // ones for a quiet folder, nothing on an empty plot.
-function censusHouse(s: Placed, keep: Keep[]): string {
+export function censusHouse(s: Placed, keep: Keep[]): string {
   if (s.block < 0) return ''
   if (s.lit) return box(s.x, s.y0, s.w, s.d, s.h, s.pal)
   const h = Math.min(s.h, Math.max(3, capFor(s.x, s.y0, s.w, s.d, keep)))

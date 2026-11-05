@@ -228,6 +228,20 @@ for work since the last ribbon cutting; a permit for two weeks, or until its
 pull request is merged. A pull request merged on GitHub's site, rather than
 by a session, isn't seen.
 
+## Time-lapse
+
+Click a borough with a repository in it and choose **▶ Time-lapse** to watch
+it built, from its first commit to today. Each frame is the borough as that
+commit's files would have built it, drawn the way the map draws it now:
+folders appear, houses grow taller, and windows light up for folders worked
+on in the fortnight before that commit. The folders a commit added go up in
+scaffolding, along with the two whose size changed most (with a crane on
+the biggest). The last frame is the borough as it stands today, with no
+scaffolding. It follows the main line of history (first parents), and a long
+history is cut down to 60 evenly spaced commits, always including the first
+and the latest. Space plays and pauses, the arrow keys step through
+commits, the slider picks any of them, and `Esc` closes it.
+
 ## Work orders and site plans
 
 Click an agent to see why it exists and how it works. A subagent carries a
