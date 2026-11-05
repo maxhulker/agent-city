@@ -21,6 +21,8 @@ import { changesIn } from './changes.ts'
 import { IMAGE_MAX, listFolder, lookAt } from './folders.ts'
 import { breakGround, checkGround, foundationsPrompt, projectsDir, unbreak } from './groundbreak.ts'
 import type { Ground } from './groundbreak.ts'
+import { Timelapses } from './timelapse.ts'
+import { framesHouses, stageOf } from './draw/timelapse.ts'
 import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
@@ -449,6 +451,7 @@ setInterval(() => {
 // Each borough's repository is counted with git (src/census.ts), often while
 // its agents work, so its houses follow its folders and what is happening in them.
 const censusTaker = new CensusTaker()
+const timelapses = new Timelapses()
 setInterval(() => {
   const now = Date.now()
   for (const town of towns.values()) {
@@ -917,6 +920,40 @@ const server = createServer(async (req, res) => {
       if (!look.image || look.bytes > IMAGE_MAX) return reply(res, 415, '{"error":"Not an image to show"}')
       res.writeHead(200, { 'content-type': look.image, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'" })
       return res.end(readFileSync(look.abs))
+    }
+    // A borough's time-lapse (src/timelapse.ts): its stage, and its houses at
+    // each sampled commit from the first to HEAD. Page only, as the files are.
+    if (req.method === 'GET' && url.pathname === '/timelapse') {
+      if (req.headers['x-crosswalk'] !== '1') return reply(res, 403, '{"error":"Not from the page"}')
+      const repo = city.world.repos.find(r => sameRoot(r.root, url.searchParams.get('root') ?? '') && !r.left)
+      const layout = city.world.layout
+      const geo = repo && layout ? burbGeo(layout, repo.burb) : undefined
+      const stage = repo && layout && geo ? stageOf(layout, repo.burb) : undefined
+      if (!repo || !layout || !geo || !stage) return reply(res, 404, '{"error":"Not a repository with a borough"}')
+      const frames = await timelapses.of(repo.root)
+      if (!frames) return reply(res, 404, '{"error":"It has no commits yet"}')
+      return reply(
+        res,
+        200,
+        JSON.stringify({
+          name: repo.name,
+          borough: geo.name,
+          ...stage,
+          frames: frames.map(f => ({
+            sha: f.sha,
+            at: f.at,
+            who: f.who,
+            subject: f.subject,
+            n: f.n,
+            total: f.total,
+            files: f.census.files,
+            bytes: f.census.bytes,
+            folders: f.census.blocks.length,
+            changed: f.changed.length,
+            houses: framesHouses(layout, repo.burb, f.census, f.changed),
+          })),
+        }),
+      )
     }
     // What a session has changed in its repository.
     if (req.method === 'GET' && url.pathname === '/changes') {
