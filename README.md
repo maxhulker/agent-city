@@ -359,6 +359,12 @@ that window to stop the server), and opens the city in its own Edge app window,
 or in the default browser where Edge isn't installed. Opening it again while
 the server runs just opens another window.
 
+The server is started on its own, through Windows (WMI), rather than as a
+child of whatever started it. So is the server that restarting from the
+Empire State starts. That way it keeps running when a terminal or a Claude
+Code session that started it closes. Crosswalk's own settings
+(`AGENT_CITY_*`, `CLAUDE_CONFIG_DIR`) go along with a restart.
+
 ### As an app, with update notifications
 
 - **Install it.** Open http://localhost:4777 in Edge or Chrome and choose

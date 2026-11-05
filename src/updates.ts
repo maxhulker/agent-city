@@ -1,5 +1,6 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { join } from 'node:path'
+import { launchDetached } from './detached.ts'
 
 // Keeps the app up to date with main on GitHub: checks every so often whether
 // origin/main has commits this copy hasn't, and on request fast-forwards to
@@ -165,14 +166,20 @@ export class Updates {
   }
 
   // Starts a fresh server once this one has let go of the port, in a window of
-  // its own titled "Crosswalk" (closing it stops the server, as before).
+  // its own titled "Crosswalk" (closing it stops the server, as before). It is
+  // started on its own (src/detached.ts), so it doesn't go down with whatever
+  // started this one: a Claude Code session ending, say.
   relaunch() {
-    const server = join(this.root, 'src', 'server.ts')
-    if (process.platform === 'win32') {
-      const line = `ping -n 3 127.0.0.1 >nul & start "Crosswalk" /min "${process.execPath}" "${server}"`
-      spawn(process.env.ComSpec || 'cmd.exe', ['/c', line], { cwd: this.root, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref()
-    } else {
-      spawn('sh', ['-c', `sleep 2; exec "${process.execPath}" "${server}"`], { cwd: this.root, detached: true, stdio: 'ignore' }).unref()
-    }
+    launchDetached(relaunchLine(process.execPath, join(this.root, 'src', 'server.ts'), process.env, process.platform === 'win32'), this.root, 2)
   }
+}
+
+// The command that starts the server again. Started through WMI it inherits
+// none of this one's environment, so Crosswalk's own settings (its port, no
+// toasts, a config folder…) are set on the way; a value a shell would read
+// as more than text is left out rather than quoted.
+export function relaunchLine(execPath: string, server: string, env: Record<string, string | undefined>, isWindows: boolean): string {
+  const keep = Object.entries(env).filter(([k, v]) => /^(AGENT_CITY\w*|CLAUDE_CONFIG_DIR)$/.test(k) && typeof v === 'string' && !/["%&|^<>`$\r\n]/.test(v)) as [string, string][]
+  if (isWindows) return `cmd.exe /c ${keep.map(([k, v]) => `set "${k}=${v}" & `).join('')}title Crosswalk & "${execPath}" "${server}"`
+  return `env ${keep.map(([k, v]) => `${k}='${v.replace(/'/g, '')}' `).join('')}"${execPath}" "${server}"`
 }
