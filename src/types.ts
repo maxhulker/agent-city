@@ -183,6 +183,12 @@ export type Billboard = {
 
 export type DevHint = { id: string; root: string; at: number }
 
+// A power line between two projects (src/draw/links.ts): sessions that
+// started in one worked in the other. a and b are repository roots (or
+// Manhattan's folder), a sorting before b; the sessions that crossed, the
+// latest 20; when work last crossed.
+export type Link = { a: string; b: string; sessions: string[]; lastAt: number }
+
 // A project's construction site (src/sites.ts): its building permit (the
 // pull request filed for its branch), its last inspection (a test run, or a
 // pull request's checks) and its last ribbon cutting (a pull request merged).
@@ -450,6 +456,8 @@ export type World = {
   devHints?: DevHint[]
   // Each project's construction site, by repository root.
   sites?: Site[]
+  // Power lines between projects worked on together.
+  links?: Link[]
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts

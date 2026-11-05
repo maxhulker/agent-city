@@ -1242,6 +1242,29 @@ export class City {
       .map(r => ({ root: r.root, ...(r.census ? { census: r.census } : {}), busy: this.world.agents.some(a => a.burb === r.burb && a.status === 'working') }))
   }
 
+  // A session that started in one project worked in another: the power line
+  // between them (src/draw/links.ts), strung the first time, carrying one
+  // more cable for each session that crosses.
+  private linkWork(s: Session, worked: string, now: number) {
+    const w = this.world
+    if (!s.root || same(worked, s.root)) return
+    const [a, b] = [s.root, worked].sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase())) as [string, string]
+    const list = (w.links ??= [])
+    let link = list.find(l => same(l.a, a) && same(l.b, b))
+    if (!link) {
+      link = { a, b, sessions: [], lastAt: now }
+      list.push(link)
+      if (list.length > 40) list.splice(list.indexOf(list.reduce((old, l) => (l.lastAt < old.lastAt ? l : old))), 1)
+      const name = (root: string) => (same(root, w.homeRoot) ? w.home : w.repos.find(r => same(r.root, root))?.name) || base(root)
+      this.news(`⚡ Power line strung between ${name(a)} and ${name(b)}`, now)
+    }
+    if (!link.sessions.includes(s.id)) {
+      link.sessions = [...link.sessions, s.id].slice(-20)
+      this.isDirty = true
+    }
+    link.lastAt = now
+  }
+
   // A finished shell command's meaning for its project's construction site
   // (src/sites.ts): a pull request filed is its permit, a test run or a pull
   // request's checks an inspection, a pull request merged its ribbon cutting.
@@ -1477,6 +1500,8 @@ export class City {
           worked = a.burb ? this.repoAt(a.burb)?.root : w.homeRoot
         }
         this.touch(worked, now)
+        // Work in another project than the session's own strings a power line between them.
+        if (path && worked) this.linkWork(s, worked, now)
         const before = placeOf(a)
         const isAsk = ASKS.test(tool)
         this.goTo(a, isAsk ? 'hall' : districtFor(tool, str(input.command)), isAsk ? this.homeOf(s, now) : burb)
