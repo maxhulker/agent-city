@@ -26,8 +26,18 @@ if (-not (Test-City)) {
     exit 1
   }
   $server = Join-Path $root 'src\server.ts'
-  $style = if ($Background) { 'Hidden' } else { 'Minimized' }
-  Start-Process -FilePath $env:ComSpec -ArgumentList '/c', "title Crosswalk & node `"$server`"" -WorkingDirectory $root -WindowStyle $style
+  # Created through WMI rather than as a child of this script, so it lives on
+  # whatever started this (a Claude Code session ending can take down its
+  # children; see src/detached.ts). 0 hides the window, 7 minimizes it.
+  $show = if ($Background) { [uint16]0 } else { [uint16]7 }
+  $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = $show }
+  $node = (Get-Command node).Source
+  # A WMI process inherits none of this one's environment: the port goes along.
+  Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = "`"$env:ComSpec`" /c set `"AGENT_CITY_PORT=$port`" & title Crosswalk & `"$node`" `"$server`""
+    CurrentDirectory = $root
+    ProcessStartupInformation = $startup
+  } | Out-Null
   for ($i = 0; $i -lt 40 -and -not (Test-City); $i++) { Start-Sleep -Milliseconds 250 }
 }
 if ($Background) { exit 0 }
