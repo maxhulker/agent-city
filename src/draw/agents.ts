@@ -269,6 +269,29 @@ function car(x: number, y: number, color: string, isFront: boolean, boarding: bo
   return g
 }
 
+// A freight boxcar (src/freight.ts): plank-brown, a sliding door, and the
+// project it carries stencilled along the side of the first.
+function boxcar(x: number, y: number, label: string, isFront: boolean): string {
+  const y1 = y + CAR_D
+  const x1 = x + CAR_L
+  const edge = ` stroke="${INK}" stroke-width=".35" stroke-linejoin="round"`
+  let g = quad([[x, y1, 0.8], [x1, y1, 0.8], [x1, y1, 0], [x, y1, 0]], '#1e293b')
+  g += quad([[x, y, CAR_H], [x1, y, CAR_H], [x1, y1, CAR_H], [x, y1, CAR_H]], '#a16207', edge)
+  g += quad([[x, y1, CAR_H], [x1, y1, CAR_H], [x1, y1, 0.8], [x, y1, 0.8]], '#92400e', edge)
+  g += quad([[x1, y, CAR_H], [x1, y1, CAR_H], [x1, y1, 0.8], [x1, y, 0.8]], '#713f12', edge)
+  // The door, a darker panel in the middle.
+  g += quad([[x + 0.35, y1, 1.2], [x + 0.65, y1, 1.2], [x + 0.65, y1, CAR_H - 0.6], [x + 0.35, y1, CAR_H - 0.6]], '#78350f')
+  if (label) {
+    const [tx, ty] = p(x + CAR_L / 2, y1, 3)
+    g += `<text x="${n(tx)}" y="${n(ty)}" text-anchor="middle" font-size="1.6" font-weight="800" fill="#fef3c7" transform="skewY(26.565) translate(0 ${n(-tx * Math.tan((26.565 * Math.PI) / 180))})">${label}</text>`
+  }
+  if (isFront) {
+    const [hx, hy] = p(x1, y + CAR_D / 2, 2.4)
+    g += `<circle cx="${n(hx)}" cy="${n(hy)}" r="1" fill="#fff7ae"><animate attributeName="opacity" values="1;.5;1" dur=".8s" repeatCount="indefinite"/></circle>`
+  }
+  return g
+}
+
 // One overlay item per train, keyed on its phase: the markup holds offsets
 // from now, which the page shifts onto its clock when the item arrives.
 export function drawTrains(world: World, sc: Scene): OverlayItem[] {
@@ -283,7 +306,8 @@ export function drawTrains(world: World, sc: Scene): OverlayItem[] {
     // Negative while boarding; once it is positive, the train is on its way.
     const age = (sc.now - t.leaveAt) / 1000
     if (age > TRAIN_MS / 1000 + 1) continue
-    const arriving = t.kind === 'arrive'
+    const freight = t.kind === 'freight'
+    const arriving = t.kind === 'arrive' || freight
     // An arriving train is coming in for its first few seconds.
     const since = (sc.now - t.at) / 1000
     const incoming = arriving && since < TRAIN_MS / 1000
@@ -291,7 +315,10 @@ export function drawTrains(world: World, sc: Scene): OverlayItem[] {
     // Its windows are lit with passengers: coming in, or waiting for them.
     const lit = arriving ? incoming : true
     let cars = ''
-    for (let i = 0; i < 3; i++) cars += car(track.x0 - 0.1 + i * (CAR_L + 0.1), track.y, esc(t.color), i === 2, boarding && !arriving, lit)
+    for (let i = 0; i < 3; i++) {
+      const cx = track.x0 - 0.1 + i * (CAR_L + 0.1)
+      cars += freight ? boxcar(cx, track.y, i === 0 ? esc(t.who.slice(0, 12).toUpperCase()) : '', i === 2) : car(cx, track.y, esc(t.color), i === 2, boarding && !arriving, lit)
+    }
     let motion = ''
     let phase: string
     if (incoming) {
@@ -306,14 +333,20 @@ export function drawTrains(world: World, sc: Scene): OverlayItem[] {
         `<animate attributeName="opacity" values="1;1;0" keyTimes="0;.55;1" ${timing}/>`
       phase = 'leaving'
     }
-    const who = arriving
+    const who = freight
       ? incoming
-        ? `Arriving: ${t.who}`
+        ? `Arriving with ${t.who}`
         : boarding
-          ? `${t.who} stepped off`
-          : 'Leaving empty'
-      : `${boarding ? 'Boarding' : 'Gone'}: ${t.who}`
-    const name = arriving ? 'The train in from the east' : 'The last train home'
+          ? `Unloading ${t.who} (cloning it)`
+          : 'Unloaded, leaving empty'
+      : arriving
+        ? incoming
+          ? `Arriving: ${t.who}`
+          : boarding
+            ? `${t.who} stepped off`
+            : 'Leaving empty'
+        : `${boarding ? 'Boarding' : 'Gone'}: ${t.who}`
+    const name = freight ? 'A freight train' : arriving ? 'The train in from the east' : 'The last train home'
     const svg = `<g class="train ${phase}"${phase === 'leaving' ? ' opacity="1"' : ''}>${motion}<title>${esc(`${name} · ${who}`)}</title>${cars}</g>`
     out.push(keyed(`train:${t.id}`, [phase, lit, t.color, who], svg))
   }

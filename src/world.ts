@@ -1399,8 +1399,17 @@ export class City {
   // Breaking ground (src/groundbreak.ts): a new project at root gets a
   // borough, one drawn now (x, y, w, h, with its streets and lots when `fill`)
   // or one nobody lives in (id), and moves in.
-  groundFor(root: string, name: string, at: Record<string, unknown>, now: number): { ok: true; borough: string } | { error: string } {
+  // `say` is the ticker's line for it (breaking ground's by default); the
+  // reply says which borough, and whether it was drawn just now.
+  groundFor(
+    root: string,
+    name: string,
+    at: Record<string, unknown>,
+    now: number,
+    say?: (borough: string) => string,
+  ): { ok: true; borough: string; id: string; drawn: boolean } | { error: string } {
     let id = typeof at.id === 'string' ? at.id : ''
+    const drawn = !id
     if (id) {
       if (!burbGeo(this.layout, id)) return { error: 'No such borough' }
     } else {
@@ -1410,11 +1419,46 @@ export class City {
       id = this.layout.boroughs[this.layout.boroughs.length - 1]!.id
     }
     const geo = burbGeo(this.layout, id)!
-    const say = geo.name.toLowerCase() === name.toLowerCase() ? `Ground broken for ${name}` : `Ground broken for ${name} in ${geo.name}`
-    const moved = this.moveIn(root, id, now, say)
+    const line = say ? say(geo.name) : geo.name.toLowerCase() === name.toLowerCase() ? `Ground broken for ${name}` : `Ground broken for ${name} in ${geo.name}`
+    const moved = this.moveIn(root, id, now, line)
     if ('error' in moved) return moved
     this.sync()
-    return { ok: true, borough: geo.name }
+    return { ok: true, borough: geo.name, id, drawn }
+  }
+
+  // ---- freight (src/freight.ts): a project brought in from elsewhere ----
+
+  // Its borough is laid out (or picked) at once, and a freight train with its
+  // name on the boxcars pulls into Grand Central and stands there while it is
+  // cloned.
+  freightArrives(root: string, name: string, at: Record<string, unknown>, now: number): { ok: true; borough: string; id: string; drawn: boolean } | { error: string } {
+    const r = this.groundFor(root, name, at, now, borough => `🚂 ${name} is arriving by freight, for ${borough}`)
+    if ('error' in r) return r
+    const w = this.world
+    // It stands at the platform until unloaded (freightDone sets its leaving).
+    w.trains = [...(w.trains ?? []), { id: `freight:${root.toLowerCase()}`, kind: 'freight' as const, at: now, leaveAt: now + 3_600_000, color: '#b45309', who: name }].slice(-8)
+    this.isDirty = true
+    return r
+  }
+
+  // Unloaded: the train leaves, and the project's houses go up as it is
+  // counted. Or it never came: its borough (if drawn for it) and its record go.
+  freightDone(root: string, name: string, placed: { id: string; drawn: boolean }, error: string | undefined, now: number) {
+    const w = this.world
+    const train = (w.trains ?? []).find(t => t.id === `freight:${root.toLowerCase()}`)
+    // It pulls all the way in and stands a moment, however quick the clone.
+    if (train) train.leaveAt = Math.max(now + 2500, train.at + TRAIN_MS + DWELL_MS)
+    if (!error) {
+      this.news(`📦 ${name} unloaded: its houses go up as it is counted`, now)
+    } else {
+      w.repos = w.repos.filter(r => !same(r.root, root))
+      if (placed.drawn) {
+        const r = this.build({ op: 'remove', id: placed.id }, now)
+        if ('error' in r) this.sync()
+      }
+      this.news(`🚂 ${name} couldn't be brought in: ${error}`, now)
+    }
+    this.isDirty = true
   }
 
   // Moves the repository at root into a borough the person picked (the

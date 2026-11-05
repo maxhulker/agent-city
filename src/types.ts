@@ -90,7 +90,7 @@ export type Stop = { at: District; burb?: Burb; t: number }
 // leaveAt.
 export type Train = {
   id: string
-  kind?: 'arrive'
+  kind?: 'arrive' | 'freight'
   at: number
   leaveAt: number
   color: string
