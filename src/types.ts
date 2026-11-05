@@ -197,6 +197,8 @@ export type Site = {
   permit?: { pr: number; url: string; branch?: string; at: number }
   inspection?: { at: number; passed: boolean; what: string; detail?: string }
   opened?: { at: number; pr?: number; url?: string }
+  // The last deploy (src/deploys.ts): where to, whether to production, and the address.
+  shipped?: { at: number; target: string; prod: boolean; url?: string; version?: string }
 }
 
 // A permission prompt, question or plan approval held open for the page to

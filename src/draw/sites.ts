@@ -105,7 +105,7 @@ function ribbon(cx: number, cy: number): string {
 
 // Where a project's site is: its board, and the middle of its square for the
 // ribbon. Manhattan's is by City Hall; a project with no borough has none.
-function placeOf(world: World, sc: Scene, root: string): { board: [number, number]; square: [number, number]; census?: Census } | undefined {
+export function placeOf(world: World, sc: Scene, root: string): { board: [number, number]; square: [number, number]; census?: Census } | undefined {
   if (same(root, world.homeRoot)) {
     const [x, y] = spotFor(sc.layout, 'hall')
     return { board: [x + 2.4, y + 1.2], square: [x, y + 1.2] }

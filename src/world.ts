@@ -1386,6 +1386,10 @@ export class City {
       this.say(a, what, now)
       this.tick(a, `${e.passed ? '✅' : '🚩'} ${what}`, now)
       if (!e.passed) this.toasts.push(`🚩 ${name} failed inspection${e.detail ? `: ${e.detail}` : ''}`)
+    } else if (e.kind === 'shipped') {
+      // A cargo ship leaves the Seaport with its name on the hull (src/draw/ships.ts).
+      this.say(a, `shipped ${name} to ${e.target}`, now)
+      this.news(`🚢 ${name} shipped to ${e.target}${e.version ? ` (v${e.version})` : ''}${e.prod ? '' : ' as a preview'}${e.url ? `: ${e.url}` : ''}`, now)
     } else {
       this.news(`✂ Ribbon cut in ${name}${site.opened?.pr ? `: #${site.opened.pr} merged` : ''}`, now)
     }

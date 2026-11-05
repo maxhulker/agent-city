@@ -238,6 +238,31 @@ for work since the last ribbon cutting; a permit for two weeks, or until its
 pull request is merged. A pull request merged on GitHub's site, rather than
 by a session, isn't seen.
 
+## Shipping
+
+A project a session deploys ships out. A cargo ship with the project's name
+on its hull leaves the Seaport and sails out to open water (once the Seaport
+stands), and the ticker says where it went. A production deploy puts a green
+**LIVE** sign on the project's square, next to its permit board, showing the
+address. Click it to open the site. It stays up for a month after the last
+deploy. A preview deploy gets an amber **PREVIEW** sign for a day. What
+counts as a deploy is read from the command and what it printed:
+
+| Command | Ships to |
+| --- | --- |
+| `vercel`, `vercel deploy` (`--prod`, or "Production:" in its output) | Vercel |
+| `netlify deploy` (`--prod`) | Netlify |
+| `fly deploy`, `flyctl deploy` | Fly.io |
+| `wrangler deploy`, `wrangler pages deploy` | Cloudflare |
+| `firebase deploy` | Firebase |
+| `gh-pages` | GitHub Pages |
+| `railway up` | Railway |
+| `npm publish` (and pnpm, yarn) | npm, at the package's page, with its version |
+| `npm run deploy`, `make deploy` | its deploy script, at the first address it prints |
+
+A command that failed, or printed an error and no address, ships nothing.
+Neither does `vercel env pull`, `vercel link` or `npm publish --dry-run`.
+
 ## Blueprints
 
 A project's next folders are drawn before they're built. When a session
