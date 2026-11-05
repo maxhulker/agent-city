@@ -201,7 +201,21 @@ export function blockTip(b: Block, now: number): { title: string; text: string }
     ? `${plural(b.commits, 'commit')} in the last two weeks, the latest ${ago(now - (b.lastAt ?? now))}: its windows are lit.`
     : `No commits in the last ${WINDOW_DAYS} days: its windows are dark.`
   const dirty = b.dirty ? ` ${plural(b.dirty, 'file')} with uncommitted changes: scaffolding is up.` : ''
-  return { title: blockName(b), text: `${what} ${work}${dirty}` }
+  const age = weatherOf(b, now)
+  const weather = age ? ` ${WEATHER_SAYS[age]} (last commit ${ago(now - b.touchedAt!)}). Restore it from its files.` : ''
+  return { title: blockName(b), text: `${what} ${work}${dirty}${weather}` }
+}
+
+// How weathered a folder is from how long since any commit touched it: 0
+// fresh; 1 ivy climbing (two months); 2 windows boarded up (six months);
+// 3 derelict (a year). One being worked on now doesn't weather.
+export const WEATHER_DAYS = [60, 180, 365]
+const WEATHER_SAYS = ['', 'Ivy is climbing its walls', 'Its windows are boarded up', 'It stands derelict']
+
+export function weatherOf(b: Block, now: number): 0 | 1 | 2 | 3 {
+  if (!b.touchedAt || b.dirty || b.path === REST) return 0
+  const days = (now - b.touchedAt) / 86_400_000
+  return days >= WEATHER_DAYS[2]! ? 3 : days >= WEATHER_DAYS[1]! ? 2 : days >= WEATHER_DAYS[0]! ? 1 : 0
 }
 
 // The line under a borough's sign: the branch, how it stands with its
