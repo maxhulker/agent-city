@@ -570,11 +570,27 @@
     <div id="catalog" hidden></div>
     <div id="sel" hidden></div>
     <div id="bsheet" hidden>
-      <b>NEW BOROUGH</b>
+      <b id="bs-head">NEW BOROUGH</b>
       <label for="bs-name">Name</label><input class="field" id="bs-name" maxlength="40" placeholder="Red Hook">
-      <label for="bs-root">For which repository?</label><select class="field" id="bs-root"><option value="">Not yet</option></select>
-      <label class="chk"><input type="checkbox" id="bs-fill" checked> Lay streets and lots for me</label>
+      <div id="bs-for"><label for="bs-root">For which repository?</label><select class="field" id="bs-root"><option value="">Not yet</option></select></div>
+      <div id="bs-new" hidden>
+        <label for="bs-folder">Its folder</label>
+        <div class="bs-path"><span class="path" id="bs-parent-show" title="Where new projects go"></span><button class="linkish" type="button" id="bs-parent-edit">Change</button></div>
+        <input class="field" id="bs-parent" placeholder="Full path of the folder it goes in" spellcheck="false" hidden>
+        <input class="field" id="bs-folder" maxlength="64" placeholder="red-hook" spellcheck="false" autocomplete="off">
+        <label for="bs-brief">What is it for?</label>
+        <textarea class="field" id="bs-brief" rows="4" placeholder="A small web app that… (Claude starts from this brief)"></textarea>
+        <label for="bs-level">Permissions</label>
+        <select class="field" id="bs-level">
+          <option value="ask">Ask me in the app</option>
+          <option value="edit" selected>Can edit files</option>
+          <option value="run">Can edit and run commands</option>
+        </select>
+        <div class="small dim">Crosswalk makes the folder, a git repository with the brief in CLAUDE.md, and starts a session in a hard hat to lay the foundations. It is asked to commit once the first version works: that is when the houses go up.</div>
+      </div>
+      <label class="chk" id="bs-fill-row"><input type="checkbox" id="bs-fill" checked> Lay streets and lots for me</label>
       <div class="small dim" id="bs-warn" hidden>With no repository, the borough stays empty until one moves in.</div>
+      <div class="err" id="bs-err"></div>
       <div class="row"><button class="btn sm" type="button" id="bs-ok">Lay it out</button><button class="btn sm" type="button" id="bs-cancel">Cancel</button></div>
     </div>
     <section id="convo" hidden aria-label="Conversation">
@@ -1471,6 +1487,30 @@
     openSession(APP + r.id)
   })
 
+  // Commissioning work from the map (a house's "Commission work here", a
+  // borough's card): the New session form, made out for that repository, the
+  // prompt begun, a hard hat on its lead. The person finishes the brief and
+  // starts it.
+  const samePath = (a, b) => String(a).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === String(b).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  function commission(root, prompt) {
+    setCollapsed(false)
+    setNt(true)
+    const sel = $('nt-folder')
+    const opt = [...sel.options].find(o => o.value !== '__other' && samePath(o.value, root))
+    if (opt) sel.value = opt.value
+    else { sel.value = '__other'; $('nt-other').value = root }
+    syncOther()
+    look.hat = 'hardhat'
+    syncLook()
+    const ta = $('nt-prompt')
+    ta.value = prompt
+    growTa(ta)
+    $('nt-err').textContent = ''
+    $('newtask').scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    ta.focus()
+    ta.setSelectionRange(ta.value.length, ta.value.length)
+  }
+
   // ---- earlier tasks (the old headless tasks), folded away by default ----
   let etOpen = false
   try { etOpen = localStorage.getItem('agent-city-tasks') === '1' } catch {}
@@ -1527,7 +1567,14 @@
 
   function flDrawFolder() {
     fl.file = null
-    FL.title.innerHTML = `<div class="row"><span class="name">📁 ${esc(fl.label)}</span></div><div class="path">${esc(fl.root)}${fl.folder && fl.folder !== '…' ? `/${esc(fl.folder)}` : ''}</div>`
+    FL.title.innerHTML = `<div class="row"><span class="name">📁 ${esc(fl.label)}</span></div><div class="path">${esc(fl.root)}${fl.folder && fl.folder !== '…' ? `/${esc(fl.folder)}` : ''}</div>` +
+      `<div class="row" style="margin-top:6px"><button class="btn sm" type="button" id="fl-commission" title="Start a session on this folder: renovate it, extend it, fix it">👷 Commission work here</button></div>`
+    $('fl-commission').addEventListener('click', () => {
+      const folder = fl.folder && fl.folder !== '…' ? fl.folder : ''
+      const root = fl.root
+      closeFolder()
+      commission(root, folder ? `In \`${folder}/\`: ` : '')
+    })
     const j = fl.list
     if (!j) { FL.bar.innerHTML = ''; FL.body.innerHTML = '<div class="fl-note">Reading the folder…</div>'; return }
     if (j.error) { FL.bar.innerHTML = ''; FL.body.innerHTML = `<div class="fl-note">Couldn't read it: ${esc(j.error)}</div>`; return }
@@ -3443,6 +3490,11 @@
   #bsheet b { display: block; letter-spacing: .14em; font-size: 12px; color: #7dd3fc; }
   #bsheet label { display: block; font-size: 11px; color: var(--dim); margin: 8px 0 3px; }
   #bsheet .row { display: flex; gap: 6px; margin-top: 10px; }
+  #bsheet textarea { resize: vertical; min-height: 64px; }
+  #bsheet .bs-path { display: flex; align-items: baseline; gap: 6px; font-size: 11px; margin-bottom: 4px; }
+  #bsheet .bs-path .path { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--dim); }
+  #bsheet .small { margin-top: 8px; }
+  #bsheet .err:empty { display: none; }
 </style>
 <script type="module">
   // The layout's rules, the same file the server checks placements with,
@@ -3775,9 +3827,16 @@
     const noRoad = b && R() && !R().facesRoad(layout, b)
     selCard.dataset.id = id
     selCard.style.setProperty('--accent', z.style.getPropertyValue('--accent') || '#fbbf24')
+    // A borough: commission work from the project living there, or break
+    // ground for a new one when nobody does.
+    const burbId = z.dataset.borough
+    const living = burbId && ((lastMeta && lastMeta.repos) || []).find(r => r.burb === burbId && !r.left)
+    const free = burbId && !living && ((lastMeta && lastMeta.free) || []).find(f => f.id === burbId)
+    const work = living ? `<button class="btn sm primary" type="button" data-commission="${esc(living.root)}" title="Start a session on ${esc(living.name)}">👷 Commission work</button>`
+      : free ? `<button class="btn sm primary" type="button" data-ground="${esc(free.id)}" data-ground-name="${esc(free.name)}" title="Start a new project here">⛏ Break ground here</button>` : ''
     selCard.innerHTML = `<b>${esc(z.dataset.tipTitle)}</b>${esc(z.dataset.tipText)}` +
       (noRoad ? `<div class="note">No road along its front: lay one so its agents can reach it.</div>` : '') +
-      `<div class="row">${b?.kind === 'treasury' ? `<button class="btn sm" type="button" data-tre-show="1">What each session spent</button>` : ''}<button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
+      `<div class="row wrap">${work}${b?.kind === 'treasury' ? `<button class="btn sm" type="button" data-tre-show="1">What each session spent</button>` : ''}<button class="btn sm" type="button" data-bulldoze="${esc(id)}"${z.dataset.borough ? ' data-borough-card="1"' : ''}>Bulldoze</button>` +
       `<button class="btn sm" type="button" data-sel-close="1">Close</button></div>`
     selCard.hidden = false
   }
@@ -3801,7 +3860,13 @@
     if (!b) return
     const bbId = selCard.dataset.id
     if (b.dataset.selClose) hideSel()
-    else if (b.dataset.bbOpen) {
+    else if (b.dataset.commission) {
+      hideSel()
+      commission(b.dataset.commission, '')
+    } else if (b.dataset.ground) {
+      hideSel()
+      openSheet(null, { id: b.dataset.ground, name: b.dataset.groundName || '' })
+    } else if (b.dataset.bbOpen) {
       window.open(selCard.dataset.url, '_blank')
       post('/billboard/open', { id: bbId })
       hideSel()
@@ -3880,33 +3945,98 @@
   let sheetRect = null
   // The repository the New arrival card laid this borough out for, if any.
   var sheetFor = ''
-  function openSheet(r) {
+  // Breaking ground in a borough already drawn (its card's "Break ground
+  // here"): its id. None while the sheet lays out a new rectangle.
+  let sheetBurb = ''
+  const NEW_PROJECT = '__new'
+  // A folder name from a project's name, as the server makes one (src/groundbreak.ts).
+  const slugFor = name => name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').replace(/-{2,}/g, '-').slice(0, 64)
+  let folderTouched = false
+  let projectsParent = ''
+  try { projectsParent = localStorage.getItem('agent-city-projects-dir') || '' } catch {}
+  const parentNow = () => $('bs-parent').value.trim() || projectsParent || (lastMeta && lastMeta.projectsDir) || ''
+  function syncSheet() {
+    const isNew = $('bs-root').value === NEW_PROJECT
+    $('bs-new').hidden = !isNew
+    $('bs-warn').hidden = isNew || !!$('bs-root').value
+    $('bs-for').hidden = !!sheetBurb
+    $('bs-fill-row').hidden = !!sheetBurb
+    $('bs-head').textContent = sheetBurb ? 'BREAK GROUND' : isNew ? 'NEW BOROUGH · BREAK GROUND' : 'NEW BOROUGH'
+    $('bs-ok').textContent = isNew ? 'Break ground' : 'Lay it out'
+    $('bs-name').placeholder = isNew ? 'Name the project' : 'Red Hook'
+    if (isNew && !folderTouched) $('bs-folder').value = slugFor($('bs-name').value)
+    const parent = parentNow()
+    $('bs-parent-show').textContent = parent ? `In ${parent}` : 'Pick where it goes'
+  }
+  function openSheet(r, burb) {
     sheetRect = r
+    sheetBurb = burb ? burb.id : ''
     const sel = $('bs-root')
     // Repositories waiting at the station first, then the folders the city knows.
     const waiting = ((lastMeta && lastMeta.repos) || []).filter(x => x.waiting).map(x => ({ path: x.root, name: `${x.name} (waiting at Grand Central)` }))
     const seen = new Set(waiting.map(x => x.path.toLowerCase()))
     const known = ((lastMeta && lastMeta.places) || []).filter(p => !seen.has(String(p.path).toLowerCase()))
-    sel.innerHTML = '<option value="">Not yet</option>' + [...waiting, ...known].map(p => `<option value="${esc(p.path)}">${esc(p.name)}</option>`).join('')
+    sel.innerHTML = '<option value="">Not yet</option>' + `<option value="${NEW_PROJECT}">A new project: break ground</option>` +
+      [...waiting, ...known].map(p => `<option value="${esc(p.path)}">${esc(p.name)}</option>`).join('')
     // Laid out for a project from its card: that one. Else the first one waiting, if any.
-    if (sheetFor) sel.value = sheetFor
+    if (sheetBurb) sel.value = NEW_PROJECT
+    else if (sheetFor) sel.value = sheetFor
     else if (waiting.length) sel.value = waiting[0].path
     sheetFor = ''
-    $('bs-warn').hidden = !!sel.value
-    $('bs-name').value = ''
+    $('bs-name').value = burb ? burb.name : ''
+    $('bs-folder').value = ''
+    $('bs-brief').value = ''
+    $('bs-parent').value = ''
+    $('bs-parent').hidden = true
+    $('bs-err').textContent = ''
+    folderTouched = false
+    syncSheet()
     sheet.hidden = false
-    $('bs-name').focus()
+    $(burb ? 'bs-brief' : 'bs-name').focus()
   }
-  $('bs-cancel').addEventListener('click', () => { sheet.hidden = true })
+  function closeSheet() { sheet.hidden = true; sheetBurb = '' }
+  $('bs-cancel').addEventListener('click', closeSheet)
   $('bs-ok').addEventListener('click', async () => {
-    const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value ? $('bs-root').selectedOptions[0].textContent.replace(/ \(waiting at Grand Central\)$/, '') : '')
+    const isNew = $('bs-root').value === NEW_PROJECT
+    const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value && !isNew ? $('bs-root').selectedOptions[0].textContent.replace(/ \(waiting at Grand Central\)$/, '') : '')
     if (!name) { $('bs-name').focus(); return }
-    const root = $('bs-root').value
     const fill = $('bs-fill').checked
-    if (await build({ op: 'borough', name, ...(root ? { root } : {}), ...(fill ? { fill: true } : {}), ...sheetRect })) { sheet.hidden = true; setTool('select') }
+    if (!isNew) {
+      const root = $('bs-root').value
+      if (await build({ op: 'borough', name, ...(root ? { root } : {}), ...(fill ? { fill: true } : {}), ...sheetRect })) { closeSheet(); setTool('select') }
+      return
+    }
+    const brief = $('bs-brief').value.trim()
+    if (!brief) { $('bs-brief').focus(); return }
+    const parent = parentNow()
+    const btn = $('bs-ok')
+    btn.disabled = true
+    $('bs-err').textContent = ''
+    const where = sheetBurb ? { id: sheetBurb } : { ...sheetRect, ...(fill ? { fill: true } : {}) }
+    const r = await post('/groundbreak', { name, folder: $('bs-folder').value.trim(), parent, brief, level: $('bs-level').value, ...where })
+    btn.disabled = false
+    if (r.error || !r.ok) { $('bs-err').textContent = r.error || 'The ground was not broken.'; return }
+    if (parent) { projectsParent = parent; try { localStorage.setItem('agent-city-projects-dir', parent) } catch {} }
+    closeSheet()
+    setTool('select')
+    // The city's own news says the ground is broken; only trouble is said here.
+    if (r.warning) toast(r.warning)
+    if (r.id) {
+      firstPrompts.set(r.id, brief)
+      openSession(APP + r.id)
+    }
   })
-  $('bs-root').addEventListener('change', () => { $('bs-warn').hidden = !!$('bs-root').value })
-  $('bs-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('bs-ok').click() })
+  $('bs-root').addEventListener('change', syncSheet)
+  $('bs-name').addEventListener('input', syncSheet)
+  $('bs-folder').addEventListener('input', () => { folderTouched = true })
+  $('bs-parent').addEventListener('input', syncSheet)
+  $('bs-parent-edit').addEventListener('click', () => {
+    const input = $('bs-parent')
+    input.hidden = !input.hidden
+    if (!input.hidden) { input.value = input.value || parentNow(); input.focus() }
+  })
+  $('bs-name').addEventListener('keydown', e => { if (e.key === 'Enter' && $('bs-root').value !== NEW_PROJECT) $('bs-ok').click() })
 </script>
 <style>
   #tip { position: fixed; z-index: 20; max-width: 300px; pointer-events: none; display: none;

@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import * as nodeModule from 'node:module'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -19,6 +19,8 @@ import { DEV_PORTS, portOf, titleOf } from './billboards.ts'
 import { CensusTaker } from './census.ts'
 import { changesIn } from './changes.ts'
 import { IMAGE_MAX, listFolder, lookAt } from './folders.ts'
+import { breakGround, checkGround, foundationsPrompt, projectsDir, unbreak } from './groundbreak.ts'
+import type { Ground } from './groundbreak.ts'
 import { hooksInstalled } from './install.ts'
 import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
@@ -382,6 +384,8 @@ function meta(town: Town) {
     toasts: city.toasts.splice(0),
     tasks: tasks.list.slice().reverse().map(taskView),
     places: places(world),
+    // Where Break ground puts a new project when the person doesn't say.
+    projectsDir: projectsDir(world.homeRoot, homedir()),
     pending: [...approvals.list(), ...appSessions.pending()],
     appSessions: appSessions.list(),
     update: updates.state,
@@ -654,7 +658,7 @@ const server = createServer(async (req, res) => {
         return reply(res, msg === 'too large' ? 413 : 400, JSON.stringify({ error: msg === 'too large' ? `Files can be up to ${UPLOAD_MAX / 1024 / 1024} MB` : msg }))
       }
     }
-    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname.startsWith('/app/') || url.pathname === '/decide')) {
+    if (req.method === 'POST' && (url.pathname.startsWith('/message') || url.pathname.startsWith('/task') || url.pathname.startsWith('/app/') || url.pathname === '/decide' || url.pathname === '/groundbreak')) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 256 * 1024)) || '{}') as Record<string, unknown>
       const fail = (error: string) => reply(res, 400, JSON.stringify({ error }))
@@ -672,6 +676,33 @@ const server = createServer(async (req, res) => {
           return reply(res, 200, JSON.stringify({ ok: true, id: task.id }))
         } catch (err) {
           return fail(err instanceof Error ? err.message : String(err))
+        }
+      }
+      // Break ground: a new project's folder and repository, its borough, and
+      // a session to lay its foundations (src/groundbreak.ts).
+      if (url.pathname === '/groundbreak') {
+        const now = Date.now()
+        let ground: Ground
+        try {
+          ground = checkGround(args, projectsDir(city.world.homeRoot, homedir()))
+          breakGround(ground)
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err))
+        }
+        const placed = city.groundFor(ground.path, ground.name, args, now)
+        if ('error' in placed) {
+          unbreak(ground)
+          return fail(placed.error)
+        }
+        save()
+        // The ground is broken either way; a session that can't start is said, not undone.
+        try {
+          const s = appSessions.start({ cwd: ground.path, prompt: foundationsPrompt(ground), level: ground.level, look: { name: ground.name.slice(0, 24), hat: 'hardhat' } }, now)
+          city.achieve('worksite', now)
+          return reply(res, 200, JSON.stringify({ ok: true, id: s.id, root: ground.path, borough: placed.borough }))
+        } catch (err) {
+          const why = err instanceof Error ? err.message : String(err)
+          return reply(res, 200, JSON.stringify({ ok: true, root: ground.path, borough: placed.borough, warning: `Ground broken at ${ground.path}, but no session started: ${why}` }))
         }
       }
       if (url.pathname === '/decide') {
