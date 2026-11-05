@@ -238,6 +238,19 @@ for work since the last ribbon cutting; a permit for two weeks, or until its
 pull request is merged. A pull request merged on GitHub's site, rather than
 by a session, isn't seen.
 
+## Blueprints
+
+A project's next folders are drawn before they're built. When a session
+presents a plan (plan mode), every new folder the plan names (`web/index.html`,
+`e2e/`…) gets a blueprint in that project's borough, and the ticker says so:
+a blue dashed footprint and a see-through house with its name over it, on the
+free plots nearest the front, clear of the houses already standing. A
+session writing its first file into a folder the repository doesn't have yet
+draws one too. When the folder's files are committed, the blueprint comes
+down and its houses go up ("🏗 web/ went up in Brooklyn"). A blueprint nothing
+has happened to for three days fades away. Folders like `node_modules/`,
+`dist/` and dot-folders never get one.
+
 ## Time-lapse
 
 Click a borough with a repository in it and choose **▶ Time-lapse** to watch

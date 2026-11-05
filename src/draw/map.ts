@@ -3,7 +3,8 @@ import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, IS
 import type { OverlayItem, Pt, Scene } from './geo.ts'
 import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
-import { houses, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
+import { blueprintPlots, houses, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
+import { unbuilt } from '../blueprints.ts'
 import type { Placed } from './blocks.ts'
 import { censusShape } from '../census.ts'
 import { costOf, signCost } from '../costs.ts'
@@ -804,6 +805,34 @@ function burb(b: PresetBurb, census?: Census): string {
   return g
 }
 
+// A borough's blueprints (src/blueprints.ts): on the free plots nearest the
+// front, each planned folder's houses as a blue dashed footprint and a
+// see-through wireframe, its name over the first.
+function blueprintHouses(placed: Placed[], repo: Repo, census: Census, now: number): string {
+  const planned = unbuilt(repo.blueprints, census, now)
+  if (!planned.length) return ''
+  let g = ''
+  for (const { path, plots } of blueprintPlots(placed, planned.map(b => b.path))) {
+    plots.forEach((i, k) => {
+      const { x, y0, w, d } = placed[i]!
+      const h = 7
+      const base = [p(x, y0 + d), p(x + w, y0 + d), p(x + w, y0), p(x, y0)]
+      const top = [p(x, y0 + d, h), p(x + w, y0 + d, h), p(x + w, y0, h), p(x, y0, h)]
+      g += `<polygon points="${pts(base)}" fill="#0c4a6e" fill-opacity=".35" stroke="#7dd3fc" stroke-width=".4" stroke-dasharray="1.2 .8"/>`
+      // The two walls you see and the roof, glass-thin; their edges in blue line.
+      g += `<polygon points="${pts([base[0]!, base[1]!, top[1]!, top[0]!])}" fill="#38bdf8" fill-opacity=".12"/>`
+      g += `<polygon points="${pts([base[1]!, base[2]!, top[2]!, top[1]!])}" fill="#38bdf8" fill-opacity=".07"/>`
+      g += `<polygon points="${pts(top)}" fill="#7dd3fc" fill-opacity=".1" stroke="#7dd3fc" stroke-width=".45"/>`
+      g += `<path d="M${xy(base[0]!)}L${xy(top[0]!)}M${xy(base[1]!)}L${xy(top[1]!)}M${xy(base[2]!)}L${xy(top[2]!)}M${xy(base[0]!)}L${xy(base[1]!)}L${xy(base[2]!)}" stroke="#7dd3fc" stroke-width=".45" fill="none"/>`
+      if (k === 0) {
+        const [lx, ly] = p(x + w / 2, y0 + d / 2, h + 3)
+        g += `<text class="cap" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="font-size:calc(4.5px*var(--zt,1));stroke-width:calc(1.8px*var(--zt,1));font-weight:700;fill:#7dd3fc">PLANNED · ${esc(path)}/</text>`
+      }
+    })
+  }
+  return `<g class="blueprints">${g}</g>`
+}
+
 // Every house of a weathered folder, back to front.
 function weatheredHouses(placed: Placed[], census: Census, now: number): string {
   return placed
@@ -881,6 +910,7 @@ function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
   }
   if (census) {
     g += weatheredHouses(burbHouses(b, census), census, sc.now)
+    if (repo) g += blueprintHouses(burbHouses(b, census), repo, census, sc.now)
     dirtyHouses(burbHouses(b, census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
   } else if (isBuilding) {
     const corner = houses(b).find(h => h.corner)
@@ -927,6 +957,7 @@ function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
   if (census) {
     const isBuilding = here.some(a => a.at === 'workshop')
     g += weatheredHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census, sc.now)
+    if (repo) g += blueprintHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), repo, census, sc.now)
     dirtyHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
   }
   if (repo) {

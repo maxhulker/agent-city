@@ -9,6 +9,7 @@ import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './bi
 import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
 import { costsByRoot } from './costs.ts'
 import { nearestSlot, placeBlocks, slotsOf } from './draw/blocks.ts'
+import { addBlueprints, censusHas, newFolders, pathsInPlan, relativeTo, unbuilt } from './blueprints.ts'
 import type { Agent, Billboard, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
@@ -1092,6 +1093,16 @@ export class City {
     const changed = !sameCensus(repo.census, census)
     repo.census = census
     if (changed) this.isDirty = true
+    // A blueprint whose folder now stands is built; a stale one is taken down.
+    if (repo.blueprints?.length) {
+      const now = census.at
+      const geo = burbGeo(this.layout, repo.burb)
+      for (const b of repo.blueprints) if (censusHas(census, b.path) && geo) this.news(`🏗 ${b.path}/ went up in ${geo.name}`, now)
+      const left = unbuilt(repo.blueprints, census, now)
+      if (left.length !== repo.blueprints.length) this.isDirty = true
+      if (left.length) repo.blueprints = left
+      else delete repo.blueprints
+    }
   }
 
   // A house moved on the map (or let go): its folder's houses stand from the
@@ -1316,6 +1327,36 @@ export class City {
       this.isDirty = true
     }
     link.lastAt = now
+  }
+
+  // A plan presented from plan mode: blueprints for the new folders it names,
+  // in the borough of the project it is for (the session's, else where its
+  // lead stands).
+  private planBlueprints(s: Session, a: Agent, plan: string, now: number) {
+    if (!plan) return
+    const w = this.world
+    const repo =
+      w.repos.find(r => same(r.root, s.root) && !r.left && !isWaiting(r.burb)) ??
+      (a.burb ? w.repos.find(r => r.burb === a.burb && !r.left && !isWaiting(r.burb)) : undefined)
+    if (!repo || !burbGeo(this.layout, repo.burb)) return
+    const folders = newFolders(pathsInPlan(plan, repo.root), repo.census)
+    if (!folders.length) return
+    const { list, added } = addBlueprints(repo.blueprints, folders, 'plan', now)
+    repo.blueprints = list
+    if (added.length) this.news(`📐 Blueprints drawn in ${burbGeo(this.layout, repo.burb)!.name} for ${added.map(f => `${f}/`).join(', ')}`, now)
+    this.isDirty = true
+  }
+
+  // A file written into a folder its repository doesn't have yet: that folder's blueprint.
+  private workBlueprint(root: string, path: string, now: number) {
+    const repo = this.world.repos.find(r => same(r.root, root) && !r.left && !isWaiting(r.burb))
+    if (!repo || !repo.census) return
+    const rel = relativeTo(root, path)
+    const folders = rel ? newFolders([rel], repo.census) : []
+    if (!folders.length) return
+    const { list, added } = addBlueprints(repo.blueprints, folders, 'work', now)
+    repo.blueprints = list
+    if (added.length) this.isDirty = true
   }
 
   // A finished shell command's meaning for its project's construction site
@@ -1560,6 +1601,9 @@ export class City {
         this.touch(worked, now)
         // Work in another project than the session's own strings a power line between them.
         if (path && worked) this.linkWork(s, worked, now)
+        // Blueprints: the new folders a plan names, or a file written into one.
+        if (tool === 'ExitPlanMode') this.planBlueprints(s, a, str(input.plan), now)
+        else if (tool === 'Write' && path && worked) this.workBlueprint(worked, path, now)
         const before = placeOf(a)
         const isAsk = ASKS.test(tool)
         this.goTo(a, isAsk ? 'hall' : districtFor(tool, str(input.command)), isAsk ? this.homeOf(s, now) : burb)

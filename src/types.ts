@@ -361,7 +361,13 @@ export type Repo = {
   // Folders the person moved, by path: the grid point (a plot's middle) their
   // houses stand from. Reset when the repository moves to another borough.
   pins?: Pins
+  // Folders it is about to get, drawn as blueprints (src/blueprints.ts).
+  blueprints?: Blueprint[]
 }
+
+// A planned folder: named in a plan, or being written by a session; when it
+// was last named or worked on.
+export type Blueprint = { path: string; at: number; from: 'plan' | 'work' }
 
 export type Pins = Record<string, [number, number]>
 
