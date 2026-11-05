@@ -210,6 +210,24 @@ house's files panel, opens the New session form made out for that
 repository (the prompt begun with the house's folder), with a hard hat on
 its lead.
 
+## Permits, inspections and ribbon cuttings
+
+Each project's work goes through a builder's stages, read from what its
+sessions run and what that prints, and shown on a board on its square
+(Manhattan's stands by City Hall):
+
+| Work | On the board |
+| --- | --- |
+| A branch other than main checked out | **Permit pending**, with the branch |
+| `gh pr create` | **Building permit #N**; a click opens the pull request |
+| A test run (`npm test`, `node --test`, `vitest`, `jest`, `pytest`, `go test`, `cargo test`…) or `gh pr checks` | An inspection tag under the board: green **✓ Passed**, or red **✗ Failed** (it pulses, and a notice says how many failed) |
+| `gh pr merge` | The ribbon is cut across the square, with confetti, and the board reads **Now open · #N merged** for half an hour |
+
+The ticker carries each one. An inspection shows for six hours, and only
+for work since the last ribbon cutting; a permit for two weeks, or until its
+pull request is merged. A pull request merged on GitHub's site, rather than
+by a session, isn't seen.
+
 ## Work orders and site plans
 
 Click an agent to see why it exists and how it works. A subagent carries a

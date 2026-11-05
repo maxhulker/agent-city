@@ -6,6 +6,7 @@ import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, full
 import { FIXED, applyOp, boroughSizeFor, builtOf, burbGeo, cityBuildings, connectBorough, fillBorough, findSite, generateMap, clearBuilt, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
+import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
 import type { Agent, Billboard, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
 import type { Kind } from './layout.ts'
 
@@ -1241,6 +1242,39 @@ export class City {
       .map(r => ({ root: r.root, ...(r.census ? { census: r.census } : {}), busy: this.world.agents.some(a => a.burb === r.burb && a.status === 'working') }))
   }
 
+  // A finished shell command's meaning for its project's construction site
+  // (src/sites.ts): a pull request filed is its permit, a test run or a pull
+  // request's checks an inspection, a pull request merged its ribbon cutting.
+  private siteWork(a: Agent, code: string, ev: HookEvent, now: number) {
+    const w = this.world
+    const e = siteEventOf(code, outputOf(ev.tool_response ?? ev.error), ev.hook_event_name === 'PostToolUseFailure')
+    if (!e) return
+    const root = a.burb ? this.repoAt(a.burb)?.root : w.homeRoot
+    if (!root) return
+    const repo = w.repos.find(r => same(r.root, root))
+    const name = (a.burb ? repo?.name : w.home) || base(root)
+    const sites = (w.sites ??= [])
+    let site = sites.find(s => same(s.root, root))
+    if (!site) {
+      site = { root }
+      sites.push(site)
+      if (sites.length > 60) sites.shift()
+    }
+    applySiteEvent(site, e, branchAtWork(repo?.census), now)
+    if (e.kind === 'permit') {
+      this.say(a, `filed permit #${e.pr} for ${name}`, now)
+      this.tick(a, `📋 filed permit #${e.pr} for ${name}`, now)
+    } else if (e.kind === 'inspection') {
+      const what = `${e.passed ? 'passed' : 'failed'} inspection in ${name}${e.detail ? ` (${e.detail})` : ''}`
+      this.say(a, what, now)
+      this.tick(a, `${e.passed ? '✅' : '🚩'} ${what}`, now)
+      if (!e.passed) this.toasts.push(`🚩 ${name} failed inspection${e.detail ? `: ${e.detail}` : ''}`)
+    } else {
+      this.news(`✂ Ribbon cut in ${name}${site.opened?.pr ? `: #${site.opened.pr} merged` : ''}`, now)
+    }
+    this.isDirty = true
+  }
+
   // Breaking ground (src/groundbreak.ts): a new project at root gets a
   // borough, one drawn now (x, y, w, h, with its streets and lots when `fill`)
   // or one nobody lives in (id), and moves in.
@@ -1542,6 +1576,8 @@ export class City {
           this.raise('harbor', a, now)
           if (kind === 'push') this.raise('torch', a, now)
         }
+        // The project's construction site: a permit filed, an inspection, a ribbon cut.
+        if (tool === 'Bash' || tool === 'PowerShell') this.siteWork(a, code, ev, now)
         break
       }
       case 'SubagentStart': {

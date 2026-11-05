@@ -183,6 +183,16 @@ export type Billboard = {
 
 export type DevHint = { id: string; root: string; at: number }
 
+// A project's construction site (src/sites.ts): its building permit (the
+// pull request filed for its branch), its last inspection (a test run, or a
+// pull request's checks) and its last ribbon cutting (a pull request merged).
+export type Site = {
+  root: string
+  permit?: { pr: number; url: string; branch?: string; at: number }
+  inspection?: { at: number; passed: boolean; what: string; detail?: string }
+  opened?: { at: number; pr?: number; url?: string }
+}
+
 // A permission prompt, question or plan approval held open for the page to
 // decide (the PermissionRequest hook waits for the answer).
 export type Pending = {
@@ -438,6 +448,8 @@ export type World = {
   // Dev servers started with no address in sight (`npm run dev` in the
   // background): the server watches the usual ports for one to open.
   devHints?: DevHint[]
+  // Each project's construction site, by repository root.
+  sites?: Site[]
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts
