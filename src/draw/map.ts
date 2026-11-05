@@ -6,6 +6,8 @@ import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 import { houses, lotHouses, placeBlocks, signLine, slotsOf } from './blocks.ts'
 import type { Placed } from './blocks.ts'
 import { censusShape } from '../census.ts'
+import { costOf, signCost } from '../costs.ts'
+import type { Cost } from '../costs.ts'
 
 // The city itself, in two layers (docs/frames.md): the still map (water, land,
 // streets, buildings, the landmarks' bodies, bridges, trees, names), which
@@ -803,12 +805,14 @@ function burb(b: PresetBurb, census?: Census): string {
 }
 
 // The line under a repository's sign, from its census: branch, sync, the
-// fortnight's commits and what is uncommitted.
-function censusSign(x: number, y: number, census: Census | undefined): string {
-  if (!census) return ''
+// fortnight's commits and what is uncommitted; then what it has cost to
+// build so far (src/costs.ts), when anything.
+function censusSign(x: number, y: number, census: Census | undefined, cost?: Cost): string {
+  const built = cost ? `<tspan style="fill:#86efac">${census ? ' · ' : ''}${esc(signCost(cost.usd))} to build</tspan>` : ''
+  if (!census) return built ? `<text class="cap" x="${n(x)}" y="${n(y)}" dy="1.6em" text-anchor="middle" style="font-size:calc(6px*var(--zt,1));stroke-width:calc(2.2px*var(--zt,1));font-weight:600">${built}</text>` : ''
   const [line, dirty] = signLine(census)
   const tail = dirty ? `<tspan style="fill:#fcd34d"> · ${esc(dirty)}</tspan>` : ''
-  return `<text class="cap" x="${n(x)}" y="${n(y)}" dy="1.6em" text-anchor="middle" style="font-size:calc(6px*var(--zt,1));stroke-width:calc(2.2px*var(--zt,1));font-weight:600;fill:#94a3b8">${esc(line)}${tail}</text>`
+  return `<text class="cap" x="${n(x)}" y="${n(y)}" dy="1.6em" text-anchor="middle" style="font-size:calc(6px*var(--zt,1));stroke-width:calc(2.2px*var(--zt,1));font-weight:600;fill:#94a3b8">${esc(line)}${tail}${built}</text>`
 }
 
 // What changes about a borough: the repository's name on the sign (none once
@@ -835,7 +839,7 @@ function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
   if (repo) {
     const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
     g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
-    g += censusSign(lx, ly, census)
+    g += censusSign(lx, ly, census, costOf(sc.costs ?? new Map(), repo.root))
   }
   return g
 }
@@ -877,7 +881,7 @@ function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
   if (repo) {
     const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
     g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
-    g += censusSign(lx, ly, census)
+    g += censusSign(lx, ly, census, costOf(sc.costs ?? new Map(), repo.root))
   }
   return g
 }
