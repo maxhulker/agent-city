@@ -190,6 +190,26 @@ there, and from then on that work happens at its door. Bulldozing a borough
 sends its repository back to Grand Central to wait for another. Manhattan's blocks are all zoned, so to place something on the island
 bulldoze a lot first.
 
+## Break ground
+
+A project can start in the city. Drag out a borough with **Borough** and
+pick **A new project: break ground** on its sheet, or click a borough
+nobody lives in and choose **Break ground here**. Name the project, say
+what it is for, and pick what Claude may do. Crosswalk makes its folder
+(beside Manhattan's repository, or inside Manhattan's folder when that is a
+folder of projects; **Change** puts it elsewhere, and the next one goes
+there too), runs `git init`, writes the brief to `CLAUDE.md` and commits it
+(the borough's first house), moves the project into the borough, and starts
+a session in a hard hat to lay its foundations. That session is asked to
+commit once the first version works, which is when the rest of the houses go
+up. A folder that already exists is never touched.
+
+Work on a project you already have can be commissioned from the map too.
+**Commission work** on a borough's card, or **Commission work here** in a
+house's files panel, opens the New session form made out for that
+repository (the prompt begun with the house's folder), with a hard hat on
+its lead.
+
 ## Work orders and site plans
 
 Click an agent to see why it exists and how it works. A subagent carries a

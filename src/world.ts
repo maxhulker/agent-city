@@ -1241,9 +1241,31 @@ export class City {
       .map(r => ({ root: r.root, ...(r.census ? { census: r.census } : {}), busy: this.world.agents.some(a => a.burb === r.burb && a.status === 'working') }))
   }
 
+  // Breaking ground (src/groundbreak.ts): a new project at root gets a
+  // borough, one drawn now (x, y, w, h, with its streets and lots when `fill`)
+  // or one nobody lives in (id), and moves in.
+  groundFor(root: string, name: string, at: Record<string, unknown>, now: number): { ok: true; borough: string } | { error: string } {
+    let id = typeof at.id === 'string' ? at.id : ''
+    if (id) {
+      if (!burbGeo(this.layout, id)) return { error: 'No such borough' }
+    } else {
+      const { x, y, w, h, fill } = at
+      const r = this.build({ op: 'borough', name, x, y, w, h, ...(fill ? { fill: true } : {}) }, now)
+      if ('error' in r) return r
+      id = this.layout.boroughs[this.layout.boroughs.length - 1]!.id
+    }
+    const geo = burbGeo(this.layout, id)!
+    const say = geo.name.toLowerCase() === name.toLowerCase() ? `Ground broken for ${name}` : `Ground broken for ${name} in ${geo.name}`
+    const moved = this.moveIn(root, id, now, say)
+    if ('error' in moved) return moved
+    this.sync()
+    return { ok: true, borough: geo.name }
+  }
+
   // Moves the repository at root into a borough the person picked (the
   // arrival card, or the Borough tool's sheet); its agents walk over.
-  moveIn(root: string, id: Burb, now: number): { ok: true } | { error: string } {
+  // `say` replaces the ticker's "moved into" line (breaking ground has its own).
+  moveIn(root: string, id: Burb, now: number, say?: string): { ok: true } | { error: string } {
     const w = this.world
     const geo = burbGeo(this.layout, id)
     if (!geo) return { error: 'No such borough' }
@@ -1260,7 +1282,8 @@ export class City {
     repo.burb = id
     delete repo.left
     if (was !== id) for (const a of w.agents) if (a.burb === was) a.burb = id
-    if (moving) this.news(`${repo.name} moved into ${geo.name}`, now)
+    if (say) this.news(say, now)
+    else if (moving) this.news(`${repo.name} moved into ${geo.name}`, now)
     this.isDirty = true
     return { ok: true }
   }
