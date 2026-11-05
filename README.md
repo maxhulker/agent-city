@@ -75,6 +75,16 @@ further. It is read-only, and only for the repositories the city knows. In a
 borough you drew, the zoned lots take the folders. Manhattan keeps its
 districts.
 
+**Move a house** to put a folder where you want it. Hold the mouse on a house
+for a moment to pick it up, then let go on the lot where it should stand (a
+quick drag still pans the map). You can also use **📍 Move** in its files
+panel and then click the lot. The folder's run of houses stands from that lot
+from then on, and the census places the other folders around it as before.
+Drop it on a folder you moved earlier and the two trade places. **Let the city
+place it** in the files panel undoes a move, and moving the project to
+another borough clears them all. Moving a house only changes the map: no file
+is touched. The time-lapse uses the same places.
+
 When a newer version is on GitHub's `main`, the Empire State Building lights up
 gold and shoots fireworks: click it to update. Crosswalk pulls the new version
 (a clean fast-forward only) and restarts itself; app sessions wake up with their
