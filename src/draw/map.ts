@@ -99,21 +99,53 @@ export function defs(): string {
 
 // A box on the grid: footprint gx [x0, x0+w], gy [y0, y0+d], h tall, from z.
 export function box(x0: number, y0: number, w: number, d: number, h: number, pal: Pal, z = 0): string {
-  const [ax, ay] = p(x0, y0 + d, z)
-  const wx = r(w * S)
-  const wy = r(w * T)
-  const dx = r(d * S)
-  const dy = r(d * T)
-  const hh = r(h)
-  const bx = ax + w * S
-  const by = ay + w * T
-
-  return (
-    `<path class="${pal}L" d="M${r(ax)} ${r(ay)}l${wx} ${wy}v-${hh}l-${wx} -${wy}z"/>` +
-    `<path class="${pal}R" d="M${r(bx)} ${r(by)}l${dx} -${dy}v-${hh}l-${dx} ${dy}z"/>` +
-    `<path class="${pal}T" d="M${r(ax)} ${r(ay - h)}l${wx} ${wy}l${dx} -${dy}l-${wx} -${wy}z"/>`
-  )
+  return boxFaces(x0, y0, w, d, h, pal, z).map(partSvg).join('')
 }
+
+// One flat piece of the city's fabric (see compose): a face with its fill
+// and path, or other markup, with the outline it covers on screen (convex).
+export type Part = { fill: string; d: string; pts: Pt[] } | { svg: string; pts: Pt[] }
+
+const partSvg = (f: Part) => ('svg' in f ? f.svg : `<path ${f.fill} d="${f.d}"/>`)
+
+// A box's three faces, each drawn just as box() always drew it (whole
+// pixels), with the outline that drawing covers. All three run the same way
+// round, so faces of one fill overlapping in one path still fill (nonzero).
+function boxFaces(x0: number, y0: number, w: number, d: number, h: number, pal: Pal, z = 0): Part[] {
+  const [ax, ay] = p(x0, y0 + d, z)
+  const wx = Math.round(w * S)
+  const wy = Math.round(w * T)
+  const dx = Math.round(d * S)
+  const dy = Math.round(d * T)
+  const hh = Math.round(h)
+  const AX = Math.round(ax)
+  const AY = Math.round(ay)
+  const BX = Math.round(ax + w * S)
+  const BY = Math.round(ay + w * T)
+  const TY = Math.round(ay - h)
+  return [
+    { fill: `class="${pal}L"`, d: `M${AX} ${AY}l${wx} ${wy}v-${hh}l-${wx} -${wy}z`, pts: [[AX, AY], [AX + wx, AY + wy], [AX + wx, AY + wy - hh], [AX, AY - hh]] },
+    { fill: `class="${pal}R"`, d: `M${BX} ${BY}l${dx} -${dy}v-${hh}l-${dx} ${dy}z`, pts: [[BX, BY], [BX + dx, BY - dy], [BX + dx, BY - dy - hh], [BX, BY - hh]] },
+    { fill: `class="${pal}T"`, d: `M${AX} ${TY}l${wx} ${wy}l${dx} -${dy}l-${wx} -${wy}z`, pts: [[AX, TY], [AX + wx, TY + wy], [AX + wx + dx, TY + wy - dy], [AX + dx, TY - dy]] },
+  ]
+}
+
+// The same three faces in plain colours, for a house with its windows out.
+function slabFaces(x0: number, y0: number, w: number, d: number, h: number, [cl, cr, ct]: [string, string, string]): Part[] {
+  const a = p(x0, y0 + d)
+  const b = p(x0 + w, y0 + d)
+  const c = p(x0 + w, y0)
+  const e = p(x0, y0)
+  const up = ([x, y]: Pt): Pt => [x, y - h]
+  const at = (list: Pt[], fill: string): Part => {
+    const q = list.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10] as Pt)
+    return { fill: `fill="${fill}"`, d: 'M' + q.map(([x, y]) => `${x} ${y}`).join('L') + 'z', pts: q }
+  }
+  return [at([a, b, up(b), up(a)], cl), at([b, c, up(c), up(b)], cr), at([up(a), up(b), up(c), up(e)], ct)]
+}
+
+// A rectangle on screen as an outline.
+const rectPts = (x0: number, y0: number, x1: number, y1: number): Pt[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
 
 // A plain box in three given colours, for things without windows.
 function slab(x0: number, y0: number, w: number, d: number, h: number, [cl, cr, ct]: [string, string, string], z = 0): string {
@@ -320,6 +352,85 @@ export function scaffold(x0: number, y0: number, w: number, d: number, h: number
 
 // ---- city fabric ----------------------------------------------------------
 
+// The items, back to front, in as few elements as keeps the picture the same.
+// Every building used to be three paths, each wall filled with its window
+// pattern, and the GPU paid for each one every time the view settled. Now
+// each face goes in a layer: above every face it overlaps in another fill,
+// level with one it overlaps in its own (one path of one fill paints the same
+// pixels in any order). Faces that never overlap may share a layer whatever
+// their order, so each layer is one path per fill. An item without parts (a
+// landmark, a caption) is drawn whole, over all before it and under all after.
+export function compose(items: Item[]): string {
+  type Laid = { part: Part; fill: string; layer: number; bb: [number, number, number, number] }
+  const layers: Part[][] = []
+  let laid: Laid[] = []
+  let floor = 0
+  for (const it of items) {
+    if (!it.parts) {
+      const layer = Math.max(floor, layers.length)
+      layers[layer] = [{ svg: it.svg, pts: [] }]
+      floor = layer + 1
+      laid = []
+      continue
+    }
+    for (const part of it.parts) {
+      const fill = 'fill' in part ? part.fill : ''
+      const bb = boundsOf(part.pts)
+      let layer = floor
+      for (const o of laid) {
+        // Only what would lift it higher is worth the overlap test.
+        if (o.layer + 1 <= layer) continue
+        if (o.bb[0] >= bb[2] || bb[0] >= o.bb[2] || o.bb[1] >= bb[3] || bb[1] >= o.bb[3]) continue
+        if (!overlaps(o.part.pts, part.pts)) continue
+        layer = Math.max(layer, fill && fill === o.fill ? o.layer : o.layer + 1)
+      }
+      laid.push({ part, fill, layer, bb })
+      ;(layers[layer] ??= []).push(part)
+    }
+  }
+  let s = ''
+  for (const group of layers) {
+    if (!group) continue
+    const fills = new Map<string, string>()
+    let rest = ''
+    for (const part of group) {
+      if ('fill' in part) fills.set(part.fill, (fills.get(part.fill) ?? '') + part.d)
+      else rest += part.svg
+    }
+    for (const [fill, d] of fills) s += `<path ${fill} d="${d}"/>`
+    s += rest
+  }
+  return s
+}
+
+function boundsOf(pts: Pt[]): [number, number, number, number] {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const [x, y] of pts) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y)
+  }
+  return [x0, y0, x1, y1]
+}
+
+// Whether two convex outlines share any area (separating axes); sharing only
+// an edge or a corner is not overlapping.
+export function overlaps(a: Pt[], b: Pt[]): boolean {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const [x1, y1] = poly[i]!
+      const [x2, y2] = poly[(i + 1) % poly.length]!
+      const nx = y2 - y1
+      const ny = x1 - x2
+      const len = Math.hypot(nx, ny)
+      if (!len) continue
+      let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity
+      for (const [x, y] of a) { const v = (x * nx + y * ny) / len; amin = Math.min(amin, v); amax = Math.max(amax, v) }
+      for (const [x, y] of b) { const v = (x * nx + y * ny) / len; bmin = Math.min(bmin, v); bmax = Math.max(bmax, v) }
+      if (amax <= bmin + 0.01 || bmax <= amin + 0.01) return false
+    }
+  }
+  return true
+}
+
 function heightAt(x: number, y: number, r: number): number {
   const midtown = 62 * Math.exp(-(((y - 39.5) / 4.2) ** 2)) * (1 - Math.min(1, Math.abs(x - 10) / 14))
   const fidi = 68 * Math.exp(-(((y - 59) / 2.4) ** 2))
@@ -336,7 +447,9 @@ function palAt(y: number, h: number, r: number): Pal {
   return r > 0.5 ? 'k' : 's'
 }
 
-export type Item = { depth: number; svg: string }
+// Something drawn back to front. With parts, compose may merge it with its
+// neighbours; without, it is drawn whole, over everything before it.
+export type Item = { depth: number; svg: string; parts?: Part[] }
 
 // Ground to keep in view: [gx0, gy0, gx1, gy1, how much of it may hide].
 export type Keep = [number, number, number, number, number]
@@ -396,28 +509,27 @@ function capFor(x0: number, y0: number, w: number, d: number, keep: Keep[]): num
 
 function building(items: Item[], x0: number, y0: number, w: number, d: number, h: number, pal: Pal, q: number, keep: Keep[]) {
   h = Math.min(h, Math.max(3, capFor(x0, y0, w, d, keep)))
-  let svg: string
+  let parts: Part[]
   let roof = h
   let rx = x0 + w / 2
   let ry = y0 + d / 2
   if (pal === 'g' && h > 40 && q > 0.45) {
     // A setback tower: a broad base, a slimmer top.
     const base = Math.round(h * 0.68)
-    svg = box(x0, y0, w, d, base, pal) + box(x0 + w * 0.18, y0 + d * 0.18, w * 0.64, d * 0.64, h - base, pal, base)
+    parts = [...boxFaces(x0, y0, w, d, base, pal), ...boxFaces(x0 + w * 0.18, y0 + d * 0.18, w * 0.64, d * 0.64, h - base, pal, base)]
   } else {
-    svg = box(x0, y0, w, d, h, pal)
+    parts = boxFaces(x0, y0, w, d, h, pal)
   }
   // Rooftops: water towers on the older blocks, masts on the towers.
   const t = seeded(x0 * 3.1, y0 * 7.3)
-  if (pal !== 'g' && h < 40 && w > 0.5 && t < 0.06) {
-    rx = x0 + w * (0.3 + t * 4)
-    svg += `<use href="#wt" x="${n(p(rx, ry, roof)[0])}" y="${n(p(rx, ry, roof)[1])}"/>`
-  } else if (pal === 'g' && h > 46 && t > 0.62) {
-    svg += `<use href="#ant" x="${n(p(rx, ry, roof)[0])}" y="${n(p(rx, ry, roof)[1])}"/>`
-  } else if (h > 12 && t > 0.4 && t < 0.46) {
-    svg += `<use href="#ac" x="${n(p(rx, ry, roof)[0])}" y="${n(p(rx, ry, roof)[1])}"/>`
+  const kit = pal !== 'g' && h < 40 && w > 0.5 && t < 0.06 ? 'wt' : pal === 'g' && h > 46 && t > 0.62 ? 'ant' : h > 12 && t > 0.4 && t < 0.46 ? 'ac' : ''
+  if (kit === 'wt') rx = x0 + w * (0.3 + t * 4)
+  if (kit) {
+    const [ux, uy] = p(rx, ry, roof).map(v => Math.round(v * 10) / 10) as Pt
+    // What #wt, #ant and #ac reach from where they stand, and a little more.
+    parts.push({ svg: `<use href="#${kit}" x="${ux}" y="${uy}"/>`, pts: rectPts(ux - 2.6, uy - 13, ux + 2.6, uy + 1.6) })
   }
-  items.push({ depth: x0 + y0 + 0.82, svg })
+  items.push({ depth: x0 + y0 + 0.82, svg: parts.map(partSvg).join(''), parts })
 }
 
 // The filler blocks on the zoned lots, as many as the population has earned
@@ -483,7 +595,10 @@ function fabric(items: Item[], sc: Scene) {
     for (const s of placeBlocks(slotsOf(sc.layout, b, false), census)) {
       if (s.block < 0) continue
       if (s.lit) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, 0, keep)
-      else items.push({ depth: s.x + s.y0 + 0.82, svg: censusHouse(s, keep) })
+      else {
+        const parts = slabFaces(s.x, s.y0, s.w, s.d, Math.min(s.h, Math.max(3, capFor(s.x, s.y0, s.w, s.d, keep))), DARK[s.pal])
+        items.push({ depth: s.x + s.y0 + 0.82, svg: parts.map(partSvg).join(''), parts })
+      }
     }
   }
 }
@@ -642,7 +757,10 @@ function parks(items: Item[], sc: Scene): string {
       for (let i = 0; i < count; i++) {
         const gx = x + 0.2 + seeded(x + i, y * 3) * 0.6
         const gy = y + 0.2 + seeded(y + i, x * 3) * 0.6
-        items.push({ depth: gx + gy, svg: tree(gx, gy, 1.3 + seeded(gx, gy) * 0.6) })
+        const rad = 1.3 + seeded(gx, gy) * 0.6
+        const [tx, ty] = p(gx, gy)
+        const svg = tree(gx, gy, rad)
+        items.push({ depth: gx + gy, svg, parts: [{ svg, pts: rectPts(tx - rad - 0.5, ty - 2 * rad - 0.5, tx + rad + 0.5, ty + 0.5) }] })
       }
     }
   }
@@ -2140,7 +2258,7 @@ export function drawMap(sc: Scene): string {
   // Buildings and landmarks, back to front.
   fabric(items, sc)
   items.sort((a, b) => a.depth - b.depth)
-  s += items.map(i => i.svg).join('')
+  s += compose(items)
   s += moonAndNames(sc, vb, isPreset)
   return s
 }
