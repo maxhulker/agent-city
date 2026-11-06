@@ -279,17 +279,31 @@ square. From now on:
 - **A project is one place.** Every worktree of a repository shares git's
   common directory; the server asks git for it (`Repo.project`). A worktree
   arriving while another worktree of its project has a borough is built onto
-  that borough as a section (`Borough.of`, placed by `sectionSite`: sharing
-  an edge, as deep as the borough it meets when that fits) with no click,
-  and "Build it for me" does the same. The main borough draws one line round
-  its sections, with dotted seams; a section is named after its project
-  ("AGENT-CITY · TERRAIN"). Bulldozing the main borough makes its first
-  section the main one.
-- **Regrouping, once.** A city laid out before these rules (`World.regrouped`
-  unset) is regrouped once git has named every borough's project: boroughs on
-  the hub move to the mainland, each project's other worktrees become
-  sections of its main worktree's borough, and a borough whose folders are
-  all gone is taken up. Each is laid out afresh; no file is touched.
+  that borough as a section (`Borough.of`, placed by `sectionSite`) with no
+  click, and "Build it for me" does the same.
+- **A section is a branch off its project** (the look of 2026-11-06,
+  `SECTION_LOOK` 2). It stays attached, sharing an edge, but smaller than the
+  main borough: half its lots at most, narrower and shallower than it. Its
+  streets join the project's by a spur, two cells of road straight across the
+  seam (`spurSection`; `sectionSite` much prefers places where one lines up),
+  else a road to the city as any borough. Each section has a colour of its
+  own (`branchColor`: teal, violet, pink, amber, sky, lime in turn): its
+  ground tinted and outlined in it, its square, its seam, its roofs (the
+  walls keep their folders' palette) and its spur painted down the middle.
+  Its name is its own part, "↳ TERRAIN", in the colour, drawn with its lights
+  over the houses so none hides it. The main borough draws one line round
+  them all. Bulldozing the main borough makes its first section the main one.
+- **A removed worktree's section is taken up** (`City.pruneSections`, every
+  few seconds with the project naming): once every folder in it is gone, the
+  section and its spur are lifted and its repository packs up. A borough of
+  its own stays until it is bulldozed.
+- **Regrouping, once per look.** A city laid out before these rules
+  (`World.regrouped` unset), or whose sections were laid out in an older look
+  (`World.sectionLook` below `SECTION_LOOK`), is regrouped once git has named
+  every borough's project: boroughs on the hub move to the mainland, each
+  project's other worktrees become sections of its main worktree's borough,
+  built again in the current look, and a borough whose folders are all gone
+  is taken up. Each is laid out afresh; no file is touched.
 
 ## An existing city migrates
 

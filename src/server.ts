@@ -488,6 +488,7 @@ setInterval(async () => {
     for (const town of towns.values()) {
       for (const root of town.city.projectsWanted()) town.city.setProject(root, await projectOf(root), repoSize, Date.now())
       if (town.city.regroup(repoSize, Date.now())) town.save()
+      if (town.city.pruneSections(Date.now())) town.save()
     }
   } catch (err) {
     console.error('agent-city: naming projects failed:', err)

@@ -1,7 +1,7 @@
 import type { Burb, Census, District, Landmark, Launch, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, FIREWORKS_MS, LABELS, MIDTOWN, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, esc, frame, isWaiting, hash, item, keyed, n, p, padFor, padOf, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { ORIGINS, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, groupOf, partName, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
+import { ORIGINS, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, groupOf, partName, isBridge, lotsOf, roomOf, seamCrossings, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout } from '../layout.ts'
 import { blueprintPlots, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
 import { unbuilt } from '../blueprints.ts'
@@ -501,7 +501,8 @@ function capFor(x0: number, y0: number, w: number, d: number, keep: Keep[]): num
   return cap
 }
 
-function building(items: Item[], x0: number, y0: number, w: number, d: number, h: number, pal: Pal, q: number, keep: Keep[]) {
+// `top`, a colour for its roof instead of its palette's (a section's houses).
+function building(items: Item[], x0: number, y0: number, w: number, d: number, h: number, pal: Pal, q: number, keep: Keep[], top?: string) {
   h = Math.min(h, Math.max(3, capFor(x0, y0, w, d, keep)))
   let parts: Part[]
   let roof = h
@@ -514,6 +515,7 @@ function building(items: Item[], x0: number, y0: number, w: number, d: number, h
   } else {
     parts = boxFaces(x0, y0, w, d, h, pal)
   }
+  if (top) parts = parts.map(f => ('fill' in f && f.fill === `class="${pal}T"` ? { ...f, fill: `fill="${top}"` } : f))
   // Rooftops: water towers on the older blocks, masts on the towers.
   const t = seeded(x0 * 3.1, y0 * 7.3)
   const kit = pal !== 'g' && h < 40 && w > 0.5 && t < 0.06 ? 'wt' : pal === 'g' && h > 46 && t > 0.62 ? 'ant' : h > 12 && t > 0.4 && t < 0.46 ? 'ac' : ''
@@ -566,8 +568,10 @@ function fabric(items: Item[], sc: Scene) {
     const d = 0.64
     if (lotStyle(sc.layout, x, y) === 'houses') {
       // A borough with a census builds its own (below).
-      if (counted.has(boroughAt(sc.layout, x, y)!.id)) return
-      for (const s of lotHouses({ x, y, x0, x1 })) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, seeded(s.x, y), keep)
+      const bo = boroughAt(sc.layout, x, y)!
+      if (counted.has(bo.id)) return
+      const tint = sectionTint(sc.layout, bo.id)
+      for (const s of lotHouses({ x, y, x0, x1 })) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, seeded(s.x, y), keep, tint && roofIn(s.pal, tint))
       return
     }
     // Two buildings on wide lots, for a ragged skyline.
@@ -584,12 +588,15 @@ function fabric(items: Item[], sc: Scene) {
     }
   })
   // A drawn borough with a census: its folders on its lots.
+  // A section's roofs are in its colour (its walls keep their folders' palette).
   for (const [b, census] of counted) {
+    const tint = sectionTint(sc.layout, b)
     for (const s of placeBlocks(slotsOf(sc.layout, b), census)) {
       if (s.block < 0) continue
-      if (s.lit) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, 0, keep)
+      if (s.lit) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, 0, keep, tint && roofIn(s.pal, tint))
       else {
-        const parts = slabFaces(s.x, s.y0, s.w, s.d, Math.min(s.h, Math.max(3, capFor(s.x, s.y0, s.w, s.d, keep))), DARK[s.pal])
+        const [cl, cr, ct] = DARK[s.pal]
+        const parts = slabFaces(s.x, s.y0, s.w, s.d, Math.min(s.h, Math.max(3, capFor(s.x, s.y0, s.w, s.d, keep))), [cl, cr, tint ? mix(ct, tint, 0.4) : ct])
         items.push({ depth: s.x + s.y0 + 0.82, svg: parts.map(partSvg).join(''), parts })
       }
     }
@@ -922,24 +929,55 @@ function censusSign(x: number, y: number, census: Census | undefined, cost?: Cos
 // edge where its agents gather, and its name at the back. Its houses come
 // with zoning (docs/city-builder.md, step nine).
 // A project with sections (other worktrees built onto its borough) is one
-// place: the main borough draws a single line round all of them, a shared
-// tint, and a dotted seam where two meet; each section is named after the
-// project and its own part ("AGENT-CITY · TERRAIN").
+// place: the main borough draws a single line round all of them, and a
+// seam where two meet. Each section is a branch off it, in a colour of its
+// own (branchColor): its ground tinted, its own line and square in that
+// colour, its spur street onto the project painted down the middle, and its
+// own part of the name ("↳ TERRAIN") in the colour.
 function drawnBurb(bo: Borough, layout: Layout): string {
   const [x0, y0, x1, y1] = boroughRect(bo)
   const [sx, sy] = burbGeo(layout, bo.id)!.square
   const half = Math.min(1.6, (x1 - x0) / 2 - 0.2)
   const group = groupOf(layout, bo.id)
   const main = group[0]!
+  const color = main === bo ? undefined : branchColor(group, bo)
   let g = GRID
   if (group.length < 2) g += gRect(x0 + 0.08, y0 + 0.08, x1 - 0.08, y1 - 0.08, 'none', ` rx=".2" stroke="#64748b" stroke-width=".06" stroke-dasharray=".35 .25"`)
   else if (main === bo) g += groupLine(group)
-  g += gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, '#343944', ` rx=".25" stroke="#3f4552" stroke-width=".05"`)
+  if (color) g += gRect(x0 + 0.18, y0 + 0.18, x1 - 0.18, y1 - 0.18, color, ` fill-opacity=".1" rx=".2" stroke="${color}" stroke-opacity=".85" stroke-width=".07" stroke-dasharray=".5 .2"`)
+  g += gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, color ? mix('#343944', color, 0.3) : '#343944', ` rx=".25" stroke="${color ?? '#3f4552'}" stroke-width=".05"`)
   g += '</g>'
+  // A section's name goes over the houses, with its lights (drawnBurbLit).
+  if (color) return g + spurLine(layout, bo, color)
   const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
-  const name = main === bo ? bo.name : `${main.name} · ${partName(bo.name, main.name)}`
-  g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${esc(name.toUpperCase())}</text>`
+  g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${esc(bo.name.toUpperCase())}</text>`
   return g
+}
+
+// A section's colour, none for a borough that is no section.
+function sectionTint(layout: Layout, id: string): string | undefined {
+  const group = groupOf(layout, id)
+  const bo = group.find(b => b.id === id)
+  return bo && bo !== group[0] ? branchColor(group, bo) : undefined
+}
+
+// A roof of that palette, in a section's colour.
+const roofIn = (pal: Pal, tint: string) => mix(PALETTES[pal][2], tint, 0.6)
+
+// Each section's colour, by its place among its project's sections.
+const BRANCH_COLORS = ['#2dd4bf', '#c084fc', '#f472b6', '#fbbf24', '#38bdf8', '#a3e635']
+export function branchColor(group: Borough[], bo: Borough): string {
+  return BRANCH_COLORS[Math.max(0, group.indexOf(bo) - 1) % BRANCH_COLORS.length]!
+}
+
+// A section's spur street onto its project: a line in its colour down the
+// middle of the road where it crosses the seam, and a dot on the seam.
+function spurLine(layout: Layout, bo: Borough, color: string): string {
+  const roads = seamCrossings(layout, bo.id)
+  if (!roads.length) return ''
+  let d = ''
+  for (const [x, y, dir] of roads) d += `M${xy(p(x, y))}L${xy(p(dir === 0 ? x : x + 1, dir === 0 ? y + 1 : y))}`
+  return `<path class="spur" d="${d}" fill="none" stroke="${color}" stroke-width="1.3" stroke-dasharray="2.2 1.4" stroke-linecap="round" opacity=".95"/>`
 }
 
 // The line round a project's boroughs, in cells (inside GRID): every cell
@@ -947,6 +985,7 @@ function drawnBurb(bo: Borough, layout: Layout): string {
 // runs; a dotted seam along the edges two of them share; a faint tint over all.
 function groupLine(group: Borough[]): string {
   const rects = group.map(boroughRect)
+  const tints = group.map((bo, i) => (i === 0 ? '#94a3b8' : branchColor(group, bo)))
   const inAny = (x: number, y: number) => rects.some(([a, b, c, d]) => x >= a && x < c && y >= b && y < d)
   // Unit edges keyed by their line: along rows (y, from x) and along columns (x, from y).
   const rows = new Map<number, number[]>()
@@ -976,22 +1015,25 @@ function groupLine(group: Borough[]): string {
   }
   runs(rows, (y, a, b) => `M${n(a)} ${n(y)}H${n(b)}`)
   runs(cols, (x, a, b) => `M${n(x)} ${n(a)}V${n(b)}`)
+  // A seam in the colour of the section on its far side from the main borough.
   let seams = ''
   rects.forEach(([a0, b0, c0, d0], i) => {
-    for (const [a1, b1, c1, d1] of rects.slice(i + 1)) {
+    rects.slice(i + 1).forEach(([a1, b1, c1, d1], k) => {
+      let seam = ''
       if (c0 === a1 || c1 === a0) {
         const from = Math.max(b0, b1), to = Math.min(d0, d1)
-        if (to > from) seams += `M${n(c0 === a1 ? c0 : a0)} ${n(from)}V${n(to)}`
+        if (to > from) seam += `M${n(c0 === a1 ? c0 : a0)} ${n(from)}V${n(to)}`
       }
       if (d0 === b1 || d1 === b0) {
         const from = Math.max(a0, a1), to = Math.min(c0, c1)
-        if (to > from) seams += `M${n(from)} ${n(d0 === b1 ? d0 : b0)}H${n(to)}`
+        if (to > from) seam += `M${n(from)} ${n(d0 === b1 ? d0 : b0)}H${n(to)}`
       }
-    }
+      if (seam) seams += `<path d="${seam}" fill="none" stroke="${tints[i + 1 + k]}" stroke-width=".07" stroke-dasharray=".08 .18" stroke-linecap="round"/>`
+    })
   })
   return (
-    rects.map(([a, b, c, d]) => gRect(a, b, c, d, '#94a3b8', ' fill-opacity=".05"')).join('') +
-    (seams ? `<path d="${seams}" fill="none" stroke="#64748b" stroke-width=".05" stroke-dasharray=".08 .22" stroke-linecap="round"/>` : '') +
+    rects.map(([a, b, c, d], i) => gRect(a, b, c, d, tints[i]!, ` fill-opacity="${i === 0 ? '.05' : '.08'}"`)).join('') +
+    seams +
     `<path d="${line}" fill="none" stroke="#94a3b8" stroke-width=".08" stroke-dasharray=".35 .25" stroke-linejoin="round"/>`
   )
 }
@@ -1005,6 +1047,13 @@ function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
   const here = (sc.byBurb.get(bo.id) ?? []).filter(a => a.status !== 'done')
   const isActive = here.some(a => a.status === 'working')
   let g = ''
+  // A section's name, in its colour, over its houses so none hides it.
+  const tint = sectionTint(sc.layout, bo.id)
+  if (tint) {
+    const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
+    const part = partName(bo.name, groupOf(sc.layout, bo.id)[0]!.name)
+    g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle" style="fill:${tint}">${esc(`↳ ${part}`.toUpperCase())}</text>`
+  }
   if (isActive) {
     g += glow(sx, sy, 34)
     g += GRID + gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, 'none', ` rx=".25" stroke="#fde68a" stroke-width=".05"`) + '</g>'
