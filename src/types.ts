@@ -432,11 +432,10 @@ export type Ride = { at: number; from: Place; to: Place; color: string; kind: 'r
 export type Launch = { kind: 'commit' | 'push'; at: number; who: string; repo: string }
 
 export type World = {
-  // The repository drawn as Manhattan.
+  // Home: the first repository the city saw. Its agents work on the island,
+  // at the landmarks; every other repository gets a borough. It never moves.
   home: string
   homeRoot: string
-  // True once the person picked Manhattan themselves.
-  homePinned?: boolean
   repos: Repo[]
   sessions: Session[]
   agents: Agent[]

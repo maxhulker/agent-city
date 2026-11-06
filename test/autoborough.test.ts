@@ -110,7 +110,7 @@ test('"Build it for me": the waiting repository gets a borough of its own, laid 
   assert.equal(repo().burb, bo.id, 'moved in')
   assert.equal(lotsIn(city, bo.id), 11)
   assert.match((city.build({ op: 'autoborough', root: OTHER }, T0 + 400) as { error: string }).error, /lives in api already/)
-  assert.match((city.build({ op: 'autoborough', root: HOME }, T0 + 400) as { error: string }).error, /Manhattan/)
+  assert.match((city.build({ op: 'autoborough', root: HOME }, T0 + 400) as { error: string }).error, /lives on the island/)
   assert.match((city.build({ op: 'autoborough' }, T0 + 400) as { error: string }).error, /Which repository/)
 })
 
