@@ -33,7 +33,7 @@ type Zone = {
   color?: string
   who?: Agent[]
   extra?: string
-  // Clicking it updates the app (the Empire State, when an update waits).
+  // Clicking it updates the app (the Crown Tower, when an update waits).
   isUpdate?: boolean
   // The building or borough it stands for, for the page's selection card.
   building?: string
@@ -119,7 +119,7 @@ export function drawPlaces(world: World, sc: Scene): string {
         text: lot
           ? `${BLUEPRINTS[d].hint}. ${ABOUT[d]}`
           : d === 'relay'
-            ? 'MetLife and the Chrysler, raised by the first subagent.'
+            ? 'the two deco towers, raised by the first subagent.'
             : d === 'hall' && world.zoning
               ? `${ABOUT[d]} Zoning plan on the board: "${world.zoning.title}", filed by ${world.zoning.by}.`
               : ABOUT[d],
@@ -132,13 +132,13 @@ export function drawPlaces(world: World, sc: Scene): string {
     } else if (kind === 'empire') {
       zones.push(
         lot
-          ? { ...tag, box, height: 4, title: 'Empire State Building: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
+          ? { ...tag, box, height: 4, title: 'Crown Tower: blueprint', text: planned('empire', 'The capstone'), color: '#7dd3fc' }
           : up?.available
             ? {
                 ...tag,
                 box,
                 height,
-                title: up.local ? 'New code in this copy: click the Empire State to restart' : 'An update is ready: click the Empire State',
+                title: up.local ? 'New code in this copy: click the Crown Tower to restart' : 'An update is ready: click the Crown Tower',
                 text: up.local
                   ? `${up.behind} new commit${up.behind === 1 ? '' : 's'} in this copy since it started${up.latest ? `: "${up.latest}"` : ''}. Clicking restarts Crosswalk to apply ${up.behind === 1 ? 'it' : 'them'}; your app sessions pick up where they left off.`
                   : `${up.behind} new on main${up.latest ? `: "${up.latest}"` : ''}. Clicking updates Crosswalk and restarts it; your app sessions pick up where they left off.`,
@@ -146,7 +146,7 @@ export function drawPlaces(world: World, sc: Scene): string {
                 extra: up.blocked ? `It can't update cleanly yet: ${up.blocked}.` : undefined,
                 isUpdate: true,
               }
-            : { ...tag, box, height, title: 'Empire State Building', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
+            : { ...tag, box, height, title: 'Crown Tower', text: 'Its crown glows in the colour of the busiest district, and gold with fireworks when an update is ready.' },
       )
     } else if (kind === 'treasury') {
       // The city's books: what sessions have spent, and what is left of the plan's limits.
@@ -168,17 +168,17 @@ export function drawPlaces(world: World, sc: Scene): string {
         color: '#fbbf24',
       })
     } else if (kind === 'wtc') {
-      zones.push({ ...tag, box, height, title: 'One World Trade Center', text: 'Scenery: the tallest tower in the city.' })
+      zones.push({ ...tag, box, height, title: 'Glass Tower', text: 'Scenery: the tallest tower in the city.' })
     } else if (kind === 'woolworth') {
-      zones.push({ ...tag, box, height, title: 'Woolworth Building', text: 'Scenery, beside City Hall.' })
+      zones.push({ ...tag, box, height, title: 'Gothic Tower', text: 'Scenery, beside City Hall.' })
     } else if (kind === 'liberty') {
-      // The Statue of Liberty, and the last commit or push it marked.
+      // The Harbor Statue, and the last commit or push it marked.
       const unlit = sc.built.torch === undefined
       zones.push({
         ...tag,
         box,
         height,
-        title: lot ? 'Statue of Liberty: dark' : unlit ? 'Statue of Liberty: torch unlit' : 'Statue of Liberty',
+        title: lot ? 'Harbor Statue: dark' : unlit ? 'Harbor Statue: torch unlit' : 'Harbor Statue',
         text: lot
           ? `${BLUEPRINTS.harbor.hint}. She hops when an agent commits, and takes off like a rocket on a push.`
           : unlit

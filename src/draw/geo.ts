@@ -13,12 +13,12 @@ export type { Lot, Site } from '../layout.ts'
 export const LABELS: Record<District, string> = {
   hall: 'City Hall',
   library: 'Public Library',
-  workshop: 'Garment District',
-  foundry: 'Hudson Yards',
+  workshop: 'Mill District',
+  foundry: 'Rail Yards',
   harbor: 'Seaport',
-  observatory: 'Times Square',
-  relay: 'Grand Central',
-  plaza: 'Central Park',
+  observatory: 'Neon Square',
+  relay: 'Central Station',
+  plaza: 'Commons Park',
 }
 
 
@@ -121,7 +121,7 @@ export function shiftFor(layout: Layout | undefined, d: District): [number, numb
 export function padOf(d: District, [dx, dy]: [number, number] = [0, 0]): [number, number, number, number] {
   const [sx, sy] = spotOf(d, [dx, dy])
   if (d === 'plaza') return [5.5 + dx, 26.6 + dy, 8.5 + dx, 31.1 + dy]
-  // Times Square, the library and the Garment District open onto a plaza
+  // Neon Square, the library and the Mill District open onto a plaza
   // or a park across the street, and their light spills over it.
   const deep = d === 'observatory' || d === 'library' || d === 'workshop'
   return [sx - 1.35, sy - 0.3, sx + 1.35, sy + (deep ? 0.85 : 0.42)]
@@ -179,7 +179,7 @@ export function placeAt(place: Place, i: number, layout?: Layout): [number, numb
   return inside ? standAt(place.at, i, doorOf(inside), roomOf(inside)) : burbAt(place.burb, i, layout)
 }
 
-// How long the train home takes to pull out of Grand Central and be gone, and
+// How long the train home takes to pull out of Central Station and be gone, and
 // an arriving one to come in. It runs along the track behind the station's
 // front (`trackOf` in src/layout.ts), east to the tunnel under the river.
 export const TRAIN_MS = 3_000
@@ -193,14 +193,14 @@ export const LANDMARKS: Landmark[] = ['hall', 'library', 'workshop', 'foundry', 
 export const BLUEPRINTS: Record<Landmark, { name: string; hint: string }> = {
   hall: { name: 'City Hall', hint: 'Send a prompt to build it' },
   library: { name: 'Public Library', hint: 'Read a file to build it' },
-  workshop: { name: 'Garment District', hint: 'Edit a file to build it' },
-  foundry: { name: 'Hudson Yards', hint: 'Run a shell command to build it' },
-  observatory: { name: 'Times Square', hint: 'Fetch a web page to build it' },
-  relay: { name: "Grand Central's towers", hint: 'Ask Claude to use a subagent' },
-  harbor: { name: 'Seaport and the Statue of Liberty', hint: 'Commit to build them' },
-  torch: { name: "Liberty's torch", hint: 'Push to light it' },
-  plaza: { name: 'Central Park', hint: 'Let a subagent finish to green it' },
-  empire: { name: 'Empire State Building', hint: 'Build every district to raise it' },
+  workshop: { name: 'Mill District', hint: 'Edit a file to build it' },
+  foundry: { name: 'Rail Yards', hint: 'Run a shell command to build it' },
+  observatory: { name: 'Neon Square', hint: 'Fetch a web page to build it' },
+  relay: { name: "Central Station's towers", hint: 'Ask Claude to use a subagent' },
+  harbor: { name: 'Seaport and the Harbor Statue', hint: 'Commit to build them' },
+  torch: { name: "Harbor Statue's torch", hint: 'Push to light it' },
+  plaza: { name: 'Commons Park', hint: 'Let a subagent finish to green it' },
+  empire: { name: 'Crown Tower', hint: 'Build every district to raise it' },
 }
 
 // A landmark stands in scaffolding this long after it goes up; the fireworks
@@ -310,12 +310,12 @@ export type Scene = {
   vacantOf: Map<Burb, Repo>
   // Agents' size on the map, before the page's zoom.
   k: number
-  // A newer Crosswalk on main: the Empire State lights up and becomes the
+  // A newer Crosswalk on main: the Crown Tower lights up and becomes the
   // update button. `blocked` says why it can't update cleanly, if so.
   update?: { available: boolean; behind: number; latest?: string; blocked?: string; local?: boolean }
   // The onboarding game: when each landmark went up (unbuilt ones are
   // blueprint lots), how many tool calls the city has seen, and whether the
-  // hooks are installed (the rails into Grand Central).
+  // hooks are installed (the rails into Central Station).
   built: Partial<Record<Landmark, number>>
   population: number
   connected: boolean

@@ -47,6 +47,6 @@ export function toast(title: string, body: string, url: string) {
       // once without showing anything. The server outlives the toast anyway.
     }).unref()
   } catch {
-    // No PowerShell: the Empire State still lights up.
+    // No PowerShell: the Crown Tower still lights up.
   }
 }

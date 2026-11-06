@@ -93,7 +93,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
 
   const overlay = [
     ...drawOverlay(world, sc),
-    // The train home waits at Grand Central, behind whoever is boarding it.
+    // The train home waits at Central Station, behind whoever is boarding it.
     ...drawTrains(world, sc),
     // Hover zones between the city and the agents, so agents keep their own hover.
     item('zones', drawPlaces(world, sc)),

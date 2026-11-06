@@ -21,7 +21,7 @@ function ev(name: string, sid: string, extra: Record<string, unknown> = {}): Hoo
   return { hook_event_name: name, session_id: sid, cwd: HOME, ...extra }
 }
 
-// A session that has done one turn and now waits, idle, in Central Park.
+// A session that has done one turn and now waits, idle, in Commons Park.
 function idleSession(city: City, sid: string, now: number, cwd = HOME) {
   city.apply(ev('SessionStart', sid, { cwd }), now)
   city.apply(ev('UserPromptSubmit', sid, { cwd, prompt: 'hello' }), now)
@@ -48,7 +48,7 @@ test('an idle lead takes the last train home after half an hour, and the train l
   city.flush(T0 + IDLE_LEAVE + MIN)
   const a = lead(city, 'S1')!
   assert.equal(a.status, 'leaving', 'it is on its way to the station')
-  assert.equal(a.at, 'relay', 'Grand Central is the exit')
+  assert.equal(a.at, 'relay', 'Central Station is the exit')
   assert.equal(a.burb, undefined)
   assert.ok(a.leaving! > T0 + IDLE_LEAVE + MIN, 'the train waits for the walk')
   assert.equal(city.world.sessions.length, 0, 'the session is forgotten')
@@ -104,7 +104,7 @@ test('a finished subagent leaves two minutes after its report has arrived', () =
   assert.ok(sub()!.restUntil! > stopAt + REST_LEAVE, 'the taxi ride comes first')
 
   city.flush(stopAt + MIN)
-  assert.equal(sub()?.status, 'done', 'still resting in Central Park')
+  assert.equal(sub()?.status, 'done', 'still resting in Commons Park')
   city.flush(stopAt + REST_LEAVE + 6000)
   assert.equal(sub()?.status, 'leaving')
   assert.equal(lead(city, 'S1')?.status, 'working', 'its lead carries on')
@@ -204,7 +204,7 @@ test('a borough packs up after an hour of quiet, and its repository moves straig
   city.apply(ev('UserPromptSubmit', 'S2', { cwd: OTHER, prompt: 'again' }), T0 + BURB_LEAVE + 3 * MIN)
   assert.equal(repo().left, undefined)
   assert.ok(repo().burb.startsWith('@'))
-  assert.ok(city.toasts.some(t => t.includes('arrived at Grand Central')))
+  assert.ok(city.toasts.some(t => t.includes('arrived at Central Station')))
 })
 
 test('a repository moving back in takes its old borough when it is still free', () => {

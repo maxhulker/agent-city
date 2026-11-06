@@ -32,26 +32,26 @@ it comes; the list only nudges towards read → edit → run → commit.
    welcome: what this is, that it builds itself as you work, and the one thing
    to do now: `npm run connect`. The server reads `~/.claude/settings.json` to
    see the hooks (the logic is in `src/install.ts`) and lays the rails into
-   Grand Central when they are there. The first SessionStart brings a train in
-   and your lead steps off: Grand Central is the entrance, as section A made it
+   Central Station when they are there. The first SessionStart brings a train in
+   and your lead steps off: Central Station is the entrance, as section A made it
    the exit. Draw the arrival with the train from `drawTrains` run backwards
    (it comes in from the east, the agent appears, the train leaves empty).
 2. **City Hall** rises on the first prompt (UserPromptSubmit), as the lead
    walks there to think.
 3. **Public Library** on the first Read, Grep or Glob.
-4. **Garment District** on the first Edit or Write: scaffolding first, the
+4. **Mill District** on the first Edit or Write: scaffolding first, the
    building after. `scaffold()` in `src/draw/map.ts` is the construction
    animation; a landmark stands under it for a few seconds after it unlocks.
-5. **Hudson Yards** on the first shell command, smoke and all.
-6. **Times Square** on the first WebFetch, WebSearch or browser tool. The
+5. **Rail Yards** on the first shell command, smoke and all.
+6. **Neon Square** on the first WebFetch, WebSearch or browser tool. The
    billboards light one by one over the first few uses.
-7. **Grand Central's towers** (MetLife and the Chrysler) on the first
+7. **Central Station's towers** (the two deco towers) on the first
    subagent dispatched. The blueprint's hint teaches the move: "Ask Claude to
    use a subagent."
-8. **Seaport and the Statue of Liberty** on the first commit. Her torch
+8. **Seaport and the Harbor Statue** on the first commit. Her torch
    lights on the first push.
-9. **Central Park** greens when the first subagent finishes and goes to rest.
-10. **The Empire State Building**, the capstone, goes up once every district
+9. **Commons Park** greens when the first subagent finishes and goes to rest.
+10. **The Crown Tower**, the capstone, goes up once every district
     is built, with the fireworks that `fireworks()` already draws for updates.
     "THE CITY IS COMPLETE" in the ticker, once.
 

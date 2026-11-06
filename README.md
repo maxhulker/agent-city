@@ -7,24 +7,24 @@ subagents walk between landmarks as they call tools:
 | Landmark | Tools |
 | --- | --- |
 | Public Library | Read, Grep, Glob |
-| Garment District | Edit, Write |
-| Hudson Yards | shell commands |
-| Times Square | WebFetch, WebSearch, browsers |
-| Grand Central | Agent, SendMessage, MCP tools |
+| Mill District | Edit, Write |
+| Rail Yards | shell commands |
+| Neon Square | WebFetch, WebSearch, browsers |
+| Central Station | Agent, SendMessage, MCP tools |
 | Seaport | git (merge conflicts light it up) |
 | City Hall | the lead; questions and permission prompts raise a "?" here |
-| Central Park | finished subagents rest here |
+| Commons Park | finished subagents rest here |
 
-Each session has a subway bullet (Ⓐ, Ⓑ, …) shared by its agents. Agents hold
+Each session has a line badge (a letter on a rounded tile of its colour) shared by its agents. Agents hold
 a prop for what they're doing (a book, a hammer, a laptop…), show a speech
 bubble on hover, and send finished reports back by yellow cab. The building
-being edited goes up in scaffolding, the Statue of Liberty hops on a commit and
-launches on a push, and a Times Square news ticker runs along the bottom.
+being edited goes up in scaffolding, the Harbor Statue hops on a commit and
+launches on a push, and a Neon Square news ticker runs along the bottom.
 
 The island is home: the first repository the city sees, which keeps it for
 good (its agents work at the landmarks). Every other repository
 a session works in (any file it reads or edits counts, wherever the session
-started) arrives at Grand Central: its agents wait on the station's forecourt
+started) arrives at Central Station: its agents wait on the station's forecourt
 under a sign, and its card goes to the top of the sidebar (click the sign to
 find it). **Build it for me** gives it a borough sized to the repository on
 the free land nearest the station, named after it, with streets, zoned lots
@@ -36,9 +36,9 @@ Then its agents cross over and gather on the borough's square. A drawn
 borough with no lots says so in **Boroughs**, with a button to lay them.
 
 When a session starts a local server (a front end on localhost), a
-**billboard** goes up for it: by Times Square for the home project, along
+**billboard** goes up for it: by Neon Square for the home project, along
 the front of a borough for the others, on the forecourt for a project still
-waiting at Grand Central. It shows the page's title and address, and a click
+waiting at Central Station. It shows the page's title and address, and a click
 opens the page in a window of its own. A new one glows, its bulbs chase and a
 "New · click to open" tag hangs over it until you first open it. It lights up
 the same way, with "Updated · click to see", whenever what it shows changes
@@ -84,7 +84,7 @@ place it** in the files panel undoes a move, and moving the project to
 another borough clears them all. Moving a house only changes the map: no file
 is touched. The time-lapse uses the same places.
 
-When a newer version is on GitHub's `main`, the Empire State Building lights up
+When a newer version is on GitHub's `main`, the Crown Tower lights up
 gold and shoots fireworks: click it to update. Crosswalk pulls the new version
 (a clean fast-forward only) and restarts itself; app sessions wake up with their
 memory on your next message.
@@ -143,23 +143,23 @@ only with the HTTP hooks or the `--quiet` hooks from this version on.
 
 ## Building the city
 
-A new city starts as bare land: streets, the rivers, Grand Central, and a
+A new city starts as bare land: streets, the rivers, Central Station, and a
 blueprint lot for every landmark ("PUBLIC LIBRARY · read a file to build it").
 Each one goes up, in scaffolding first, the first time any session does that
 kind of work: City Hall on your first prompt, the Library on the first read,
-the Garment District on the first edit, Hudson Yards on the first shell
-command, Times Square on the first web tool, Grand Central's towers on the
-first subagent, the Seaport and the Statue of Liberty on the first commit (her
-torch lights on the first push), Central Park when the first subagent finishes,
-and the Empire State Building once every district stands, with fireworks. The
+the Mill District on the first edit, Rail Yards on the first shell
+command, Neon Square on the first web tool, Central Station's towers on the
+first subagent, the Seaport and the Harbor Statue on the first commit (her
+torch lights on the first push), Commons Park when the first subagent finishes,
+and the Crown Tower once every district stands, with fireworks. The
 filler blocks fill in with the population, which counts every tool call. The
 **Blueprints** card in the sidebar keeps the list with its hints. Nothing
 waits for the scenery: agents, cards and approvals work from the first event.
 
 **Rebuild the city** (on the Blueprints card) starts over on new land;
 **Build it all now** raises everything you have placed at once. A city saved
-on the old hand-drawn Manhattan, which is retired, moves to new land when it
-loads: its sessions stay, and each repository waits at Grand Central for a
+on the old hand-drawn island, which is retired, moves to new land when it
+loads: its sessions stay, and each repository waits at Central Station for a
 borough again.
 
 ## Lay it out yourself
@@ -169,9 +169,9 @@ from seeds (a mainland, a strait and the station's island; **Shuffle** for
 others). Your first lead
 arrives by train at the station. The **First district** card lists the
 quests in a suggested order: lay a road from the station, place City Hall,
-then the Library, the Garment District, Hudson Yards, Times Square, Grand
-Central's towers, the Seaport (on a shore), Central Park and the Statue (in
-the water), zone some blocks, and finally the Empire State Building, which
+then the Library, the Mill District, Rail Yards, Neon Square, Grand
+Central's towers, the Seaport (on a shore), Commons Park and the Statue (in
+the water), zone some blocks, and finally the Crown Tower, which
 you can place once every district stands. Each goes up as you place it;
 the first time a session uses it the ticker says it opened its doors. Work
 of a kind you have not placed waits at the station. **Rebuild** starts again
@@ -190,7 +190,7 @@ where it may not, with the reason beside the toolbar. With **Select**, click
 a building for its card and Bulldoze. The right mouse button always pans;
 `Esc` goes back to Select.
 
-To move Grand Central, bulldoze it and place it again from **Build…** (one
+To move Central Station, bulldoze it and place it again from **Build…** (one
 stands at a time, in the city rather than a borough). While it is gone,
 nothing arrives by train and the agents who would wait on its forecourt
 gather at another building.
@@ -198,7 +198,7 @@ gather at another building.
 In the city a placed landmark goes up at once. In a borough it is a
 blueprint lot until that repository's agents first do that kind of work
 there, and from then on that work happens at its door. Bulldozing a borough
-sends its repository back to Grand Central to wait for another. To place
+sends its repository back to Central Station to wait for another. To place
 something on a zoned block, unzone or bulldoze its lot first.
 
 ## Break ground
@@ -229,7 +229,7 @@ borough nobody lives in and choose **🚂 Bring in a project**. Give the
 repository's address: `https://github.com/owner/repo`, the address of any
 page in it, `github.com/owner/repo`, another host's `https://` address, or
 `git@host:owner/repo.git`. Its borough is laid out right away. A freight
-train with the project's name on its boxcars pulls into Grand Central and
+train with the project's name on its boxcars pulls into Central Station and
 stands there while git clones it into the projects folder (the same one
 Break ground uses). Once it's unloaded the train leaves, and the houses go up
 as soon as the project is counted. If the clone fails, the borough drawn for
@@ -320,7 +320,7 @@ goes up between them, on lattice pylons from one's square to the other's
 cable for each session that has crossed, up to three. While work is crossing
 it (within the last three minutes) it is lit and sparks run along it; when
 the work stops it goes dark. Hover over it to see how many sessions crossed
-and when. A project waiting at Grand Central gets its line once it has a
+and when. A project waiting at Central Station gets its line once it has a
 borough.
 
 ## What it cost to build
@@ -351,9 +351,9 @@ anything substantial.
 
 Click an agent to see why it exists and how it works. A subagent carries a
 **work order**, the brief its lead gave it, numbered by session (A-1, A-2,
-...), with who issued it and when; it walks out of Grand Central with a
+...), with who issued it and when; it walks out of Central Station with a
 clipboard. Every agent's last eight stops are drawn as a dotted subway line
-with numbered stops, and listed in the drawer: Library and Garment District
+with numbered stops, and listed in the drawer: Library and Mill District
 back and forth reads as debugging. A session's task checklist is its **site
 plan**: a hoarding beside its lead shows how much is done, and the drawer
 lists it. A plan you approve from plan mode is posted at City Hall as the
@@ -379,7 +379,7 @@ themselves.
 
 ## The last train home
 
-Grand Central is the exit as well as the entrance. Everyone who leaves the
+Central Station is the exit as well as the entrance. Everyone who leaves the
 city walks there and boards a departing train: a lead that has sat idle for
 half an hour (it dims the longer it waits, so the busy ones stand out), a
 finished subagent two minutes after its report taxi has arrived, a session
@@ -420,7 +420,7 @@ the server runs just opens another window.
 
 The server is started on its own, through Windows (WMI), rather than as a
 child of whatever started it. So is the server that restarting from the
-Empire State starts. That way it keeps running when a terminal or a Claude
+Crown Tower starts. That way it keeps running when a terminal or a Claude
 Code session that started it closes. Crosswalk's own settings
 (`AGENT_CITY_*`, `CLAUDE_CONFIG_DIR`) go along with a restart.
 
@@ -436,7 +436,7 @@ Code session that started it closes. Crosswalk's own settings
 - **Notifications.** When main on GitHub has something new, or this copy has
   new commits since the server started (you or Claude committed here),
   Windows shows a notification once; clicking it opens the city, and the
-  lit Empire State updates or restarts it in one click. `npm run
+  lit Crown Tower updates or restarts it in one click. `npm run
   notifications` gives them Crosswalk's own name and icon (otherwise they
   come from Windows PowerShell) and its own entry in Windows' notification
   settings. A notification that never pops up but sits in the notification

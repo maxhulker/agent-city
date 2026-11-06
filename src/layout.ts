@@ -512,8 +512,8 @@ export function canPlace(layout: Layout, kind: Kind, x: number, y: number, face:
   if (burbs.size > 1) return 'A building stands in one borough, or in the city'
   // One way in: to move the station, bulldoze it and place it again.
   if (kind === 'station') {
-    if (cityBuildings(layout, 'station').length) return 'Grand Central stands already: bulldoze it to move it'
-    if (!burbs.has(undefined)) return 'Grand Central stands in the city, not in a borough'
+    if (cityBuildings(layout, 'station').length) return 'Central Station stands already: bulldoze it to move it'
+    if (!burbs.has(undefined)) return 'Central Station stands in the city, not in a borough'
   }
   if (!facesRoad(layout, b)) return 'No road along its front'
   return undefined
@@ -1034,7 +1034,7 @@ export function doorOf(b: Building): Pt2 {
 
 // How much room a building gives the agents standing at it, against its
 // kind's own footprint: 1 unless it is a smaller size (a pocket park's lawn
-// holds its resting agents closer together than Central Park's).
+// holds its resting agents closer together than Commons Park's).
 export function roomOf(b: Building | undefined): number {
   if (!b?.size) return 1
   const [x0, y0, x1, y1] = cellsOf(b)[0]!
@@ -1416,7 +1416,7 @@ export function generateMap(seed: number): Layout {
 }
 
 // The hub: on a generated map, the island in its middle, which the strait
-// keeps apart from the mainland. It is the city's own (Grand Central, the
+// keeps apart from the mainland. It is the city's own (Central Station, the
 // landmarks, the fabric); every borough goes on the mainland around it. None
 // on a map whose island joins the mainland.
 const hubs = new WeakMap<Span[], (x: number, y: number) => boolean>()

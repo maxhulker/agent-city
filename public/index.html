@@ -184,7 +184,7 @@
   #track .sep { margin: 0 18px; color: #b45309; }
   #track .bul { text-shadow: none; }
 
-  .bul { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
+  .bul { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px;
     font: 700 11px/1 ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: #fff; flex: none; letter-spacing: 0; text-transform: none; }
   .bul.sm { width: 14px; height: 14px; font-size: 9px; }
 
@@ -586,7 +586,7 @@
         <div class="bs-path"><span class="path" id="bs-parent-show" title="Where new projects go"></span><button class="linkish" type="button" id="bs-parent-edit">Change</button></div>
         <input class="field" id="bs-parent" placeholder="Full path of the folder it goes in" spellcheck="false" hidden>
         <input class="field" id="bs-folder" maxlength="64" placeholder="red-hook" spellcheck="false" autocomplete="off">
-        <div class="small dim" id="bs-freight-note" hidden>A freight train brings it in: it stands at Grand Central while git clones it into that folder (git asks for nothing, so a private repository needs access already set up), and its houses go up once it is unloaded.</div>
+        <div class="small dim" id="bs-freight-note" hidden>A freight train brings it in: it stands at Central Station while git clones it into that folder (git asks for nothing, so a private repository needs access already set up), and its houses go up once it is unloaded.</div>
         <div id="bs-brief-block">
         <label for="bs-brief">What is it for?</label>
         <textarea class="field" id="bs-brief" rows="4" placeholder="A small web app that… (Claude starts from this brief)"></textarea>
@@ -1168,7 +1168,7 @@
       // A refusal with nothing to say is still a refusal. A 404 is mostly a
       // page newer than the server running it (the page is read from disk on
       // each load; the server only changes when it restarts).
-      if (!r.ok && !j.error) j.error = r.status === 404 ? 'The Crosswalk server running now is older than this page: restart it (the Empire State, or restart the app) to use this.' : `HTTP ${r.status}`
+      if (!r.ok && !j.error) j.error = r.status === 404 ? 'The Crosswalk server running now is older than this page: restart it (the Crown Tower, or restart the app) to use this.' : `HTTP ${r.status}`
       return j
     } catch (e) {
       return { error: String(e?.message || e) }
@@ -1951,14 +1951,14 @@
     else $('tasks-empty')?.remove()
   }
 
-  // ---- new arrivals: projects waiting at Grand Central for a borough -------
+  // ---- new arrivals: projects waiting at Central Station for a borough -------
   // At the top of the sidebar, where they are seen: build one for it, lay it
   // out by hand, or move it into a free one.
   let arrH = ''
   function drawArrivals(m) {
     const free = m.free || []
     const html = (m.repos || []).filter(r => r.waiting && !r.left).map(r => `<div class="card arrival" data-arrival="${esc(r.root)}">
-      <div class="row"><span class="name">🚉 ${esc(r.name)} is at Grand Central</span></div>
+      <div class="row"><span class="name">🚉 ${esc(r.name)} is at Central Station</span></div>
       <div class="small">Give it a borough and its folders go up there as houses.</div>
       <div class="row wrap" style="margin-top:6px">
         <button class="btn sm primary" type="button" data-auto-for="${esc(r.root)}" data-auto-name="${esc(r.name)}" title="A borough sized to the project on free land near the station, with its streets and lots laid">Build it for me</button>
@@ -1969,7 +1969,7 @@
     if (html !== arrH) { $('arrivals').innerHTML = html; arrH = html }
   }
 
-  // From the station's sign or a Grand Central line in Boroughs: the card, shown and lit up.
+  // From the station's sign or a Central Station line in Boroughs: the card, shown and lit up.
   function showArrival(root) {
     const cards = [...document.querySelectorAll('#arrivals [data-arrival]')]
     const card = cards.find(c => c.dataset.arrival === root) || cards[0]
@@ -1982,7 +1982,7 @@
   }
 
   // ---- sidebar + overlays ------------------------------------------------
-  // The update button is the Empire State itself: when main has something newer
+  // The update button is the Crown Tower itself: when main has something newer
   // it glows and shoots fireworks, and clicking it updates the app.
   let updating = false
   let lastUpdate = null
@@ -2004,7 +2004,7 @@
     e.stopPropagation()
     window.open(site.dataset.siteUrl, '_blank')
   })
-  // The sign over the projects waiting at Grand Central: their cards.
+  // The sign over the projects waiting at Central Station: their cards.
   map.addEventListener('click', e => {
     if (justDragged || !e.target.closest?.('g.waiting')) return
     e.stopPropagation()
@@ -2081,7 +2081,7 @@
     $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">The island</span>
         <span class="dim">${esc(m.home || 'the first repository seen')}</span></div>
         <div class="small dim">Home: its agents work at the landmarks. Every other project gets a borough on the mainland.</div></div>` +
-      m.repos.filter(r => r.waiting && !r.left).map(r => `<div class="card"><div class="row"><span class="name">Grand Central</span>
+      m.repos.filter(r => r.waiting && !r.left).map(r => `<div class="card"><div class="row"><span class="name">Central Station</span>
         <span class="dim">${esc(r.name)}</span><button class="linkish" style="margin-left:auto" data-show-arrival="${esc(r.root)}">Give it a borough ↑</button></div></div>`).join('') +
       m.repos.filter(r => !r.waiting).map(r => {
         const id = r.burb
@@ -2094,7 +2094,7 @@
       }).join('') +
       (m.free || []).map(b => `<div class="card${b.lots ? '' : ' empty-burb'}"><div class="row"><span class="name">${esc(b.name)}</span>
         <span class="dim">no project yet</span></div>
-        <div class="small dim">${b.lots ? `${b.lots} lots ready.` : 'No lots zoned yet.'} A project at Grand Central can move in from its card.</div>
+        <div class="small dim">${b.lots ? `${b.lots} lots ready.` : 'No lots zoned yet.'} A project at Central Station can move in from its card.</div>
         ${b.lots ? '' : `<div class="row" style="margin-top:4px"><button class="btn sm" data-fill="${esc(b.id)}">Lay streets and lots</button></div>`}</div>`).join('')
 
     $('log').innerHTML = m.log.length ? m.log.map(l => `<li><span class="row"><span class="dot" style="background:${esc(l.color)}"></span>
@@ -2551,7 +2551,7 @@
     const ag = (live?.agents || []).find(a => a.id === selAgent) || lead
     const hhmm = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     const who = ag && ag !== lead ? `<div class="small"><b>${esc(ag.name)}</b> <span class="dim">· ${esc(ag.where)} · ${esc(ag.activity)}</span></div>` : ''
-    const order = ag?.order ? `<div class="order"><div class="oh">WORK ORDER ${esc(ag.order.no)} · issued by ${esc(ag.order.issuedBy)} at ${hhmm(ag.order.at)} · reports to Grand Central</div>
+    const order = ag?.order ? `<div class="order"><div class="oh">WORK ORDER ${esc(ag.order.no)} · issued by ${esc(ag.order.issuedBy)} at ${hhmm(ag.order.at)} · reports to Central Station</div>
         <div class="ob">${esc(ag.order.brief || ag.order.title)}</div></div>` : ''
     // The session's site plan: its task checklist (handoff B3).
     const tasksOf = (live || s)?.plan || []
@@ -3580,10 +3580,10 @@
   // it again and the next frame carries the new map.
   const GRIDM = 'matrix(10 5 -10 5 0 0)'
   const KINDS = [
-    ['hall', 'City Hall', '#c4a5ff'], ['library', 'Public Library', '#7cb6ff'], ['workshop', 'Garment District', '#facc15'],
-    ['foundry', 'Hudson Yards', '#fb923c'], ['observatory', 'Times Square', '#f472b6'], ['relay', "Grand Central's towers", '#2dd4bf'],
-    ['harbor', 'Seaport', '#38bdf8'], ['plaza', 'Central Park', '#4ade80'], ['empire', 'Empire State Building', '#f8fafc'],
-    ['liberty', 'Statue of Liberty', '#5eada0'], ['station', 'Grand Central', '#2dd4bf'],
+    ['hall', 'City Hall', '#c4a5ff'], ['library', 'Public Library', '#7cb6ff'], ['workshop', 'Mill District', '#facc15'],
+    ['foundry', 'Rail Yards', '#fb923c'], ['observatory', 'Neon Square', '#f472b6'], ['relay', "Central Station's towers", '#2dd4bf'],
+    ['harbor', 'Seaport', '#38bdf8'], ['plaza', 'Commons Park', '#4ade80'], ['empire', 'Crown Tower', '#f8fafc'],
+    ['liberty', 'Harbor Statue', '#5eada0'], ['station', 'Central Station', '#2dd4bf'],
     ['treasury', 'City Treasury', '#fbbf24'],
   ]
   const DISTRICT_KINDS = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
@@ -3951,9 +3951,9 @@
     else if ((e.key === 'r' || e.key === 'R') && tool === 'billboard' && movingBB) { movingBB.face = movingBB.face === 'r' ? 'l' : 'r'; drawCursor() }
   }, true)
 
-  // Grand Central can be bulldozed to move it, after a word of warning.
+  // Central Station can be bulldozed to move it, after a word of warning.
   const isStation = id => !!layout && layout.buildings.some(b => b.id === id && b.kind === 'station')
-  const STATION_GONE = 'Bulldoze Grand Central to move it? Until you place it again (Build… → Grand Central), nothing arrives by train and the waiting gather at another building.'
+  const STATION_GONE = 'Bulldoze Central Station to move it? Until you place it again (Build… → Central Station), nothing arrives by train and the waiting gather at another building.'
 
   // ---- the selection card ------------------------------------------------
   function showSel(z) {
@@ -4121,7 +4121,7 @@
     sheetBurb = burb ? burb.id : ''
     const sel = $('bs-root')
     // Repositories waiting at the station first, then the folders the city knows.
-    const waiting = ((lastMeta && lastMeta.repos) || []).filter(x => x.waiting).map(x => ({ path: x.root, name: `${x.name} (waiting at Grand Central)` }))
+    const waiting = ((lastMeta && lastMeta.repos) || []).filter(x => x.waiting).map(x => ({ path: x.root, name: `${x.name} (waiting at Central Station)` }))
     const seen = new Set(waiting.map(x => x.path.toLowerCase()))
     const known = ((lastMeta && lastMeta.places) || []).filter(p => !seen.has(String(p.path).toLowerCase()))
     sel.innerHTML = '<option value="">Not yet</option>' + `<option value="${NEW_PROJECT}">A new project: break ground</option>` + `<option value="${FREIGHT}">A project from GitHub: bring it in by freight</option>` +
@@ -4166,7 +4166,7 @@
       setTool('select')
       return
     }
-    const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value && !isNew ? $('bs-root').selectedOptions[0].textContent.replace(/ \(waiting at Grand Central\)$/, '') : '')
+    const name = $('bs-name').value.trim() || ($('bs-root').selectedOptions[0] && $('bs-root').value && !isNew ? $('bs-root').selectedOptions[0].textContent.replace(/ \(waiting at Central Station\)$/, '') : '')
     if (!name) { $('bs-name').focus(); return }
     if (!isNew) {
       const root = $('bs-root').value

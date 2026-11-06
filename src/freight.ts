@@ -6,7 +6,7 @@ import { slugFor } from './groundbreak.ts'
 import { norm } from './world.ts'
 
 // Freight: a project brought in from elsewhere. The person gives a
-// repository's address; a freight train pulls into Grand Central with its
+// repository's address; a freight train pulls into Central Station with its
 // name on the boxcars and stands there while git clones it into the projects
 // folder; its borough is laid out at once, and its houses go up once it is
 // unloaded and counted.

@@ -6,7 +6,7 @@ import type { Billboard, World } from '../types.ts'
 
 // The billboards: one for each local server a session started (a front end
 // on localhost) while it answers, in its project's part of the city.
-// Home's stand by Times Square, a borough's along its front row, and a
+// Home's stand by Neon Square, a borough's along its front row, and a
 // project still waiting for a borough's on the station's forecourt, unless
 // the person moved one. A click opens the page (the page's own handler, by
 // data-url); the ⚙ on its corner opens its card (move, turn, take down). A new
@@ -40,7 +40,7 @@ const clip = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) +
 // Drawn like the city: slabs on the grid and shapes laid on their faces. A
 // board is drawn in its own frame: u runs along it (left to right on screen),
 // v out of its screen towards the viewer, z up. Facing left ('l') its screen
-// is the front-left face (along gx, facing +gy), as Times Square's neon is;
+// is the front-left face (along gx, facing +gy), as Neon Square's neon is;
 // facing right ('r') the front-right one (along gy, facing +gx). Its words
 // are slanted to lie flat on whichever it is.
 

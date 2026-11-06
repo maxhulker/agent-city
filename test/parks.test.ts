@@ -6,7 +6,7 @@ import { placeAt } from '../src/draw/geo.ts'
 import { SIZES, canPlace, cellsOf, footprintOf, parseOp, roomOf, siteFor, takenAt } from '../src/layout.ts'
 import { City } from '../src/world.ts'
 
-// Parks in sizes: Central Park is the plaza's own footprint, and the plaza
+// Parks in sizes: Commons Park is the plaza's own footprint, and the plaza
 // also comes as a town square and a pocket park. A sized park is placed by
 // the same rules, drawn to fit its footprint, named by its size, and its
 // resting agents stand on its lawn.
@@ -36,7 +36,7 @@ function plot(city: City, size: string): { x: number; y: number } {
 }
 
 test('the plaza comes in sizes, and an op names one only where the kind has it', () => {
-  assert.deepEqual(footprintOf('plaza'), [[0, 0, 4, 13]], 'Central Park is the kind’s own')
+  assert.deepEqual(footprintOf('plaza'), [[0, 0, 4, 13]], 'Commons Park is the kind’s own')
   assert.deepEqual(footprintOf('plaza', 'square'), [[0, 0, 4, 4]])
   assert.deepEqual(footprintOf('plaza', 'pocket'), [[0, 0, 2, 2]])
   assert.deepEqual(footprintOf('plaza', 'nonsense'), [[0, 0, 4, 13]])

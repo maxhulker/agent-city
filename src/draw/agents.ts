@@ -123,9 +123,9 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
     `<g>${pulse ? '<animate attributeName="opacity" values="1;.35;1" dur="1s" repeatCount="indefinite"/>' : ''}<circle cx="${n(8 * s)}" cy="${n(-26 * s)}" r="${n(5.5 * s)}" fill="${fill}" stroke="#fff" stroke-width="${n(1.2 * u)}"/><text x="${n(8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(8 * s)}" font-weight="800" fill="${ink}">${mark}</text></g>`
   if (a.status === 'waiting') body += badge('#fbbf24', '?', '#111827', true)
   else if (a.status === 'failed') body += badge('#ef4444', '!', '#fff', false)
-  // The session's subway bullet, left of the badge.
+  // The session's line badge, left of the name badge: a letter on a rounded tile.
   if (session?.bullet) {
-    body += `<circle cx="${n(-8 * s)}" cy="${n(-26 * s)}" r="${n(5 * s)}" fill="${esc(session.color)}" stroke="#fff" stroke-width="${n(1 * u)}"/><text x="${n(-8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(7.6 * s)}" font-weight="800" fill="${inkOn(session.color)}">${esc(session.bullet.slice(0, 1))}</text>`
+    body += `<rect x="${n(-13 * s)}" y="${n(-31 * s)}" width="${n(10 * s)}" height="${n(10 * s)}" rx="${n(2 * s)}" fill="${esc(session.color)}" stroke="#fff" stroke-width="${n(1 * u)}"/><text x="${n(-8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(7.6 * s)}" font-weight="800" fill="${inkOn(session.color)}">${esc(session.bullet.slice(0, 1))}</text>`
   }
   // A lead with a site plan stands by its hoarding: the checklist's progress.
   const plan = a.isMain ? session?.plan ?? [] : []
@@ -198,9 +198,9 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
     const lift = (i % 2) * 9
     // Nothing of its kind placed yet: it waits on the station's forecourt, and says so.
     const forecourt = isWaiting(a.burb)
-      ? `waiting at Grand Central: ${repoOf.get(a.burb!)?.name ?? 'its repository'} has no borough yet`
+      ? `waiting at Central Station: ${repoOf.get(a.burb!)?.name ?? 'its repository'} has no borough yet`
       : !a.burb && a.at !== 'relay' && !siteFor(sc.layout, a.at)
-        ? `waiting at Grand Central: no ${LABELS[a.at]} yet`
+        ? `waiting at Central Station: no ${LABELS[a.at]} yet`
         : ''
     let fig = figure(a, label, lift, k, sessions.get(a.session), forecourt)
     if (a.arriving && a.arriving > sc.now) {
@@ -232,7 +232,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
   return out
 }
 
-// The last train home: it waits on the street in front of Grand Central while
+// The last train home: it waits on the street in front of Central Station while
 // its passengers walk over, windows lit, then pulls out eastward, towards the
 // tunnel under the river, and is gone. Drawn under the agents, so whoever is
 // boarding stands in front of it. Three cars along 42nd Street. The arriving

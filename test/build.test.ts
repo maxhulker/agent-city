@@ -113,7 +113,7 @@ test('bulldozing the road a building faces leaves the building, which then faces
   refused(applyOp(l, { op: 'remove', id: 'library' }), 'nothing')
 })
 
-test('Grand Central moves: bulldozed, the waiting gather elsewhere; placed again, one at a time and in the city', () => {
+test('Central Station moves: bulldozed, the waiting gather elsewhere; placed again, one at a time and in the city', () => {
   let l = field()
   l = ok(applyOp(l, { op: 'road', x: 0, y: 3, dir: 1, len: 10 }))
   l = ok(applyOp(l, { op: 'road', x: 0, y: 7, dir: 1, len: 10 }))

@@ -8,7 +8,7 @@ import type { Shipped } from './deploys.ts'
 // checks) is an inspection, passed or failed; a pull request merged is the
 // ribbon cut on what was built. All of it is read from the sessions' own
 // shell commands and what they printed, like the commits and pushes the
-// Statue of Liberty marks.
+// Harbor Statue marks.
 
 // How long each part of a site shows on its board.
 export const PERMIT_MS = 14 * 24 * 3600_000

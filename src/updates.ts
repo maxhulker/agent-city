@@ -103,7 +103,7 @@ export class Updates {
       this.announce(
         `here:${head}`,
         'Crosswalk: restart to apply',
-        `${restart.count} new commit${restart.count === 1 ? '' : 's'} in this copy${restart.latest ? `: ${restart.latest}` : ''}. Click the Empire State to restart.`,
+        `${restart.count} new commit${restart.count === 1 ? '' : 's'} in this copy${restart.latest ? `: ${restart.latest}` : ''}. Click the Crown Tower to restart.`,
       )
     }
     if (tell && JSON.stringify(this.state.restart) !== was) this.changed()
@@ -134,7 +134,7 @@ export class Updates {
         this.announce(
           `main:${tip}`,
           'Crosswalk update ready',
-          `${behind} new on main${latest ? `: ${latest}` : ''}. Click the Empire State to update.`,
+          `${behind} new on main${latest ? `: ${latest}` : ''}. Click the Crown Tower to update.`,
         )
       }
       await this.checkLocal()
