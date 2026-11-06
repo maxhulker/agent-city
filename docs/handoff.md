@@ -229,8 +229,10 @@ repository pre-picked) or moves it into a free one (`{op: 'movein'}` on
 POST `/build`, handled by `City.moveIn`). `burbGeo` gives every borough its
 square, edge and rectangle; a drawn one gathers along the middle of its
 south edge, and a landmark placed in a borough draws that work to its door.
-Bulldozing a borough sends its repository back to wait; Make Manhattan gives
-the old home the borough the new one leaves, or the forecourt. Tests in
+Bulldozing a borough sends its repository back to wait. (Make Manhattan,
+which swapped home with another repository, and the follow-the-work rule
+that did it by itself, are gone: home is the first repository seen and
+keeps the island for good.) Tests in
 `test/borough.test.ts`. On the Manhattan preset the only land is the island,
 so a drawn borough stands on it until step seven's generated map; drawn
 boroughs show a dashed line, a square and their name, and get houses with

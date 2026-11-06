@@ -545,7 +545,7 @@
   <div id="stage">
     <div id="map"><div id="city"></div></div>
     <div id="hud">
-      <div id="title"><b>CROSSWALK</b><div class="sub" id="sub">Manhattan</div><div id="counts"></div></div>
+      <div id="title"><b>CROSSWALK</b><div class="sub" id="sub">Home</div><div id="counts"></div></div>
       <div id="pills"></div>
     </div>
     <div id="welcome" hidden>
@@ -1955,7 +1955,7 @@
 
   // ---- new arrivals: projects waiting at Grand Central for a borough -------
   // At the top of the sidebar, where they are seen: build one for it, lay it
-  // out by hand, move it into a free one, or make it Manhattan.
+  // out by hand, or move it into a free one.
   let arrH = ''
   function drawArrivals(m) {
     const free = m.free || []
@@ -1966,7 +1966,7 @@
         <button class="btn sm primary" type="button" data-auto-for="${esc(r.root)}" data-auto-name="${esc(r.name)}" title="A borough sized to the project on free land near the station, with its streets and lots laid">Build it for me</button>
         <button class="btn sm" type="button" data-layout-for="${esc(r.root)}" data-layout-name="${esc(r.name)}" title="Drag out where it goes yourself">Lay it out myself</button>
       </div>
-      <div class="more small dim">${free.length ? `Or move it into ${free.map(b => `<button class="linkish" type="button" data-movein="${esc(b.id)}" data-root="${esc(r.root)}">${esc(b.name)}</button>`).join(', ')}, or ` : 'Or '}<button class="linkish" type="button" data-home="${esc(r.root)}" data-home-name="${esc(r.name)}" title="Manhattan is the main island, for the project you work in most">make it Manhattan</button>.</div>
+      ${free.length ? `<div class="more small dim">Or move it into ${free.map(b => `<button class="linkish" type="button" data-movein="${esc(b.id)}" data-root="${esc(r.root)}">${esc(b.name)}</button>`).join(', ')}.</div>` : ''}
       <div class="path">${esc(r.root)}</div></div>`).join('')
     if (html !== arrH) { $('arrivals').innerHTML = html; arrH = html }
   }
@@ -2038,7 +2038,7 @@
   function draw(m) {
     const conflicts = m.conflicts || [], asks = m.asks || []
 
-    $('sub').textContent = `Manhattan · ${m.home || 'the first repository seen'}`
+    $('sub').textContent = m.home ? `Home · ${m.home}` : 'Home · the first repository seen'
     const c = m.counts
     const pop = m.game ? ` · population ${(m.game.population || 0).toLocaleString()}` : ''
     $('counts').textContent = c ? `${c.sessions} session${c.sessions === 1 ? '' : 's'} · ${c.working} working · ${c.subagents} subagent${c.subagents === 1 ? '' : 's'}${pop}` : ''
@@ -2076,22 +2076,20 @@
     drawAccounts(m)
 
     drawArrivals(m)
-    // Manhattan, then each borough with its repository; a drawn borough with
+    // Home on the island, then each borough with its repository; a drawn borough with
     // no lots says so, since its houses have nowhere to go.
     const lotsOfBurb = m.lots || {}
     const noLots = id => Object.hasOwn(lotsOfBurb, id) && !lotsOfBurb[id]
-    $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">Manhattan</span>
-        <span class="dim">${esc(m.home || 'the first repository seen')}</span>
-        ${m.homePinned ? '<button class="btn" style="margin-left:auto" data-home-auto="1" title="Manhattan goes to whichever repository is busiest">Pick automatically</button>' : ''}</div>
-        <div class="small dim">The main island: ${m.homePinned ? 'picked by you' : 'the busiest repository, picked automatically'}. Every other project gets a borough.</div></div>` +
+    $('boroughs').innerHTML = `<div class="card"><div class="row"><span class="name">The island</span>
+        <span class="dim">${esc(m.home || 'the first repository seen')}</span></div>
+        <div class="small dim">Home: its agents work at the landmarks. Every other project gets a borough on the mainland.</div></div>` +
       m.repos.filter(r => r.waiting && !r.left).map(r => `<div class="card"><div class="row"><span class="name">Grand Central</span>
         <span class="dim">${esc(r.name)}</span><button class="linkish" style="margin-left:auto" data-show-arrival="${esc(r.root)}">Give it a borough ↑</button></div></div>`).join('') +
       m.repos.filter(r => !r.waiting).map(r => {
         const id = r.burb
         const empty = !r.left && noLots(id)
         return `<div class="card${empty ? ' empty-burb' : ''}"><div class="row"><span class="name">${esc(r.borough)}</span>
-        <span class="dim">${esc(r.name)}${r.left ? ` · moved out ${ago(r.left)}` : ''}</span>
-        <button class="btn" style="margin-left:auto" data-home="${esc(r.root)}" data-home-name="${esc(r.name)}">Make Manhattan</button></div>
+        <span class="dim">${esc(r.name)}${r.left ? ` · moved out ${ago(r.left)}` : ''}</span></div>
         ${empty ? `<div class="small" style="color:#fbbf24;margin-top:4px">No lots zoned, so its houses have nowhere to go.</div>
           <div class="row" style="margin-top:4px"><button class="btn sm primary" data-fill="${esc(id)}">Lay streets and lots</button></div>` : ''}
         <div class="path">${esc(r.root)}</div></div>`
@@ -2173,7 +2171,7 @@
     const topUsd = Math.max(0.01, ...projects.map(p => p.usd))
     const byProject = projects.length
       ? `<div class="small dim" style="margin:6px 0 2px">Cost to build each project</div>` + projects.map(p =>
-        `<div class="tre-p" title="${esc(p.root)}: ${p.sessions} session${p.sessions === 1 ? '' : 's'}"><span class="nm">${esc(p.name)}${p.home ? ' <span class="dim">(Manhattan)</span>' : ''}</span><span class="tre-bar"><i style="width:${((p.usd / topUsd) * 100).toFixed(0)}%"></i></span><span class="amt">${money(p.usd)}</span></div>`).join('')
+        `<div class="tre-p" title="${esc(p.root)}: ${p.sessions} session${p.sessions === 1 ? '' : 's'}"><span class="nm">${esc(p.name)}${p.home ? ' <span class="dim">(home)</span>' : ''}</span><span class="tre-bar"><i style="width:${((p.usd / topUsd) * 100).toFixed(0)}%"></i></span><span class="amt">${money(p.usd)}</span></div>`).join('')
       : ''
     const html = `<div class="row tre"><div><b>${money(t.today)}</b><span class="dim small">today</span></div><div><b>${money(t.week)}</b><span class="dim small">this week</span></div><div><b>${money(t.total)}</b><span class="dim small">in all</span></div></div>
       ${chart(t.days.map(d => d[1]), dayNames)}
@@ -2273,8 +2271,6 @@
     } else if (b.dataset.needs) {
       setCollapsed(false)
       $('needs').scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-    } else if (b.dataset.homeAuto) {
-      post('/home', { auto: true })
     } else if (b.dataset.buildall) {
       post('/buildall', {}).then(r => { if (r.error) toast(r.error) })
     } else if (b.dataset.rebuild) {
@@ -2286,12 +2282,6 @@
       }
     } else if (b.dataset.resolve) {
       post('/resolve', { id: b.dataset.resolve })
-    } else if (b.dataset.home) {
-      // Say what moves: the old Manhattan takes this one's place.
-      const name = b.dataset.homeName || 'This project'
-      const old = lastMeta?.home
-      if (old && !confirm(`Make ${name} Manhattan, the main island?\n\n${old} stops being Manhattan and takes ${name}'s place (its borough, or a spot at Grand Central).`)) return
-      post('/home', { root: b.dataset.home })
     } else if (b.dataset.autoFor) {
       b.disabled = true
       const name = b.dataset.autoName || 'it'

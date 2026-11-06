@@ -84,8 +84,8 @@ test('a new repository waits at the station until a borough is laid out for it, 
 test('the arrival card moves a repository into a borough that is free, and nowhere else', () => {
   const city = twoRepos()
   assert.deepEqual(city.build({ op: 'movein', id: 'atlantis', root: OTHER }, T0), { error: 'No such borough' })
-  assert.deepEqual(city.build({ op: 'movein', id: 'brooklyn', root: HOME }, T0), { error: "home is Manhattan's" })
-  assert.deepEqual(city.build({ ...INWOOD, root: HOME }, T0), { error: "home is Manhattan's" })
+  assert.deepEqual(city.build({ op: 'movein', id: 'brooklyn', root: HOME }, T0), { error: 'home lives on the island' })
+  assert.deepEqual(city.build({ ...INWOOD, root: HOME }, T0), { error: 'home lives on the island' })
   assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0 + 300))
   city.apply(ev('SessionStart', 'S3', { cwd: THIRD }), T0 + 400)
   read(city, 'S3', THIRD, T0 + 500)
@@ -149,22 +149,24 @@ test('a bulldozed borough sends its repository back to the station, announced ag
   assert.ok(!back.frame.map?.svg.includes('RED HOOK'))
 })
 
-test('Make Manhattan: the old home takes the borough the new one leaves, or waits at the station', () => {
+test('home stays on the island however busy another repository gets', () => {
   const city = twoRepos()
   assert.ok('ok' in city.build({ ...INWOOD, root: OTHER }, T0 + 300))
-  const inwood = city.world.layout!.boroughs.find(b => b.name === 'Red Hook')!
-  city.makeHome(OTHER, T0 + 400)
-  assert.equal(city.world.homeRoot, OTHER)
-  assert.equal(city.world.repos.find(r => r.root === HOME)!.burb, inwood.id, 'home moves into Inwood')
-  assert.equal(city.world.agents.find(a => a.id === 'lead:S2')!.burb, undefined, "api's lead takes the districts")
-  assert.equal(city.world.agents.find(a => a.id === 'lead:S1')!.burb, inwood.id)
+  // Far more work in api than the old follow-the-work rule needed, over minutes.
+  for (let i = 0; i < 40; i++) {
+    read(city, 'S2', OTHER, T0 + 1_000 + i * 20_000)
+    city.flush(T0 + 1_100 + i * 20_000)
+  }
+  assert.equal(city.world.homeRoot, HOME)
+  assert.ok(city.world.repos.some(r => r.root === OTHER && !r.burb.startsWith('@')), 'api keeps its borough')
+  assert.ok(!city.toasts.some(t => t.includes('became')))
+})
 
-  // A repository waiting at the station made home: the old home waits in its place.
-  city.apply(ev('SessionStart', 'S3', { cwd: THIRD }), T0 + 500)
-  read(city, 'S3', THIRD, T0 + 600)
-  city.makeHome(THIRD, T0 + 700)
-  const api = city.world.repos.find(r => r.root === OTHER)!
-  assert.ok(api.burb.startsWith('@'), 'api waits for a borough')
+test('a city saved with a picked home loads with the pick gone and the home kept', () => {
+  const saved = { ...twoRepos().world, homePinned: true }
+  const city = new City(JSON.parse(JSON.stringify(saved)))
+  assert.equal(city.world.homeRoot, HOME)
+  assert.ok(!('homePinned' in city.world))
 })
 
 test("a drawn borough's zoned blocks fill with brownstones, the city's with towers", () => {

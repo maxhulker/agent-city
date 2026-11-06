@@ -348,7 +348,6 @@ function meta(town: Town) {
     accounts: accountsHere(town, Date.now()),
     home: world.home,
     homeRoot: world.homeRoot,
-    homePinned: !!world.homePinned,
     boot: BOOT,
     // A repository waiting at the station for a borough gets the page's New arrival card.
     repos: world.repos.map(r => ({ ...r, borough: burbGeo(world.layout, r.burb)?.name ?? 'Grand Central', waiting: isWaiting(r.burb) })),
@@ -860,7 +859,7 @@ const server = createServer(async (req, res) => {
     }
     if (
       req.method === 'POST' &&
-      (url.pathname === '/resolve' || url.pathname === '/home' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap' || url.pathname === '/billboard/open' || url.pathname === '/billboard/edit' || url.pathname === '/house')
+      (url.pathname === '/resolve' || url.pathname === '/sendhome' || url.pathname === '/lastcall' || url.pathname === '/rebuild' || url.pathname === '/buildall' || url.pathname === '/build' || url.pathname === '/newmap' || url.pathname === '/billboard/open' || url.pathname === '/billboard/edit' || url.pathname === '/house')
     ) {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 64 * 1024)) || '{}') as { id?: string; root?: string; auto?: boolean; session?: string }
@@ -913,8 +912,6 @@ const server = createServer(async (req, res) => {
         return reply(res, 200, '{"ok":true}')
       }
       if (url.pathname === '/resolve') city.resolve(args.id)
-      else if (args.auto) city.autoHome()
-      else if (args.root) city.makeHome(args.root, Date.now(), true)
       return reply(res, 200, '{}')
     }
     if (req.method === 'GET' && url.pathname === '/stream') {

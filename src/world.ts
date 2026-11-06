@@ -248,7 +248,6 @@ function resultText(value: unknown): string {
 
 // ---- the city -------------------------------------------------------------
 
-const ACTIVITY_WINDOW = 10 * 60_000
 // Billboards (src/billboards.ts): a spotted address is tried for a few
 // minutes; one that stands comes down after this many closed probes in a
 // row; one dark this long is forgotten; at most this many are kept.
@@ -307,9 +306,6 @@ export class City {
   // Per session, the work orders of Agent calls not yet matched to a SubagentStart.
   private spawns = new Map<string, WorkOrder[]>()
   // Tool-call times per repository root (lower-cased), for the last ten minutes. Not saved.
-  private activity = new Map<string, number[]>()
-  private activityRoots = new Map<string, string>()
-  private lastFollow = 0
   // The last 40 ticker items, oldest first. Not saved.
   ticker: TickerItem[] = []
   // Ports that are never a session's server (Crosswalk's own): no billboard.
@@ -340,21 +336,14 @@ export class City {
     this.isDirty = true
   }
 
-  private touch(root: string | undefined, now: number) {
-    if (!root) return
-    const key = root.toLowerCase()
-    const hits = (this.activity.get(key) ?? []).filter(t => now - t < ACTIVITY_WINDOW)
-    hits.push(now)
-    this.activity.set(key, hits)
-    this.activityRoots.set(key, root)
-  }
-
   constructor(world?: World) {
     this.world = world ?? emptyWorld()
     const w = this.world
     const legacy = w.built
     if (legacy?.torch !== undefined) w.torch ??= legacy.torch
     w.population ??= 0
+    // Home no longer moves between repositories: whoever has it keeps it.
+    delete (w as World & { homePinned?: boolean }).homePinned
     // A city saved before layouts existed is today's Manhattan, with the
     // landmarks it had built standing and the rest still lots.
     w.layout ??= manhattanLayout(legacy ?? {})
@@ -796,7 +785,7 @@ export class City {
     }
     const op = parseOp(raw)
     if (!op) return { error: 'Not a placement' }
-    if (op.op === 'borough' && op.root && w.homeRoot && same(op.root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
+    if (op.op === 'borough' && op.root && w.homeRoot && same(op.root, w.homeRoot)) return { error: `${w.home} lives on the island` }
     const bulldozed = op.op === 'remove' ? this.layout.boroughs.find(bo => bo.id === op.id) : undefined
     if (op.op === 'place' && op.kind === 'empire' && DISTRICT_LANDMARKS.some(d => w.built?.[d] === undefined)) {
       return { error: 'Build every district first' }
@@ -848,7 +837,7 @@ export class City {
     const w = this.world
     const root = typeof raw.root === 'string' ? raw.root.trim() : ''
     if (!root) return { error: 'Which repository?' }
-    if (w.homeRoot && same(root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
+    if (w.homeRoot && same(root, w.homeRoot)) return { error: `${w.home} lives on the island` }
     const repo = w.repos.find(r => same(r.root, root))
     const has = repo && !repo.left && !isWaiting(repo.burb) ? burbGeo(this.layout, repo.burb) : undefined
     if (has) return { error: `${repo!.name} lives in ${has.name} already` }
@@ -1619,7 +1608,7 @@ export class City {
     const w = this.world
     const geo = burbGeo(this.layout, id)
     if (!geo) return { error: 'No such borough' }
-    if (w.homeRoot && same(root, w.homeRoot)) return { error: `${w.home} is Manhattan's` }
+    if (w.homeRoot && same(root, w.homeRoot)) return { error: `${w.home} lives on the island` }
     const there = this.holder(id)
     if (there && !same(there.root, root)) return { error: `${geo.name} is ${there.name}'s` }
     let repo = w.repos.find(r => same(r.root, root))
@@ -1799,7 +1788,6 @@ export class City {
         } else {
           worked = a.burb ? this.repoAt(a.burb)?.root : w.homeRoot
         }
-        this.touch(worked, now)
         // Work in another project than the session's own strings a power line between them.
         if (path && worked) this.linkWork(s, worked, now)
         // Blueprints: the new folders a plan names, or a file written into one.
@@ -1989,28 +1977,6 @@ export class City {
     this.isDirty = true
   }
 
-  // Makes the repository at root Manhattan; the old home takes its borough
-  // (or another, when the new home had packed up and its old borough is taken).
-  makeHome(root: string, now: number, pinned = true) {
-    const w = this.world
-    const repo = w.repos.find(r => same(r.root, root))
-    if (!repo) return
-    w.homePinned = pinned
-    const old = { root: w.homeRoot, name: w.home }
-    w.homeRoot = repo.root
-    w.home = repo.name
-    w.repos = w.repos.filter(r => r !== repo)
-    // The old home takes the borough the new one leaves, or waits at the station.
-    const theirs = !repo.left && !isWaiting(repo.burb) && burbGeo(this.layout, repo.burb) ? repo.burb : undefined
-    const burb = theirs ?? waitingId(old.root ?? '')
-    if (old.root) w.repos.push({ root: old.root, name: old.name, burb, lastSeen: now })
-    for (const a of w.agents) {
-      if (a.burb === repo.burb && !repo.left) delete a.burb
-      else if (!a.burb) a.burb = burb
-    }
-    this.isDirty = true
-  }
-
   // ---- departures: the last train home --------------------------------------
 
   // Sends agents to Grand Central to board one train; they are gone when it leaves.
@@ -2177,42 +2143,9 @@ export class City {
     }
   }
 
-  // Lets the busiest repository take Manhattan again.
-  autoHome() {
-    this.world.homePinned = false
-    this.isDirty = true
-  }
-
-  // Manhattan follows the work: the busiest borough takes over once it clearly is.
-  private followWork(now: number) {
-    const w = this.world
-    if (w.homePinned || now - this.lastFollow < 60_000) return
-    this.lastFollow = now
-    const counts = new Map<string, { root: string; n: number }>()
-    for (const [key, hits] of this.activity) {
-      const recent = hits.filter(t => now - t < ACTIVITY_WINDOW)
-      if (recent.length) this.activity.set(key, recent)
-      else {
-        this.activity.delete(key)
-        this.activityRoots.delete(key)
-      }
-    }
-    for (const [key, hits] of this.activity) counts.set(key, { root: this.activityRoots.get(key) ?? key, n: hits.length })
-    let top: { root: string; n: number } | undefined
-    for (const c of counts.values()) if (!top || c.n > top.n) top = c
-    if (!top || top.n < 8 || same(top.root, w.homeRoot)) return
-    if (counts.has(w.homeRoot.toLowerCase())) return
-    const repo = w.repos.find(r => same(r.root, top.root))
-    if (!repo) return
-    this.makeHome(repo.root, now, false)
-    this.toasts.push(`${repo.name} became Manhattan`)
-    this.say(undefined, `${repo.name} became Manhattan`, now)
-  }
-
   // Readies the world for a frame: who walks where, who has left.
   flush(now: number): World {
     const w = this.world
-    this.followWork(now)
     for (const s of w.sessions) if (!s.bullet) s.bullet = this.bulletFor()
     w.rides = (w.rides ?? []).filter(r => now - r.at < 8_000).slice(-12)
     for (const s of w.sessions) {

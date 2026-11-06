@@ -211,7 +211,7 @@ export function drawPlaces(world: World, sc: Scene): string {
       box,
       height: 26,
       title: `${burbGeo(sc.layout, b)!.name}: ${repo.name}`,
-      text: `${sectionLine(sc, b)}Another repository, at ${repo.root}. ${repo.census ? censusText(repo.census, sc.now) + ' ' : ''}Agents cross the bridge to work here. "Make Manhattan" in the sidebar makes it home.${costLine(sc, repo.root)}`,
+      text: `${sectionLine(sc, b)}Another repository, at ${repo.root}. ${repo.census ? censusText(repo.census, sc.now) + ' ' : ''}Agents cross the bridge to work here.${costLine(sc, repo.root)}`,
       color: '#fde68a',
       who: sc.byBurb.get(b) ?? [],
     })
@@ -287,7 +287,7 @@ export function drawPlaces(world: World, sc: Scene): string {
 
   // Manhattan itself, under everything else.
   let s = `<g class="places">`
-  if ('preset' in sc.layout.map) s += `<polygon class="zone ground" points="${pts(ISLAND.map(([gx, gy]) => p(gx, gy)))}" data-tip-title="${esc(`Manhattan: ${world.home || 'home'}`)}" data-tip-text="${esc(`The busiest repository, unless you picked one. Its districts stand for kinds of work: hover over one to see which.${costLine(sc, world.homeRoot)}`)}"/>`
+  if ('preset' in sc.layout.map) s += `<polygon class="zone ground" points="${pts(ISLAND.map(([gx, gy]) => p(gx, gy)))}" data-tip-title="${esc(`Home: ${world.home || 'the first repository seen'}`)}" data-tip-text="${esc(`The island is home. Its districts stand for kinds of work: hover over one to see which.${costLine(sc, world.homeRoot)}`)}"/>`
   for (const z of zones) {
     const who = z.who ? whoLines(world, z.who) : ''
     const more = [z.extra, who].filter(Boolean).join('\n')

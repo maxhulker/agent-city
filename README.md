@@ -21,7 +21,8 @@ bubble on hover, and send finished reports back by yellow cab. The building
 being edited goes up in scaffolding, the Statue of Liberty hops on a commit and
 launches on a push, and a Times Square news ticker runs along the bottom.
 
-Manhattan is the main island: the busiest repository. Every other repository
+The island is home: the first repository the city sees, which keeps it for
+good (its agents work at the landmarks). Every other repository
 a session works in (any file it reads or edits counts, wherever the session
 started) arrives at Grand Central: its agents wait on the station's forecourt
 under a sign, and its card goes to the top of the sidebar (click the sign to
@@ -33,11 +34,9 @@ in it for you (untick that on the form to lay them yourself). Or move it into
 a free borough (Brooklyn, Queens, the Bronx, Jersey City, or any you drew).
 Then its agents cross over and gather on the borough's square. A drawn
 borough with no lots says so in **Boroughs**, with a button to lay them.
-**Make Manhattan** picks home yourself (the old Manhattan takes the new one's
-place), and **Pick automatically** hands it back.
 
 When a session starts a local server (a front end on localhost), a
-**billboard** goes up for it: by Times Square for Manhattan's project, along
+**billboard** goes up for it: by Times Square for the home project, along
 the front of a borough for the others, on the forecourt for a project still
 waiting at Grand Central. It shows the page's title and address, and a click
 opens the page in a window of its own. A new one glows, its bulbs chase and a
@@ -72,8 +71,8 @@ the last commit marked (changed, new, deleted, renamed), and a filter. Click
 a file to look inside: its text with line numbers, Markdown rendered (or its
 source), an image shown, and **Open in VS Code** or **Copy path** to take it
 further. It is read-only, and only for the repositories the city knows. In a
-borough you drew, the zoned lots take the folders. Manhattan keeps its
-districts.
+borough you drew, the zoned lots take the folders. The island keeps
+its districts.
 
 **Move a house** to put a folder where you want it. Hold the mouse on a house
 for a moment to pick it up, then let go on the lot where it should stand (a
@@ -206,7 +205,7 @@ A project can start in the city. Drag out a borough with **Borough** and
 pick **A new project: break ground** on its sheet, or click a borough
 nobody lives in and choose **Break ground here**. Name the project, say
 what it is for, and pick what Claude may do. Crosswalk makes its folder
-(beside Manhattan's repository, or inside Manhattan's folder when that is a
+(beside the home repository, or inside its folder when that is a
 folder of projects; **Change** puts it elsewhere, and the next one goes
 there too), runs `git init`, writes the brief to `CLAUDE.md` and commits it
 (the borough's first house), moves the project into the borough, and starts
@@ -244,7 +243,7 @@ is stopped. A folder that already exists is never touched.
 
 Each project's work goes through a builder's stages, read from what its
 sessions run and what that prints, and shown on a board on its square
-(Manhattan's stands by City Hall):
+(the home project's stands by City Hall):
 
 | Work | On the board |
 | --- | --- |
@@ -315,7 +314,7 @@ commits, the slider picks any of them, and `Esc` closes it.
 Projects worked on together are wired together. The first time a session
 that started in one project reads or edits a file in another, a power line
 goes up between them, on lattice pylons from one's square to the other's
-(Manhattan's end stands by City Hall), and the ticker says so. It carries one
+(the home project's end stands by City Hall), and the ticker says so. It carries one
 cable for each session that has crossed, up to three. While work is crossing
 it (within the last three minutes) it is lit and sparks run along it; when
 the work stops it goes dark. Hover over it to see how many sessions crossed
@@ -326,8 +325,8 @@ borough.
 
 Each project's construction cost is what its sessions have spent, from the
 City Treasury's books. It shows in green on the line under its borough's
-sign ("$13 to build") and in the borough's hover text, which Manhattan's hover
-text has too. The **City Treasury** card lists every project under **Cost to
+sign ("$13 to build") and in the borough's hover text, which the island's
+hover text has too. The **City Treasury** card lists every project under **Cost to
 build each project**, costliest first. A session counts toward the project it
 started in, even if it went on to work in others. Like the rest of the
 Treasury, it is Claude Code's estimate at list price.
