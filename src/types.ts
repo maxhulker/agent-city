@@ -365,6 +365,10 @@ export type Repo = {
   pins?: Pins
   // Folders it is about to get, drawn as blueprints (src/blueprints.ts).
   blueprints?: Blueprint[]
+  // The project it belongs to: git's common directory, lowercased, which
+  // every worktree of one repository shares. '' when it isn't in git. The
+  // server fills it in; until then it is absent.
+  project?: string
 }
 
 // A planned folder: named in a plan, or being written by a session; when it
@@ -487,5 +491,8 @@ export type World = {
   // What stands where (docs/city-builder.md). A city saved before layouts
   // existed gets the Manhattan preset on load.
   layout?: Layout
+  // Once the boroughs were moved off the hub island and each project's
+  // worktrees gathered into one borough (2026-11-05): done once per city.
+  regrouped?: true
   flushedAt: number
 }

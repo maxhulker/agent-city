@@ -1,11 +1,11 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import * as nodeModule from 'node:module'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { cityFor, citiesOf, defaultConfig, HOME, idFor, register, stateDir, stateFile, whoOf } from './cities.ts'
@@ -466,6 +466,34 @@ setInterval(() => {
         })
         .catch(err => console.error('agent-city: census failed for', root, err))
     }
+  }
+}, 5_000)
+// Which project each repository belongs to: git's common directory, shared
+// by every worktree of one repository ('' outside git, or for a folder that
+// is gone). A worktree whose project has a borough is built onto it; and
+// once all are known, each city's boroughs are regrouped, once
+// (City.regroup: off the hub island, each project's worktrees together).
+function projectOf(root: string): Promise<string> {
+  return new Promise(done => {
+    execFile('git', ['-C', root, 'rev-parse', '--git-common-dir'], { timeout: 5000, windowsHide: true }, (err, out) => {
+      if (err || !String(out).trim()) return done('')
+      done(resolve(root, String(out).trim()).replace(/\\/g, '/').toLowerCase())
+    })
+  })
+}
+let naming = false
+setInterval(async () => {
+  if (naming) return
+  naming = true
+  try {
+    for (const town of towns.values()) {
+      for (const root of town.city.projectsWanted()) town.city.setProject(root, await projectOf(root), repoSize, Date.now())
+      if (town.city.regroup(repoSize, Date.now())) town.save()
+    }
+  } catch (err) {
+    console.error('agent-city: naming projects failed:', err)
+  } finally {
+    naming = false
   }
 }, 5_000)
 // The billboards' local servers (src/billboards.ts): every few seconds each

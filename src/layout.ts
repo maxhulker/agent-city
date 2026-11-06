@@ -44,6 +44,30 @@ export type Borough = {
   h: number
   // One of the Manhattan preset's four, drawn by hand (`burb()` in map.ts).
   preset?: true
+  // A section of another borough (its id): another worktree of the same
+  // project, built onto that borough so the two read as one. Never a
+  // section of a section.
+  of?: string
+}
+
+// A borough and its sections, the main one first: one project's.
+export function groupOf(layout: Layout, id: string): Borough[] {
+  const bo = layout.boroughs.find(b => b.id === id)
+  if (!bo) return []
+  const main = (bo.of && layout.boroughs.find(b => b.id === bo.of)) || bo
+  return [main, ...layout.boroughs.filter(b => b !== main && b.of === main.id)]
+}
+
+// A section's own part of its name: "agent-city-terrain" in agent-city is "terrain".
+export function partName(name: string, of: string): string {
+  const rest = name.toLowerCase().startsWith(of.toLowerCase()) ? name.slice(of.length).replace(/^[\s._-]+/, '') : ''
+  return rest || name
+}
+
+// A borough's name as shown: a section's carries its project's first.
+export function shownName(layout: Layout, bo: Borough): string {
+  const main = groupOf(layout, bo.id)[0]
+  return main && main !== bo ? `${main.name} · ${partName(bo.name, main.name)}` : bo.name
 }
 
 // A span of cells on row y, from x0 to x1 (exclusive).
@@ -275,7 +299,7 @@ export function burbGeo(layout: Layout | undefined, id: Burb): BurbGeo | undefin
   if (!bo) return undefined
   const mid = bo.x + bo.w / 2
   const front = bo.y + bo.h
-  return { name: bo.name, square: [mid, front - 1], near: [mid, front], far: [mid, front - 0.5], rect: boroughRect(bo), preset: false }
+  return { name: shownName(layout!, bo), square: [mid, front - 1], near: [mid, front], far: [mid, front - 0.5], rect: boroughRect(bo), preset: false }
 }
 
 // The building of a kind its agents use inside a borough, if the person placed one there.
@@ -487,7 +511,8 @@ export type Op =
   | { op: 'unzone'; x: number; y: number }
   | { op: 'paint'; what: 'park' | 'none'; x: number; y: number; w?: number; h?: number }
   // fill: lay streets and lots in it at once (`fillBorough`), for the person.
-  | { op: 'borough'; name: string; root?: string; x: number; y: number; w: number; h: number; fill?: true }
+  // of: a section of that borough (only the city itself makes these).
+  | { op: 'borough'; name: string; root?: string; x: number; y: number; w: number; h: number; fill?: true; of?: string }
 
 export type Applied = { layout: Layout } | { error: string }
 
@@ -716,8 +741,13 @@ export function applyOp(layout: Layout, op: Op): Applied {
       if (bo) {
         // The bulldozer clears the whole block: what stood in it goes too.
         const rect = boroughRect(bo)
+        // A project's main borough gone, its first section is the main one.
+        const heir = !bo.of ? layout.boroughs.find(one => one.of === bo.id) : undefined
+        const rest = layout.boroughs
+          .filter(one => one !== bo)
+          .map(one => (heir && one === heir ? (({ of: _, ...plain }) => plain)(one) : heir && one.of === bo.id ? { ...one, of: heir.id } : one))
         return next({
-          boroughs: layout.boroughs.filter(one => one !== bo),
+          boroughs: rest,
           buildings: layout.buildings.filter(one => one.burb !== bo.id),
           zoned: layout.zoned.filter(([x, y]) => !within(rect, x, y)),
           park: layout.park.filter(([y, x0]) => !within(rect, x0, y)),
@@ -804,10 +834,18 @@ export function applyOp(layout: Layout, op: Op): Applied {
       if (layout.boroughs.some(bo => overlaps(rect, boroughRect(bo)))) return { error: 'It overlaps another borough' }
       if (layout.buildings.some(b => !b.burb && cellsOf(b).some(r => overlaps(rect, r)))) return { error: "It overlaps the city's buildings" }
       let ground = 0
-      for (let y = rect[1]; y < rect[3]; y++) for (let x = rect[0]; x < rect[2]; x++) if (groundAt(layout, x, y)) ground++
+      const hub = hubOf(layout)
+      for (let y = rect[1]; y < rect[3]; y++) {
+        for (let x = rect[0]; x < rect[2]; x++) {
+          if (hub(x, y)) return { error: "The island is the city's own: boroughs go on the mainland" }
+          if (groundAt(layout, x, y)) ground++
+        }
+      }
       if (!ground) return { error: 'Not on land' }
       const slug = op.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'borough'
-      const bo: Borough = { id: idFor(layout, slug), name: op.name, x: op.x, y: op.y, w: op.w, h: op.h, ...(op.root ? { root: op.root } : {}) }
+      const main = op.of ? groupOf(layout, op.of)[0] : undefined
+      if (op.of && !main) return { error: 'No such borough to build onto' }
+      const bo: Borough = { id: idFor(layout, slug), name: op.name, x: op.x, y: op.y, w: op.w, h: op.h, ...(op.root ? { root: op.root } : {}), ...(main ? { of: main.id } : {}) }
       return next({ boroughs: [...layout.boroughs, bo] })
     }
   }
@@ -888,9 +926,16 @@ export function fillBorough(layout: Layout, id: string, want = Infinity): { layo
 }
 
 // A free place for a w × h borough, as near `near` as can be (measured to the
-// middle of its front edge): all land, clear of the city's buildings, lots,
-// parks and the rails, and a cell away from any other borough.
-export function findSite(layout: Layout, w: number, h: number, near: Pt2): Rect | undefined {
+// middle of its front edge): all land off the hub island, clear of the city's
+// buildings, lots, parks and the rails, and a cell away from any other
+// borough. Given `beside` (a borough's id), a place for a section of its
+// project instead: sharing an edge with that borough or one of its sections
+// (two cells at least), the longer the edge and the nearer `near` the better.
+export function findSite(layout: Layout, w: number, h: number, near: Pt2, beside?: string): Rect | undefined {
+  return bestSite(layout, w, h, near, beside)?.rect
+}
+
+function bestSite(layout: Layout, w: number, h: number, near: Pt2, beside?: string): { rect: Rect; score: number } | undefined {
   if (!layout.land.length) return undefined
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const [y, a, b] of layout.land) {
@@ -902,16 +947,22 @@ export function findSite(layout: Layout, w: number, h: number, near: Pt2): Rect 
   const W = maxX - minX
   const H = maxY - minY
   if (W < w || H < h) return undefined
+  const hub = hubOf(layout)
   const ok = new Uint8Array(W * H)
-  for (const [y, a, b] of layout.land) for (let x = a; x < b; x++) ok[(y - minY) * W + (x - minX)] = 1
+  for (const [y, a, b] of layout.land) for (let x = a; x < b; x++) if (!hub(x, y)) ok[(y - minY) * W + (x - minX)] = 1
   const clear = (x: number, y: number) => {
     if (x >= minX && x < maxX && y >= minY && y < maxY) ok[(y - minY) * W + (x - minX)] = 0
   }
   const clearRect = ([x0, y0, x1, y1]: Rect, pad: number) => {
     for (let y = y0 - pad; y < y1 + pad; y++) for (let x = x0 - pad; x < x1 + pad; x++) clear(x, y)
   }
+  const mine = beside ? groupOf(layout, beside) : []
+  const group = mine.map(boroughRect)
+  if (beside && !group.length) return undefined
   for (const b of layout.buildings) if (!b.burb) for (const r of cellsOf(b)) clearRect(r, 1)
-  for (const bo of layout.boroughs) clearRect(boroughRect(bo), 1)
+  // Its own project's boroughs it may touch; anyone else's it keeps a cell from.
+  for (const bo of layout.boroughs) if (!mine.includes(bo)) clearRect(boroughRect(bo), 1)
+  for (const r of group) clearRect(r, 0)
   for (const [x, y] of layout.zoned) clearRect([x, y, x + 2, y + 1], 0)
   for (const [y, a, b] of layout.park) clearRect([a, y, b, y + 1], 0)
   if (cityBuildings(layout, 'station').length) {
@@ -922,6 +973,15 @@ export function findSite(layout: Layout, w: number, h: number, near: Pt2): Rect 
   const S = new Int32Array((W + 1) * (H + 1))
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) S[(y + 1) * (W + 1) + x + 1] = ok[y * W + x]! + S[y * (W + 1) + x + 1]! + S[(y + 1) * (W + 1) + x]! - S[y * (W + 1) + x]!
   const free = (x: number, y: number) => S[(y + h) * (W + 1) + x + w]! - S[y * (W + 1) + x + w]! - S[(y + h) * (W + 1) + x]! + S[y * (W + 1) + x]!
+  // The edge a rectangle shares with the project's boroughs.
+  const shared = (x0: number, y0: number, x1: number, y1: number) => {
+    let len = 0
+    for (const [a0, b0, a1, b1] of group) {
+      if (x1 === a0 || x0 === a1) len += Math.max(0, Math.min(y1, b1) - Math.max(y0, b0))
+      if (y1 === b0 || y0 === b1) len += Math.max(0, Math.min(x1, a1) - Math.max(x0, a0))
+    }
+    return len
+  }
   let best: Rect | undefined
   let bestD = Infinity
   for (let y = 0; y + h <= H; y++) {
@@ -929,14 +989,64 @@ export function findSite(layout: Layout, w: number, h: number, near: Pt2): Rect 
       if (free(x, y) !== w * h) continue
       const gx = minX + x
       const gy = minY + y
-      const d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h - near[1])
+      let d: number
+      if (group.length) {
+        const edge = shared(gx, gy, gx + w, gy + h)
+        if (edge < 2) continue
+        d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h / 2 - near[1]) - 2 * edge
+      } else d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h - near[1])
       if (d < bestD) {
         bestD = d
         best = [gx, gy, gx + w, gy + h]
       }
     }
   }
-  return best
+  return best && { rect: best, score: bestD }
+}
+
+// Where a section for `lots` lots goes, built onto the borough `of` and its
+// sections: the shape of its own size, or as deep as the borough it meets
+// (so the whole stays square), whichever fits best; smaller ones down to a
+// small section when none does.
+export function sectionSite(layout: Layout, of: string, lots: number): Rect | undefined {
+  const group = groupOf(layout, of)
+  const main = group[0]
+  if (!main) return undefined
+  const near: Pt2 = [main.x + main.w / 2, main.y + main.h / 2]
+  const forRows = (h: number): [number, number] => {
+    const pairs = Math.min(5, Math.max(1, Math.ceil(lots / (2 * Math.max(1, h - 2)))))
+    return [4 * pairs + 2, h]
+  }
+  const forWidth = (w: number): [number, number] => {
+    const pairs = Math.max(1, Math.floor((w - 2) / 4))
+    return [w, Math.min(BOROUGH_MAX, Math.max(4, Math.ceil(lots / (2 * pairs)) + 2))]
+  }
+  let shapes: [number, number][] = [boroughSizeFor(lots), ...group.flatMap(bo => [forRows(bo.h), forWidth(bo.w)])]
+  for (let tries = 0; tries < 6; tries++) {
+    let pick: { rect: Rect; score: number } | undefined
+    for (const [w, h] of shapes) {
+      if (w < BOROUGH_MIN || h < BOROUGH_MIN || w > BOROUGH_MAX || h > BOROUGH_MAX) continue
+      const s = bestSite(layout, w, h, near, main.id)
+      if (s && (!pick || s.score < pick.score)) pick = s
+    }
+    if (pick) return pick.rect
+    // Nothing fits: try every shape a size smaller.
+    shapes = shapes.map(([w, h]) => [w > 6 ? w - 4 : w, h > 4 ? h - 1 : h])
+  }
+  return undefined
+}
+
+// A borough taken up to be laid out again elsewhere: bulldozed, and its own
+// streets lifted too (every road with both ends inside it).
+export function clearBorough(layout: Layout, id: string): Layout {
+  const bo = layout.boroughs.find(b => b.id === id)
+  if (!bo) return layout
+  const r = applyOp(layout, { op: 'remove', id })
+  if ('error' in r) return layout
+  const [x0, y0, x1, y1] = boroughRect(bo)
+  const inside = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1
+  const roads = r.layout.roads.filter(([x, y, dir]) => !(inside(x, y) && inside(dir === 0 ? x : x + 1, dir === 0 ? y + 1 : y)))
+  return { ...r.layout, roads }
 }
 
 // A road from a borough's front street to the nearest road outside it, so
@@ -1393,6 +1503,28 @@ export function generateMap(seed: number): Layout {
   for (let x = sx - 1; x < sx + 5; x++) roads.push([x, sy + 1, 1, 'street'])
   const station: Building = { id: 'station', kind: 'station', x: sx, y: sy, face: 's', built: 0 }
   return { rev: 0, map: { seed }, land, park: [], roads, zoned: [], buildings: [station], boroughs: [] }
+}
+
+// The hub: on a generated map, the island in its middle, which the strait
+// keeps apart from the mainland. It is the city's own (Grand Central, the
+// landmarks, the fabric); every borough goes on the mainland around it. None
+// on the Manhattan preset, nor on a map whose island joins the mainland.
+const hubs = new WeakMap<Span[], (x: number, y: number) => boolean>()
+export function hubOf(layout: Layout): (x: number, y: number) => boolean {
+  if (!('seed' in layout.map)) return () => false
+  const known = hubs.get(layout.land)
+  if (known) return known
+  const { cx, cy } = mapShape(layout.map.seed)
+  const spans = [...componentOf(layout.land, Math.floor(cx), Math.floor(cy))].map(i => layout.land[i]!)
+  const size = (list: Span[]) => list.reduce((n, [, a, b]) => n + b - a, 0)
+  let at: (x: number, y: number) => boolean = () => false
+  if (spans.length && size(spans) * 2 < size(layout.land)) {
+    const rows = new Map<number, [number, number][]>()
+    for (const [y, a, b] of spans) rows.set(y, [...(rows.get(y) ?? []), [a, b]])
+    at = (x, y) => rows.get(y)?.some(([a, b]) => x >= a && x < b) ?? false
+  }
+  hubs.set(layout.land, at)
+  return at
 }
 
 // The spans joined to the one at (x, y), by index: rows touching rows.

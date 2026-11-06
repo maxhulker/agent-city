@@ -270,6 +270,26 @@ square. From now on:
   again; a session working there is announced again.
 - **Make Manhattan** keeps its meaning: the chosen repository's agents take
   the city's districts, and the old home takes the borough it names.
+- **The hub is the city's own.** On a generated map the island in the middle
+  (`hubOf`: the land joined to the map's centre) holds Grand Central, the
+  landmarks and the fabric. No borough goes on it: `findSite` skips it, and
+  the `borough` op refuses it ("The island is the city's own: boroughs go on
+  the mainland"), so the Borough tool does too. The Manhattan preset, all one
+  island, has no hub.
+- **A project is one place.** Every worktree of a repository shares git's
+  common directory; the server asks git for it (`Repo.project`). A worktree
+  arriving while another worktree of its project has a borough is built onto
+  that borough as a section (`Borough.of`, placed by `sectionSite`: sharing
+  an edge, as deep as the borough it meets when that fits) with no click,
+  and "Build it for me" does the same. The main borough draws one line round
+  its sections, with dotted seams; a section is named after its project
+  ("AGENT-CITY · TERRAIN"). Bulldozing the main borough makes its first
+  section the main one.
+- **Regrouping, once.** A city laid out before these rules (`World.regrouped`
+  unset) is regrouped once git has named every borough's project: boroughs on
+  the hub move to the mainland, each project's other worktrees become
+  sections of its main worktree's borough, and a borough whose folders are
+  all gone is taken up. Each is laid out afresh; no file is touched.
 
 ## An existing city migrates
 
