@@ -1657,9 +1657,81 @@ function heightsOf(seed: number): number[][] {
 }
 
 // The outline of a set of cells ("x,y") as marching squares over their
-// centres: whole squares joined into runs along each row, and each square on
-// the shore cut from edge middle to edge middle.
-function marching(cells: Set<string>): string {
+// centres, traced into closed loops: each square on the shore is cut from
+// edge middle to edge middle, the cuts are joined end to end, and a straight
+// run of them is one segment. A coast is one loop (a lake runs the other way
+// round, so it stays a hole under the nonzero rule), never a piece per square:
+// a path of thousands of touching pieces cost the GPU most of a frame each
+// time the view settled.
+export function marching(cells: Set<string>): string {
+  if (!cells.size) return ''
+  let x0 = Infinity
+  let x1 = -Infinity
+  let y0 = Infinity
+  let y1 = -Infinity
+  for (const c of cells) {
+    const [x, y] = c.split(',').map(Number) as [number, number]
+    x0 = Math.min(x0, x)
+    x1 = Math.max(x1, x)
+    y0 = Math.min(y0, y)
+    y1 = Math.max(y1, y)
+  }
+  const at = (x: number, y: number) => cells.has(`${x},${y}`)
+  // Points in half cells (doubled), so they key exactly. Each cut runs with
+  // the land on its right: an edge middle starts one cut and ends another.
+  const next = new Map<string, [number, number]>()
+  for (let j = y0 - 1; j <= y1; j++) {
+    for (let i = x0 - 1; i <= x1; i++) {
+      // The square between the centres of (i, j), (i+1, j), (i+1, j+1), (i, j+1),
+      // walked clockwise (y runs down): its land corners and the edge middles
+      // where land turns to water. Two middles in a row are a cut.
+      const tl = at(i, j)
+      const tr = at(i + 1, j)
+      const br = at(i + 1, j + 1)
+      const bl = at(i, j + 1)
+      if (tl === tr && tr === br && br === bl) continue
+      const cx = 2 * i + 1
+      const cy = 2 * j + 1
+      const ring: [number, number, boolean][] = []
+      if (tl) ring.push([cx, cy, false])
+      if (tl !== tr) ring.push([cx + 1, cy, true])
+      if (tr) ring.push([cx + 2, cy, false])
+      if (tr !== br) ring.push([cx + 2, cy + 1, true])
+      if (br) ring.push([cx + 2, cy + 2, false])
+      if (br !== bl) ring.push([cx + 1, cy + 2, true])
+      if (bl) ring.push([cx, cy + 2, false])
+      if (bl !== tl) ring.push([cx, cy + 1, true])
+      ring.forEach((a, k) => {
+        const b = ring[(k + 1) % ring.length]!
+        if (a[2] && b[2]) next.set(`${a[0]},${a[1]}`, [b[0], b[1]])
+      })
+    }
+  }
+  let d = ''
+  const done = new Set<string>()
+  for (const start of next.keys()) {
+    if (done.has(start)) continue
+    const loop: [number, number][] = []
+    for (let k: string | undefined = start; k !== undefined && !done.has(k);) {
+      done.add(k)
+      const to: [number, number] | undefined = next.get(k)
+      loop.push(k.split(',').map(Number) as [number, number])
+      k = to && `${to[0]},${to[1]}`
+    }
+    // Only the turns: a point on a straight line between its neighbours goes.
+    const pts = loop.filter((p, i) => {
+      const a = loop[(i + loop.length - 1) % loop.length]!
+      const b = loop[(i + 1) % loop.length]!
+      return (p[0] - a[0]) * (b[1] - p[1]) !== (p[1] - a[1]) * (b[0] - p[0])
+    })
+    if (pts.length >= 3) d += 'M' + pts.map(([x, y]) => `${n(x / 2)} ${n(y / 2)}`).join('L') + 'z'
+  }
+  return d
+}
+
+// The previous outline, a piece per square, kept to check the traced one
+// against (test/terrain.test.ts).
+export function marchingPieces(cells: Set<string>): string {
   if (!cells.size) return ''
   let x0 = Infinity
   let x1 = -Infinity
