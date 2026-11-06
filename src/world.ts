@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
-import { FIXED, applyOp, boroughRect, boroughSizeFor, builtOf, burbGeo, cityBuildings, clearBorough, connectBorough, fillBorough, findSite, generateMap, hubOf, isWaiting, lotsWanted, markBuilt, parseOp, sectionSite, waitingId } from './layout.ts'
+import { FIXED, applyOp, boroughRect, boroughSizeFor, builtOf, burbGeo, cityBuildings, clearBorough, connectBorough, fillBorough, findSite, generateMap, hubOf, isWaiting, lotsWanted, markBuilt, parseOp, sectionSite, spurSection, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
 import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
@@ -27,6 +27,11 @@ export type HookEvent = Record<string, unknown> & {
 }
 
 export type LogLine = { at: number; color: string; who: string; text: string }
+
+// The look sections are laid out in (World.sectionLook): 2 is the branch
+// look of 2026-11-06, smaller than their project's borough, in a colour of
+// their own, joined to it by a spur street.
+export const SECTION_LOOK = 2
 
 // Subway lines a session can be: one letter or number each, in a circle.
 const BULLETS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'J', 'L', 'M', 'N', 'Q', 'R', 'W', 'Z', '1', '2', '3', '4', '5', '6', '7']
@@ -362,6 +367,8 @@ export class City {
       this.rehouse()
       if (old) this.toasts.push('The hand-drawn Manhattan is retired: new land to lay out your city on')
     }
+    // Sections laid out in an older look are built again (City.regroup).
+    if (w.regrouped && w.sectionLook !== SECTION_LOOK) delete w.regrouped
     this.sync()
     // A city that has seen sessions already knows its landmarks: no burst of
     // "opened its doors" for them.
@@ -875,7 +882,10 @@ export class City {
     const r = applyOp(this.layout, { op: 'borough', name, root, x: x0, y: y0, w: x1 - x0, h: y1 - y0, ...(of ? { of } : {}) })
     if ('error' in r) return r
     const id = r.layout.boroughs[r.layout.boroughs.length - 1]!.id
-    w.layout = connectBorough(fillBorough(r.layout, id, want).layout, id)
+    // A section is joined to its project by a spur street across the seam;
+    // a borough of its own (or a section no spur fits) by a road to the city.
+    const filled = fillBorough(r.layout, id, want).layout
+    w.layout = (of && spurSection(filled, id)) || connectBorough(filled, id)
     this.achieve('borough', now)
     const main = of ? burbGeo(this.layout, of)?.name : undefined
     const moved = this.moveIn(root, id, now, main ? `${name} joined ${main} as a new section` : undefined, opts.quiet)
@@ -927,6 +937,7 @@ export class City {
     if (w.regrouped) return false
     const done = () => {
       w.regrouped = true
+      w.sectionLook = SECTION_LOOK
       this.isDirty = true
       return false
     }
@@ -1010,6 +1021,33 @@ export class City {
     if (moved.length) this.news(`Moved to the mainland: ${moved.join(', ')}`, now)
     if (joined.length) this.news(`Built onto their projects' boroughs: ${joined.join('; ')}`, now)
     w.regrouped = true
+    w.sectionLook = SECTION_LOOK
+    this.sync()
+    this.isDirty = true
+    return true
+  }
+
+  // A section whose worktree is gone (removed after its branch merged, say)
+  // is taken up, its spur with it, and its repository packed up. Only
+  // sections: a borough of its own stays until the person bulldozes it.
+  pruneSections(now: number): boolean {
+    const w = this.world
+    const gone = this.layout.boroughs.filter(bo => {
+      if (!bo.of) return false
+      const repos = w.repos.filter(r => r.burb === bo.id)
+      return repos.length > 0 && repos.every(r => !existsSync(r.root))
+    })
+    if (!gone.length) return false
+    for (const bo of gone) {
+      w.layout = clearBorough(this.layout, bo.id)
+      const repos = w.repos.filter(one => one.burb === bo.id)
+      for (const r of repos) {
+        r.burb = waitingId(r.root)
+        r.left ??= now
+      }
+      for (const a of w.agents) if (a.burb === bo.id) a.burb = repos[0]!.burb
+    }
+    this.news(`Taken up, their worktrees gone: ${gone.map(bo => bo.name).join(', ')}`, now)
     this.sync()
     this.isDirty = true
     return true

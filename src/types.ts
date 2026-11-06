@@ -490,5 +490,9 @@ export type World = {
   // Once the boroughs were moved off the hub island and each project's
   // worktrees gathered into one borough (2026-11-05): done once per city.
   regrouped?: true
+  // The look the sections were last laid out in (City.SECTION_LOOK): a city
+  // laid out in an older one regroups once more, so its sections are built
+  // again in the new one.
+  sectionLook?: number
   flushedAt: number
 }

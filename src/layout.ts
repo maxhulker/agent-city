@@ -751,7 +751,7 @@ export function findSite(layout: Layout, w: number, h: number, near: Pt2, beside
   return bestSite(layout, w, h, near, beside)?.rect
 }
 
-function bestSite(layout: Layout, w: number, h: number, near: Pt2, beside?: string): { rect: Rect; score: number } | undefined {
+function bestSite(layout: Layout, w: number, h: number, near: Pt2, beside?: string, bonus?: (r: Rect) => number): { rect: Rect; score: number } | undefined {
   if (!layout.land.length) return undefined
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const [y, a, b] of layout.land) {
@@ -809,7 +809,7 @@ function bestSite(layout: Layout, w: number, h: number, near: Pt2, beside?: stri
       if (group.length) {
         const edge = shared(gx, gy, gx + w, gy + h)
         if (edge < 2) continue
-        d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h / 2 - near[1]) - 2 * edge
+        d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h / 2 - near[1]) - 2 * edge - (bonus?.([gx, gy, gx + w, gy + h]) ?? 0)
       } else d = Math.abs(gx + w / 2 - near[0]) + Math.abs(gy + h - near[1])
       if (d < bestD) {
         bestD = d
@@ -821,14 +821,19 @@ function bestSite(layout: Layout, w: number, h: number, near: Pt2, beside?: stri
 }
 
 // Where a section for `lots` lots goes, built onto the borough `of` and its
-// sections: the shape of its own size, or as deep as the borough it meets
-// (so the whole stays square), whichever fits best; smaller ones down to a
-// small section when none does.
+// sections. A section is a branch off its project, so it stays smaller than
+// the main borough: half its lots at most, narrower and shallower than it
+// (by an avenue and a street at least). Places where a spur street can join its streets to
+// the project's are much preferred; smaller shapes down to a small section
+// when nothing fits.
 export function sectionSite(layout: Layout, of: string, lots: number): Rect | undefined {
   const group = groupOf(layout, of)
   const main = group[0]
   if (!main) return undefined
   const near: Pt2 = [main.x + main.w / 2, main.y + main.h / 2]
+  const [mx0, my0, mx1, my1] = boroughRect(main)
+  const mainLots = layout.zoned.filter(([x, y]) => x >= mx0 && x < mx1 && y >= my0 && y < my1).length
+  lots = Math.max(4, Math.min(lots, Math.ceil(mainLots / 2) || lots))
   const forRows = (h: number): [number, number] => {
     const pairs = Math.min(5, Math.max(1, Math.ceil(lots / (2 * Math.max(1, h - 2)))))
     return [4 * pairs + 2, h]
@@ -837,12 +842,18 @@ export function sectionSite(layout: Layout, of: string, lots: number): Rect | un
     const pairs = Math.max(1, Math.floor((w - 2) / 4))
     return [w, Math.min(BOROUGH_MAX, Math.max(4, Math.ceil(lots / (2 * pairs)) + 2))]
   }
-  let shapes: [number, number][] = [boroughSizeFor(lots), ...group.flatMap(bo => [forRows(bo.h), forWidth(bo.w)])]
+  // Shallower than the borough it meets by a street at least; narrower by an avenue.
+  const shallower = (h: number) => Math.max(4, Math.min(h - 3, Math.ceil(h * 0.6)))
+  const narrower = (w: number) => Math.max(6, Math.min(w - 4, 4 * Math.ceil((w * 0.6 - 2) / 4) + 2))
+  // Never as wide or as deep as the main borough, whichever edge it meets.
+  const maxW = narrower(main.w), maxH = shallower(main.h)
+  let shapes: [number, number][] = [boroughSizeFor(lots), ...group.flatMap(bo => [forRows(shallower(bo.h)), forWidth(narrower(bo.w))])].map(([w, h]) => [Math.min(w, maxW), Math.min(h, maxH)])
+  const spurred = (r: Rect) => (spursFor(layout, r, group, gridHas(r)).length ? SPUR_BONUS : 0)
   for (let tries = 0; tries < 6; tries++) {
     let pick: { rect: Rect; score: number } | undefined
     for (const [w, h] of shapes) {
       if (w < BOROUGH_MIN || h < BOROUGH_MIN || w > BOROUGH_MAX || h > BOROUGH_MAX) continue
-      const s = bestSite(layout, w, h, near, main.id)
+      const s = bestSite(layout, w, h, near, main.id, spurred)
       if (s && (!pick || s.score < pick.score)) pick = s
     }
     if (pick) return pick.rect
@@ -852,16 +863,99 @@ export function sectionSite(layout: Layout, of: string, lots: number): Rect | un
   return undefined
 }
 
+// How much nearer a section's place counts for a spur street onto its project.
+const SPUR_BONUS = 12
+
+// Whether `fillBorough` lays a road through a point of a fresh borough in
+// `rect`: on its streets (the top one, every third row, the front) or its
+// avenues (every fourth column).
+function gridHas([x0, y0, x1, y1]: Rect): (x: number, y: number) => boolean {
+  const front = y1 - 1
+  return (x, y) => {
+    const onStreet = x >= x0 + 1 && x <= x1 - 1 && (y === front || (y >= y0 + 1 && y < front && (y - y0 - 1) % 3 === 0))
+    const onAvenue = y >= y0 + 1 && y <= front && x >= x0 + 1 && x <= x1 - 1 && (x - x0 - 1) % 4 === 0
+    return onStreet || onAvenue
+  }
+}
+
+// Whether any road reaches the point (x, y).
+function roadThrough(layout: Layout, x: number, y: number): boolean {
+  return hasRoad(layout, x, y, 0) || hasRoad(layout, x, y - 1, 0) || hasRoad(layout, x, y, 1) || hasRoad(layout, x - 1, y, 1)
+}
+
+export type Spur = { x: number; y: number; dir: 0 | 1 }
+
+// The spur streets that could join a section in `rect` to its project's
+// boroughs across the edge they share: two cells of road from a street (or
+// avenue) of the section to one of the borough's, straight across the seam.
+// `has` says where the section's own roads are. Nearest the middle of the
+// shared edge first.
+export function spursFor(layout: Layout, rect: Rect, group: Borough[], has: (x: number, y: number) => boolean): Spur[] {
+  const [sx0, sy0, sx1, sy1] = rect
+  const out: { spur: Spur; d: number }[] = []
+  for (const g of group) {
+    const [gx0, gy0, gx1, gy1] = boroughRect(g)
+    const lo = Math.max(sy0, gy0) + 1, hi = Math.min(sy1, gy1) - 1
+    const mid = (lo + hi) / 2
+    // Side by side: a street on the same row in each.
+    if (sx1 === gx0) for (let y = lo; y <= hi; y++) if (has(sx1 - 1, y) && roadThrough(layout, gx0 + 1, y)) out.push({ spur: { x: sx1 - 1, y, dir: 1 }, d: Math.abs(y - mid) })
+    if (gx1 === sx0) for (let y = lo; y <= hi; y++) if (has(sx0 + 1, y) && roadThrough(layout, gx1 - 1, y)) out.push({ spur: { x: gx1 - 1, y, dir: 1 }, d: Math.abs(y - mid) })
+    const left = Math.max(sx0, gx0) + 1, right = Math.min(sx1, gx1) - 1
+    const middle = (left + right) / 2
+    // One behind the other: an avenue in the same column in each.
+    if (sy1 === gy0) for (let x = left; x <= right; x++) if (has(x, sy1 - 1) && roadThrough(layout, x, gy0 + 1)) out.push({ spur: { x, y: sy1 - 1, dir: 0 }, d: Math.abs(x - middle) })
+    if (gy1 === sy0) for (let x = left; x <= right; x++) if (has(x, sy0 + 1) && roadThrough(layout, x, gy1 - 1)) out.push({ spur: { x, y: gy1 - 1, dir: 0 }, d: Math.abs(x - middle) })
+  }
+  return out.sort((a, b) => a.d - b.d).map(o => o.spur)
+}
+
+// A section joined to its project by a spur street (the first of
+// `spursFor` that can be laid); undefined when none can.
+export function spurSection(layout: Layout, id: string): Layout | undefined {
+  const bo = layout.boroughs.find(b => b.id === id)
+  if (!bo?.of) return undefined
+  const group = groupOf(layout, id).filter(b => b !== bo)
+  for (const s of spursFor(layout, boroughRect(bo), group, (x, y) => roadThrough(layout, x, y))) {
+    const r = applyOp(layout, { op: 'road', x: s.x, y: s.y, dir: s.dir, len: 2, kind: s.dir === 0 ? 'avenue' : 'street' })
+    if ('layout' in r) return r.layout
+  }
+  return undefined
+}
+
+// The road segments that cross from a borough into another of its project's
+// over the edge they share (a section's spur): [x, y, dir], each with one
+// end on the seam.
+export function seamCrossings(layout: Layout, id: string): Road[] {
+  const bo = layout.boroughs.find(b => b.id === id)
+  if (!bo) return []
+  const [sx0, sy0, sx1, sy1] = boroughRect(bo)
+  const out: Road[] = []
+  for (const g of groupOf(layout, id)) {
+    if (g === bo) continue
+    const [gx0, gy0, gx1, gy1] = boroughRect(g)
+    for (const r of layout.roads) {
+      const [x, y, dir] = r
+      const rowIn = y > Math.max(sy0, gy0) && y < Math.min(sy1, gy1)
+      const colIn = x > Math.max(sx0, gx0) && x < Math.min(sx1, gx1)
+      if (dir === 1 && rowIn && ((sx1 === gx0 && (x === sx1 - 1 || x === sx1)) || (gx1 === sx0 && (x === sx0 - 1 || x === sx0)))) out.push(r)
+      if (dir === 0 && colIn && ((sy1 === gy0 && (y === sy1 - 1 || y === sy1)) || (gy1 === sy0 && (y === sy0 - 1 || y === sy0)))) out.push(r)
+    }
+  }
+  return out
+}
+
 // A borough taken up to be laid out again elsewhere: bulldozed, and its own
 // streets lifted too (every road with both ends inside it).
 export function clearBorough(layout: Layout, id: string): Layout {
   const bo = layout.boroughs.find(b => b.id === id)
   if (!bo) return layout
+  // Its spur onto its project goes with it.
+  const spur = new Set(seamCrossings(layout, id))
   const r = applyOp(layout, { op: 'remove', id })
   if ('error' in r) return layout
   const [x0, y0, x1, y1] = boroughRect(bo)
   const inside = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1
-  const roads = r.layout.roads.filter(([x, y, dir]) => !(inside(x, y) && inside(dir === 0 ? x : x + 1, dir === 0 ? y + 1 : y)))
+  const roads = r.layout.roads.filter(road => !spur.has(road) && !(inside(road[0], road[1]) && inside(road[2] === 0 ? road[0] : road[0] + 1, road[2] === 0 ? road[1] + 1 : road[1])))
   return { ...r.layout, roads }
 }
 

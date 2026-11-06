@@ -4,10 +4,10 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { applyOp, boroughRect, cityBuildings, findSite, generateMap, groupOf, hubOf, mapShape, partName, sectionSite, shownName } from '../src/layout.ts'
+import { applyOp, boroughRect, cityBuildings, findSite, generateMap, groupOf, hubOf, mapShape, partName, seamCrossings, sectionSite, shownName } from '../src/layout.ts'
 import type { Borough, Layout, Rect } from '../src/layout.ts'
 import { renderFrame } from '../src/city.ts'
-import { City } from '../src/world.ts'
+import { City, SECTION_LOOK } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
 // The hub island in the middle of a generated map is the city's own: every
@@ -128,9 +128,25 @@ test('a worktree whose project has a borough builds its section there as soon as
     work(city, 'S3', f.other, T0 + 600)
     city.setProject(f.other, (f.other + '/.git').toLowerCase(), size, T0 + 700)
     assert.ok(city.world.repos.find(r => r.root === f.other)!.burb.startsWith('@'))
-    // The map names the section after its project.
-    const map = renderFrame(city.world, T0 + 800).map.svg
-    assert.ok(map.includes('AGENT-CITY · TERRAIN'), 'the section is named after the project')
+    // A branch off its project: smaller than the main borough, half its lots at most.
+    const l = city.world.layout!
+    const main = l.boroughs.find(b => b.id === 'agent-city')!
+    const lotsIn = (bo: Borough) => {
+      const [x0, y0, x1, y1] = boroughRect(bo)
+      return l.zoned.filter(([x, y]) => x >= x0 && x < x1 && y >= y0 && y < y1).length
+    }
+    assert.ok(sec.w * sec.h < main.w * main.h, `smaller: ${sec.w}x${sec.h} beside ${main.w}x${main.h}`)
+    assert.ok(lotsIn(sec) <= Math.ceil(lotsIn(main) / 2), `${lotsIn(sec)} lots beside ${lotsIn(main)}`)
+    // Joined to it by a spur street across the seam: two cells of road.
+    assert.equal(seamCrossings(l, sec.id).length, 2, 'a spur onto the project')
+    // The map draws it in a colour of its own, the spur painted, named by its own part.
+    const frame = renderFrame(city.world, T0 + 800)
+    const map = frame.map.svg
+    const over = frame.overlay.map(o => o.svg).join('')
+    assert.ok(over.includes('↳ TERRAIN'), 'the section is named by its own part, over its houses')
+    assert.ok(!map.includes('TERRAIN'), 'and not under them')
+    assert.ok(map.includes('class="spur"'), 'its spur is painted')
+    assert.ok(map.includes('stroke="#2dd4bf"'), 'in the first branch colour')
   } finally {
     rmSync(f.dir, { recursive: true, force: true })
   }
@@ -185,7 +201,73 @@ test('regroup, once: boroughs leave the hub, worktrees gather into their project
     assert.ok(!l.boroughs.some(b => b.name === 'agent-city-cmp'), 'and its borough was taken up')
     assert.deepEqual(boroughRect(l.boroughs.find(b => b.id === 'api')!), apiBefore, 'an unrelated borough off the hub stays put')
     assert.ok(city.world.regrouped)
+    assert.equal(city.world.sectionLook, SECTION_LOOK)
     assert.equal(city.regroup(size, T0 + 900), false, 'only once')
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+// A city whose sections were laid out before the branch look: flush, the
+// size of their project's borough, no spur.
+function oldLook() {
+  const f = folders()
+  const city = new City()
+  assert.deepEqual(city.newMap(SEED, T0 - 1000), { ok: true })
+  work(city, 'S0', f.home, T0)
+  for (const [i, root] of [f.main, f.wt].entries()) work(city, `S${i + 1}`, root, T0 + 100 * (i + 1))
+  const project = (f.main + '/.git').toLowerCase()
+  for (const root of [f.main, f.wt]) city.setProject(root, project, size, T0 + 300)
+  const l = city.world.layout!
+  const s = findSite(l, 10, 6, near(l))!
+  assert.ok('ok' in city.build({ op: 'borough', name: 'agent-city', root: f.main, x: s[0], y: s[1], w: 10, h: 6, fill: true }, T0 + 400))
+  const l2 = city.world.layout!
+  assert.ok('ok' in city.build({ op: 'borough', name: 'agent-city-terrain', root: f.wt, x: s[0], y: s[3], w: 10, h: 6, fill: true }, T0 + 500))
+  const sec = city.world.layout!.boroughs.at(-1)!
+  city.world.layout = { ...city.world.layout!, boroughs: city.world.layout!.boroughs.map(b => (b === sec ? { ...b, of: 'agent-city' } : b)), rev: l2.rev + 5 }
+  city.world.regrouped = true
+  delete city.world.sectionLook
+  return { f, city: new City(JSON.parse(JSON.stringify(city.world))) }
+}
+
+test('a city laid out before the branch look regroups once more: its sections are built again, smaller, with a spur', () => {
+  const { f, city } = oldLook()
+  try {
+    assert.equal(city.world.regrouped, undefined, 'loading it asks for a regroup')
+    assert.equal(city.regroup(size, T0 + 600), true)
+    const l = city.world.layout!
+    const main = l.boroughs.find(b => b.id === 'agent-city')!
+    const sec = l.boroughs.find(b => b.id === city.world.repos.find(r => r.root === f.wt)!.burb)!
+    assert.equal(sec.of, 'agent-city')
+    assert.ok(sec.w * sec.h < main.w * main.h, 'smaller than its project now')
+    assert.equal(seamCrossings(l, sec.id).length, 2, 'with a spur')
+    assert.equal(city.world.sectionLook, SECTION_LOOK)
+    assert.equal(new City(JSON.parse(JSON.stringify(city.world))).world.regrouped, true, 'and not again')
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a section whose worktree is removed is taken up with its spur; a borough of its own is not', () => {
+  const { f, city } = oldLook()
+  try {
+    city.regroup(size, T0 + 600)
+    const secId = city.world.repos.find(r => r.root === f.wt)!.burb
+    const roadsBefore = city.world.layout!.roads.length
+    const spur = seamCrossings(city.world.layout!, secId)
+    assert.equal(city.pruneSections(T0 + 700), false, 'nothing gone yet')
+    rmSync(f.wt, { recursive: true, force: true })
+    // The main worktree's folder gone too: its borough stays all the same.
+    rmSync(f.main, { recursive: true, force: true })
+    assert.equal(city.pruneSections(T0 + 800), true)
+    const l = city.world.layout!
+    assert.ok(!l.boroughs.some(b => b.id === secId), 'the section is gone')
+    assert.ok(l.boroughs.some(b => b.id === 'agent-city'), 'its project stays')
+    assert.ok(spur.every(r => !l.roads.includes(r)), 'its spur went with it')
+    assert.ok(l.roads.length < roadsBefore)
+    const wt = city.world.repos.find(r => r.root === f.wt)!
+    assert.ok(wt.burb.startsWith('@') && wt.left, 'its repository packed up')
+    assert.equal(city.pruneSections(T0 + 900), false, 'once')
   } finally {
     rmSync(f.dir, { recursive: true, force: true })
   }
