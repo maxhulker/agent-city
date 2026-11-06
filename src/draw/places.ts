@@ -1,13 +1,19 @@
 import type { Agent, District, Landmark, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
-import { SIZES, boroughRect, cellsOf, deltaOf } from '../layout.ts'
+import { SIZES, boroughRect, cellsOf, deltaOf, groupOf } from '../layout.ts'
 import { blockTip, blueprintPlots, censusText, placeBlocks, runsOf, slotsOf } from './blocks.ts'
 import { unbuilt } from '../blueprints.ts'
 import type { Kind } from '../layout.ts'
 import { costOf } from '../costs.ts'
 
 // What a project has cost to build, for its hover.
+// A section's first line: whose project it is part of.
+const sectionLine = (sc: Scene, b: string) => {
+  const main = groupOf(sc.layout, b)[0]
+  return main && main.id !== b ? `Another worktree of ${main.name}, built onto its borough. ` : ''
+}
+
 const costLine = (sc: Scene, root: string | undefined) => {
   const c = costOf(sc.costs ?? new Map(), root)
   return c ? ` Built so far for ${usd(c.usd)} across ${c.sessions} session${c.sessions === 1 ? '' : 's'} (Claude Code's estimate, by where each session started).` : ''
@@ -205,7 +211,7 @@ export function drawPlaces(world: World, sc: Scene): string {
       box,
       height: 26,
       title: `${burbGeo(sc.layout, b)!.name}: ${repo.name}`,
-      text: `Another repository, at ${repo.root}. ${repo.census ? censusText(repo.census, sc.now) + ' ' : ''}Agents cross the bridge to work here. "Make Manhattan" in the sidebar makes it home.${costLine(sc, repo.root)}`,
+      text: `${sectionLine(sc, b)}Another repository, at ${repo.root}. ${repo.census ? censusText(repo.census, sc.now) + ' ' : ''}Agents cross the bridge to work here. "Make Manhattan" in the sidebar makes it home.${costLine(sc, repo.root)}`,
       color: '#fde68a',
       who: sc.byBurb.get(b) ?? [],
     })

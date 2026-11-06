@@ -1,7 +1,7 @@
 import type { Burb, Census, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
 import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padFor, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
+import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, groupOf, partName, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
 import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
 import { blueprintPlots, houses, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
 import { unbuilt } from '../blueprints.ts'
@@ -1045,17 +1045,79 @@ function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
 // A borough the person drew: its line on the ground, the square on its front
 // edge where its agents gather, and its name at the back. Its houses come
 // with zoning (docs/city-builder.md, step nine).
+// A project with sections (other worktrees built onto its borough) is one
+// place: the main borough draws a single line round all of them, a shared
+// tint, and a dotted seam where two meet; each section is named after the
+// project and its own part ("AGENT-CITY · TERRAIN").
 function drawnBurb(bo: Borough, layout: Layout): string {
   const [x0, y0, x1, y1] = boroughRect(bo)
   const [sx, sy] = burbGeo(layout, bo.id)!.square
   const half = Math.min(1.6, (x1 - x0) / 2 - 0.2)
+  const group = groupOf(layout, bo.id)
+  const main = group[0]!
   let g = GRID
-  g += gRect(x0 + 0.08, y0 + 0.08, x1 - 0.08, y1 - 0.08, 'none', ` rx=".2" stroke="#64748b" stroke-width=".06" stroke-dasharray=".35 .25"`)
+  if (group.length < 2) g += gRect(x0 + 0.08, y0 + 0.08, x1 - 0.08, y1 - 0.08, 'none', ` rx=".2" stroke="#64748b" stroke-width=".06" stroke-dasharray=".35 .25"`)
+  else if (main === bo) g += groupLine(group)
   g += gRect(sx - half, sy - 0.6, sx + half, y1 - 0.15, '#343944', ` rx=".25" stroke="#3f4552" stroke-width=".05"`)
   g += '</g>'
   const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
-  g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${esc(bo.name.toUpperCase())}</text>`
+  const name = main === bo ? bo.name : `${main.name} · ${partName(bo.name, main.name)}`
+  g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${esc(name.toUpperCase())}</text>`
   return g
+}
+
+// The line round a project's boroughs, in cells (inside GRID): every cell
+// edge with one of them on one side and none on the other, joined into
+// runs; a dotted seam along the edges two of them share; a faint tint over all.
+function groupLine(group: Borough[]): string {
+  const rects = group.map(boroughRect)
+  const inAny = (x: number, y: number) => rects.some(([a, b, c, d]) => x >= a && x < c && y >= b && y < d)
+  // Unit edges keyed by their line: along rows (y, from x) and along columns (x, from y).
+  const rows = new Map<number, number[]>()
+  const cols = new Map<number, number[]>()
+  const add = (m: Map<number, number[]>, k: number, v: number) => m.set(k, [...(m.get(k) ?? []), v])
+  for (const [a, b, c, d] of rects) {
+    for (let x = a; x < c; x++) {
+      if (!inAny(x, b - 1)) add(rows, b, x)
+      if (!inAny(x, d)) add(rows, d, x)
+    }
+    for (let y = b; y < d; y++) {
+      if (!inAny(a - 1, y)) add(cols, a, y)
+      if (!inAny(c, y)) add(cols, c, y)
+    }
+  }
+  let line = ''
+  const runs = (m: Map<number, number[]>, seg: (k: number, from: number, to: number) => string) => {
+    for (const [k, list] of m) {
+      const vs = [...new Set(list)].sort((p, q) => p - q)
+      let from = vs[0]!
+      for (let i = 1; i <= vs.length; i++) {
+        if (i < vs.length && vs[i] === vs[i - 1]! + 1) continue
+        line += seg(k, from, vs[i - 1]! + 1)
+        from = vs[i]!
+      }
+    }
+  }
+  runs(rows, (y, a, b) => `M${n(a)} ${n(y)}H${n(b)}`)
+  runs(cols, (x, a, b) => `M${n(x)} ${n(a)}V${n(b)}`)
+  let seams = ''
+  rects.forEach(([a0, b0, c0, d0], i) => {
+    for (const [a1, b1, c1, d1] of rects.slice(i + 1)) {
+      if (c0 === a1 || c1 === a0) {
+        const from = Math.max(b0, b1), to = Math.min(d0, d1)
+        if (to > from) seams += `M${n(c0 === a1 ? c0 : a0)} ${n(from)}V${n(to)}`
+      }
+      if (d0 === b1 || d1 === b0) {
+        const from = Math.max(a0, a1), to = Math.min(c0, c1)
+        if (to > from) seams += `M${n(from)} ${n(d0 === b1 ? d0 : b0)}H${n(to)}`
+      }
+    }
+  })
+  return (
+    rects.map(([a, b, c, d]) => gRect(a, b, c, d, '#94a3b8', ' fill-opacity=".05"')).join('') +
+    (seams ? `<path d="${seams}" fill="none" stroke="#64748b" stroke-width=".05" stroke-dasharray=".08 .22" stroke-linecap="round"/>` : '') +
+    `<path d="${line}" fill="none" stroke="#94a3b8" stroke-width=".08" stroke-dasharray=".35 .25" stroke-linejoin="round"/>`
+  )
 }
 
 // A drawn borough's lit side: its repository's name under the borough's,

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
-import { FIXED, applyOp, boroughSizeFor, builtOf, burbGeo, cityBuildings, connectBorough, fillBorough, findSite, generateMap, clearBuilt, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, waitingId } from './layout.ts'
+import { FIXED, applyOp, boroughRect, boroughSizeFor, builtOf, burbGeo, cityBuildings, clearBorough, connectBorough, fillBorough, findSite, generateMap, clearBuilt, hubOf, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, sectionSite, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
 import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
@@ -11,7 +11,10 @@ import { costsByRoot } from './costs.ts'
 import { nearestSlot, placeBlocks, slotsOf } from './draw/blocks.ts'
 import { addBlueprints, censusHas, newFolders, pathsInPlan, relativeTo, unbuilt } from './blueprints.ts'
 import type { Agent, Billboard, Burb, Census, DevHint, District, Feat, Landmark, LedgerEntry, LimitWindow, Limits, Look, Message, Place, PlanItem, Repo, Session, WorkOrder, World } from './types.ts'
-import type { Kind } from './layout.ts'
+import type { Borough, Kind } from './layout.ts'
+
+// The server's count of a repository's files and folders (git ls-files).
+export type Sizer = (root: string) => { files?: number; folders?: number }
 
 // Turns Claude Code hook events, from any number of sessions, into one world.
 
@@ -839,9 +842,8 @@ export class City {
   }
 
   // "Build it for me" on a New arrival card: a borough sized to the
-  // repository (files and folders, counted by the server) on the free land
-  // nearest Grand Central, named after it, with its streets and lots laid
-  // and a road to the city, and the repository moved in.
+  // repository (files and folders, counted by the server), laid out by
+  // `settle`, and the repository moved in.
   private autoBorough(raw: Record<string, unknown>, now: number): { ok: true } | { error: string } {
     const w = this.world
     const root = typeof raw.root === 'string' ? raw.root.trim() : ''
@@ -852,28 +854,177 @@ export class City {
     if (has) return { error: `${repo!.name} lives in ${has.name} already` }
     const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
     const want = lotsWanted(num(raw.files) || 60, num(raw.folders))
-    const station = cityBuildings(this.layout, 'station')[0]
-    const near: [number, number] = station ? [station.x + 1, station.y + 2] : [64, 64]
-    // The size it wants, else smaller ones down to a small borough.
-    let [bw, bh] = boroughSizeFor(want)
-    let site = findSite(this.layout, bw, bh, near)
-    while (!site && (bw > 6 || bh > 4)) {
-      if (bh > 4) bh--
-      else bw -= 4
+    const name = (typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : repo?.name ?? base(root)).slice(0, 40)
+    const r = this.settle(root, name, want, now)
+    return 'error' in r ? r : { ok: true }
+  }
+
+  // A borough laid out for the repository at root, with its streets and
+  // lots and a road to the city, and the repository moved in. Another
+  // worktree of its project has a borough: a section built onto that one.
+  // Otherwise one of its own on the free mainland nearest Grand Central, of
+  // `size` (else the size `want` lots need), or smaller down to a small one.
+  private settle(root: string, name: string, want: number, now: number, opts: { size?: [number, number]; quiet?: boolean } = {}): { ok: true; id: string; of?: string } | { error: string } {
+    const w = this.world
+    const repo = w.repos.find(r => same(r.root, root))
+    const kin = this.kinBorough(repo)
+    let site = kin ? sectionSite(this.layout, kin, want) : undefined
+    const of = site ? kin : undefined
+    if (!site) {
+      const station = cityBuildings(this.layout, 'station')[0]
+      const near: [number, number] = station ? [station.x + 1, station.y + 2] : [64, 64]
+      let [bw, bh] = opts.size ?? boroughSizeFor(want)
       site = findSite(this.layout, bw, bh, near)
+      while (!site && (bw > 6 || bh > 4)) {
+        if (bh > 4) bh--
+        else bw -= 4
+        site = findSite(this.layout, bw, bh, near)
+      }
     }
     if (!site) return { error: 'No free land is big enough: lay one out yourself' }
-    const name = (typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : repo?.name ?? base(root)).slice(0, 40)
-    const r = applyOp(this.layout, { op: 'borough', name, root, x: site[0], y: site[1], w: bw, h: bh })
+    const [x0, y0, x1, y1] = site
+    const r = applyOp(this.layout, { op: 'borough', name, root, x: x0, y: y0, w: x1 - x0, h: y1 - y0, ...(of ? { of } : {}) })
     if ('error' in r) return r
     const id = r.layout.boroughs[r.layout.boroughs.length - 1]!.id
     w.layout = connectBorough(fillBorough(r.layout, id, want).layout, id)
     this.achieve('borough', now)
-    const moved = this.moveIn(root, id, now)
+    const main = of ? burbGeo(this.layout, of)?.name : undefined
+    const moved = this.moveIn(root, id, now, main ? `${name} joined ${main} as a new section` : undefined, opts.quiet)
     if ('error' in moved) return moved
     this.sync()
     this.isDirty = true
-    return { ok: true }
+    return { ok: true, id, ...(of ? { of } : {}) }
+  }
+
+  // The borough (the main one) of another worktree of this repository's
+  // project, if any has one: where a section of it goes.
+  private kinBorough(repo: Repo | undefined): string | undefined {
+    if (!repo?.project) return undefined
+    for (const other of this.world.repos) {
+      if (other === repo || other.project !== repo.project || isWaiting(other.burb)) continue
+      const bo = this.layout.boroughs.find(b => b.id === other.burb)
+      if (bo && !bo.preset) return bo.of ?? bo.id
+    }
+    return undefined
+  }
+
+  // The repositories whose project git hasn't named yet (the server asks it).
+  projectsWanted(): string[] {
+    return this.world.repos.filter(r => r.project === undefined).map(r => r.root)
+  }
+
+  // A repository's project, from git. One that has just arrived, waiting at
+  // the station, whose project already has a borough, builds its section of
+  // that borough at once (sized by `size`, the server's count of its files).
+  setProject(root: string, project: string, size: Sizer, now: number) {
+    const repo = this.world.repos.find(r => same(r.root, root))
+    if (!repo || repo.project === project) return
+    repo.project = project
+    this.isDirty = true
+    if (repo.left || !isWaiting(repo.burb) || !this.kinBorough(repo)) return
+    const { files, folders } = size(repo.root)
+    this.settle(repo.root, repo.name, lotsWanted(files || 60, folders ?? 0), now)
+  }
+
+  // Once per city (World.regrouped), on a generated map: every borough on
+  // the hub island moves to the mainland, and each project's other
+  // worktrees gather into one borough as its sections, the main worktree's
+  // borough (else the first laid out) staying the main one. Each is laid out
+  // afresh (its streets and moved houses reset; no file is touched). One
+  // whose folder is gone is simply taken up, its repository packed up.
+  // Waits until git has named the project of every repository in a borough.
+  regroup(size: Sizer, now: number): boolean {
+    const w = this.world
+    if (w.regrouped) return false
+    const done = () => {
+      w.regrouped = true
+      this.isDirty = true
+      return false
+    }
+    if (!('seed' in this.layout.map)) return done()
+    const drawn = (id: string) => this.layout.boroughs.find(b => b.id === id && !b.preset)
+    const housed = w.repos.filter(r => !isWaiting(r.burb) && drawn(r.burb))
+    if (housed.some(r => r.project === undefined)) return false
+    const hub = hubOf(this.layout)
+    const onHub = (bo: Borough) => {
+      for (let y = bo.y; y < bo.y + bo.h; y++) for (let x = bo.x; x < bo.x + bo.w; x++) if (hub(x, y)) return true
+      return false
+    }
+    const move = new Set(this.layout.boroughs.filter(bo => !bo.preset && onHub(bo)).map(bo => bo.id))
+    // A borough whose folders are all gone (a worktree removed) is taken up too.
+    for (const bo of this.layout.boroughs) {
+      const repos = w.repos.filter(r => r.burb === bo.id)
+      if (!bo.preset && repos.length && repos.every(r => !existsSync(r.root))) move.add(bo.id)
+    }
+    // Each project's boroughs: the main worktree's (where its git directory
+    // sits) stays the main one, else the first laid out; the rest move.
+    const byProject = new Map<string, Repo[]>()
+    for (const r of housed) if (r.project) byProject.set(r.project, [...(byProject.get(r.project) ?? []), r])
+    const order = (id: string) => this.layout.boroughs.findIndex(b => b.id === id)
+    const sections = new Set<string>()
+    for (const [project, repos] of byProject) {
+      const ids = [...new Set(repos.map(r => r.burb))].sort((a, b) => order(a) - order(b))
+      if (ids.length < 2) continue
+      const home = repos.find(r => same(r.root, project.replace(/\/\.git$/, '')))?.burb ?? ids[0]!
+      for (const id of ids) {
+        if (id === home) continue
+        move.add(id)
+        sections.add(id)
+      }
+    }
+    if (!move.size) return done()
+    // Take them all up first, then lay them out again: the main ones first,
+    // so the sections have their borough to be built onto.
+    const taken = [...move].map(id => {
+      const bo = drawn(id)!
+      const [x0, y0, x1, y1] = boroughRect(bo)
+      const lots = this.layout.zoned.filter(([x, y]) => x >= x0 && x < x1 && y >= y0 && y < y1).length
+      const repos = w.repos.filter(r => r.burb === id)
+      const repo = repos.find(r => !r.left) ?? repos.slice().sort((a, b) => b.lastSeen - a.lastSeen)[0]
+      return { id, name: bo.name, size: [bo.w, bo.h] as [number, number], lots, repo, repos }
+    })
+    for (const t of taken) w.layout = clearBorough(this.layout, t.id)
+    for (const t of taken) for (const r of t.repos) r.burb = waitingId(r.root)
+    for (const t of taken) for (const a of w.agents) if (a.burb === t.id && t.repo) a.burb = t.repo.burb
+    taken.sort((a, b) => Number(sections.has(a.id)) - Number(sections.has(b.id)))
+    const moved: string[] = []
+    const joined: string[] = []
+    for (const t of taken) {
+      const { repo } = t
+      if (!repo) {
+        // Nobody's yet: the same borough, on the mainland.
+        const station = cityBuildings(this.layout, 'station')[0]
+        const site = findSite(this.layout, t.size[0], t.size[1], station ? [station.x + 1, station.y + 2] : [64, 64])
+        if (!site) continue
+        const r = applyOp(this.layout, { op: 'borough', name: t.name, x: site[0], y: site[1], w: t.size[0], h: t.size[1] })
+        if ('error' in r) continue
+        const id = r.layout.boroughs[r.layout.boroughs.length - 1]!.id
+        w.layout = t.lots ? connectBorough(fillBorough(r.layout, id, t.lots).layout, id) : r.layout
+        moved.push(t.name)
+        continue
+      }
+      // Its folder gone (a worktree removed): nothing to lay out again.
+      if (!existsSync(repo.root)) {
+        repo.left ??= now
+        continue
+      }
+      const left = repo.left
+      // Its houses' places were the old borough's.
+      delete repo.pins
+      if (repo.census) delete repo.census.pins
+      const want = Math.max(4, t.lots || lotsWanted(size(repo.root).files || 60, 0))
+      const r = this.settle(repo.root, t.name, want, now, { size: t.size, quiet: true })
+      if ('error' in r) continue
+      if (left !== undefined) repo.left = left
+      if (r.of) joined.push(`${t.name} joined ${burbGeo(this.layout, r.of)?.name ?? 'its project'}`)
+      else moved.push(t.name)
+    }
+    if (moved.length) this.news(`Moved to the mainland: ${moved.join(', ')}`, now)
+    if (joined.length) this.news(`Built onto their projects' boroughs: ${joined.join('; ')}`, now)
+    w.regrouped = true
+    this.sync()
+    this.isDirty = true
+    return true
   }
 
   // The welcome's map picker (docs/city-builder.md, step seven): a city that
@@ -1464,7 +1615,7 @@ export class City {
   // Moves the repository at root into a borough the person picked (the
   // arrival card, or the Borough tool's sheet); its agents walk over.
   // `say` replaces the ticker's "moved into" line (breaking ground has its own).
-  moveIn(root: string, id: Burb, now: number, say?: string): { ok: true } | { error: string } {
+  moveIn(root: string, id: Burb, now: number, say?: string, quiet = false): { ok: true } | { error: string } {
     const w = this.world
     const geo = burbGeo(this.layout, id)
     if (!geo) return { error: 'No such borough' }
@@ -1486,7 +1637,9 @@ export class City {
     repo.burb = id
     delete repo.left
     if (was !== id) for (const a of w.agents) if (a.burb === was) a.burb = id
-    if (say) this.news(say, now)
+    if (quiet) {
+      // Said once, for all of them, by the caller.
+    } else if (say) this.news(say, now)
     else if (moving) this.news(`${repo.name} moved into ${geo.name}`, now)
     this.isDirty = true
     return { ok: true }
