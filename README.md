@@ -1,7 +1,7 @@
 # Crosswalk
 
 Watch every Claude Code session on this machine at work in one isometric
-Manhattan at night. Each session gets a crowned lead in its own color, and its
+city at night. Each session gets a crowned lead in its own color, and its
 subagents walk between landmarks as they call tools:
 
 | Landmark | Tools |
@@ -31,7 +31,7 @@ the free land nearest the station, named after it, with streets, zoned lots
 and a road to the city: its houses go up as soon as it is counted. **Lay it
 out myself** lets you drag out where it goes, and lays the streets and lots
 in it for you (untick that on the form to lay them yourself). Or move it into
-a free borough (Brooklyn, Queens, the Bronx, Jersey City, or any you drew).
+a free borough (any you drew that nobody lives in).
 Then its agents cross over and gather on the borough's square. A drawn
 borough with no lots says so in **Boroughs**, with a button to lay them.
 
@@ -156,15 +156,17 @@ filler blocks fill in with the population, which counts every tool call. The
 **Blueprints** card in the sidebar keeps the list with its hints. Nothing
 waits for the scenery: agents, cards and approvals work from the first event.
 
-A city that existed before this version counts as built. **Rebuild the city**
-(on the Blueprints card) starts the game over for whoever wants to play it;
-**Build it all now** (on the welcome card) skips it.
+**Rebuild the city** (on the Blueprints card) starts over on new land;
+**Build it all now** raises everything you have placed at once. A city saved
+on the old hand-drawn Manhattan, which is retired, moves to new land when it
+loads: its sessions stay, and each repository waits at Grand Central for a
+borough again.
 
 ## Lay it out yourself
 
 A new city starts on land of its own: the welcome card shows three maps made
 from seeds (a mainland, a strait and the station's island; **Shuffle** for
-others), or **start from Manhattan**, whole, to rearrange. Your first lead
+others). Your first lead
 arrives by train at the station. The **First district** card lists the
 quests in a suggested order: lay a road from the station, place City Hall,
 then the Library, the Garment District, Hudson Yards, Times Square, Grand
@@ -172,8 +174,8 @@ Central's towers, the Seaport (on a shore), Central Park and the Statue (in
 the water), zone some blocks, and finally the Empire State Building, which
 you can place once every district stands. Each goes up as you place it;
 the first time a session uses it the ticker says it opened its doors. Work
-of a kind you have not placed waits at the station. **Rebuild** offers the
-same two starts.
+of a kind you have not placed waits at the station. **Rebuild** starts again
+on new land.
 
 The build toolbar along the bottom of the map lets you shape the city
 (`docs/city-builder.md` is the plan): **Road** drags a street or avenue (over
@@ -196,8 +198,8 @@ gather at another building.
 In the city a placed landmark goes up at once. In a borough it is a
 blueprint lot until that repository's agents first do that kind of work
 there, and from then on that work happens at its door. Bulldozing a borough
-sends its repository back to Grand Central to wait for another. Manhattan's blocks are all zoned, so to place something on the island
-bulldoze a lot first.
+sends its repository back to Grand Central to wait for another. To place
+something on a zoned block, unzone or bulldoze its lot first.
 
 ## Break ground
 

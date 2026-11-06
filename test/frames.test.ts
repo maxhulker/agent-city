@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { renderFrame } from '../src/city.ts'
 import { City, WALK_MS } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 
 // The frame contract (docs/frames.md): the still map keeps its hash while
 // only activity changes, overlay items keep theirs while they look the same,
@@ -24,7 +25,7 @@ function tool(city: City, sid: string, tool: string, input: Record<string, unkno
 
 // A built city with one session mid-turn at City Hall.
 function builtCity(now = T0): City {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.buildAll(now - 60_000)
   city.apply(ev('SessionStart', 'S1'), now)
   city.apply(ev('UserPromptSubmit', 'S1', { prompt: 'hello' }), now)
@@ -52,7 +53,7 @@ test('the map is the still city and keeps its hash while only the work changes',
 })
 
 test('the map changes when something still changes: a landmark, a borough, the rails', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply(ev('SessionStart', 'S1'), T0)
   city.flush(T0)
   const bare = renderFrame(city.world, T0 + 10, { connected: false })
@@ -84,7 +85,7 @@ test('overlay items are keyed and keep their hash while they look the same', () 
   const b = renderFrame(city.world, T0 + 900)
   const keys = a.overlay.map(i => i.k)
   assert.equal(new Set(keys).size, keys.length, 'keys are unique')
-  for (const k of ['cars', 'twinkle', 'spires', 'haze', 'labels', 'zones', 'statue', 'lm:hall']) assert.ok(keys.includes(k), k)
+  for (const k of ['spires', 'haze', 'labels', 'zones', 'statue', 'lm:hall']) assert.ok(keys.includes(k), k)
   for (const it of a.overlay) {
     if (it.k === 'zones') continue // the hover text carries "ago" times
     assert.equal(byKey(b, it.k)?.h, it.h, `${it.k} is unchanged by a quiet frame`)
@@ -111,7 +112,8 @@ test('the frame carries the layout with its revision, for the build cursor', () 
   const f = renderFrame(city.world, T0 + 100)
   assert.equal(f.layout, city.world.layout, 'the world’s own layout')
   assert.equal(f.layout.rev, 0)
-  assert.ok(city.build({ op: 'unzone', x: 9, y: 46 }, T0 + 200))
+  const [zx, zy] = city.world.layout!.zoned[0]!
+  assert.ok('ok' in city.build({ op: 'unzone', x: zx, y: zy }, T0 + 200))
   assert.equal(renderFrame(city.world, T0 + 300).layout.rev, 1, 'and the revision the page keys on')
   assert.notEqual(renderFrame(city.world, T0 + 300).map.hash, f.map.hash, 'a placement changes the map')
 })

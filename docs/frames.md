@@ -56,7 +56,7 @@ so the overlay can use them (`url(#halo)` etc.).
 
 ```ts
 type OverlayItem = {
-  k: string // stable key: 'pads', 'lm:library', 'burb:brooklyn', 'statue', 'cars', 'zones', 'train:<id>', 'ride:<at>:<kind>:<color>', 'fireworks'…
+  k: string // stable key: 'pads', 'lm:library', 'burb:<id>', 'statue', 'zones', 'train:<id>', 'ride:<at>:<kind>:<color>', 'fireworks'…
   h: string // hash of what the item shows, from its INPUTS, never from its text: it must
             // stay the same while the item looks the same, even if its SVG text holds
             // time-dependent values (negative SMIL begin offsets)
@@ -77,14 +77,11 @@ restarted by a frame that didn't change them. When an item's markup does
 arrive, plain clock offsets in its `begin` attributes are shifted by the
 overlay's current time, so a negative offset still means "that long ago".
 
-Overlay items, in paint order: the twinkling reflections (`twinkle`), cars
-and boats (`cars`), the lit pads of the districts someone is working in
+Overlay items, in paint order: the lit pads of the districts someone is working in
 (`pads`), each borough's sign, glow and scaffolding (`burb:<b>`), each
 placed building's lights, smoke, sparks, rings, beacons, crane, flag, crown
-and scaffolding (`lm:<id>`, the building's id in the layout, which is its
-kind for the preset's: `lm:library`, `lm:station`; the "?" at City Hall and
-the alarm at the Seaport included), the spires' lights (`spires`), the districts' haze (`haze`), the
-Brooklyn Bridge's red cable on a merge conflict (`alarm`), the Statue of
+and scaffolding (`lm:<id>`, the building's id in the layout; the "?" at City Hall and
+the alarm at the Seaport included), the spires' lights (`spires`), the districts' haze (`haze`), the Statue of
 Liberty at rest or launching (`statue`), the districts' names (`labels`),
 the trains (`train:<id>`), the hover zones (`zones`: `polygon.zone` with the
 `data-tip-*` and `data-update` attributes the page reads), and above the

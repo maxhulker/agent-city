@@ -10,6 +10,7 @@ import { CensusTaker, REST } from '../src/census.ts'
 import { blockTip, weatherOf } from '../src/draw/blocks.ts'
 import type { Block } from '../src/types.ts'
 import { City } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 
 // Weathering: a folder no commit has touched in months shows its age, ivy
 // first, then boarded windows, then derelict.
@@ -56,7 +57,7 @@ test('the census reads when each folder was last committed to, and a borough wea
     assert.equal(touched[''], 500, "the root's own files: README alone")
     assert.equal(touched.src, 1)
 
-    const city = new City()
+    const city = cityWith('Brooklyn')
     city.apply({ hook_event_name: 'SessionStart', session_id: 'S1', cwd: 'C:/fake/home' }, now)
     city.build({ op: 'movein', id: 'brooklyn', root: dir }, now)
     city.setCensus(dir, census)

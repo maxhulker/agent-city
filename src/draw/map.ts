@@ -1,9 +1,9 @@
-import type { Burb, Census, District, Landmark, Launch, PresetBurb, Repo, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, BRONX, BROOKLYN, BURBS, FIREWORKS_MS, GOVERNORS, ISLAND, LABELS, MIDTOWN, NEW_JERSEY, QUEENS, RANDALLS, ROOSEVELT, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, edges, esc, frame, isWaiting, hash, item, keyed, n, p, padFor, padOf, poly, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
+import type { Burb, Census, District, Landmark, Launch, Repo, World } from '../types.ts'
+import { ACCENT, BLUEPRINTS, FIREWORKS_MS, LABELS, MIDTOWN, S, SCAFFOLD_MS, SITES, T, blocksFor, burbGeo, esc, frame, isWaiting, hash, item, keyed, n, p, padFor, padOf, pts, r, seeded, shiftFor, spotOf, waitAt, dayOf, usd } from './geo.ts'
 import type { OverlayItem, Pt, Scene } from './geo.ts'
-import { PRESET_PARKS, PRESET_SITES, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, groupOf, partName, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
-import type { Borough, Building, Kind, Layout, Span } from '../layout.ts'
-import { blueprintPlots, houses, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
+import { ORIGINS, SIZES, boroughAt, boroughRect, doorOf as doorOfHall, terrainOf, cellsOf, cityBuildings, deltaOf, footprintOf, groupOf, partName, isBridge, lotsOf, roomOf, siteFor, trackOf } from '../layout.ts'
+import type { Borough, Building, Kind, Layout } from '../layout.ts'
+import { blueprintPlots, lotHouses, placeBlocks, signLine, slotsOf, weatherOf } from './blocks.ts'
 import { unbuilt } from '../blueprints.ts'
 import type { Placed } from './blocks.ts'
 import { censusShape } from '../census.ts'
@@ -175,10 +175,10 @@ function gRect(x0: number, y0: number, x1: number, y1: number, fill: string, ext
 }
 
 // Blend two #rrggbb colours.
-// A building is drawn at its kind's preset origin and moved to where it
+// A building is drawn at its kind's drawing origin and moved to where it
 // stands by one translate (the projection is affine): in screen units for
 // projected markup, in cells for markup inside the GRID group. Nothing is
-// wrapped when it stands at the origin, so the preset's markup is unchanged.
+// wrapped when it stands at the origin, so its markup is unchanged.
 function sh(svg: string, [dx, dy]: [number, number]): string {
   if (!svg || (!dx && !dy)) return svg
   return `<g transform="translate(${n((dx - dy) * S)},${n((dx + dy) * T)})">${svg}</g>`
@@ -286,12 +286,6 @@ function spireLights(sc: Scene): string {
 export function tree(gx: number, gy: number, r: number): string {
   const [x, y] = p(gx, gy)
   return `<circle cx="${n(x)}" cy="${n(y - r)}" r="${n(r)}" fill="${seeded(gx, gy) > 0.5 ? '#166534' : '#15803d'}"/>`
-}
-
-// A warm street lamp with its pool of light, at ground level.
-function lamp(gx: number, gy: number): string {
-  const [x, y] = p(gx, gy)
-  return `<ellipse cx="${n(x)}" cy="${n(y)}" rx="5" ry="2.5" fill="#ffd27a" opacity=".18"/><path d="M${n(x)} ${n(y)}v-5" stroke="#475569" stroke-width=".5"/><circle cx="${n(x)}" cy="${n(y - 5)}" r=".9" fill="#ffe9b0"/>`
 }
 
 // Scaffolding hugging a box's two visible walls, a hoist running up its side
@@ -534,18 +528,17 @@ function building(items: Item[], x0: number, y0: number, w: number, d: number, h
 
 // The filler blocks on the zoned lots, as many as the population has earned
 // (all of them once the city is full), in zoning order.
-// What a zoned lot fills with: the city's towers, or, inside a borough the
-// person drew, a row of brownstones like the preset boroughs' houses.
+// What a zoned lot fills with: the city's towers, or, inside a borough, a
+// row of brownstones.
 export function lotStyle(layout: Layout, x: number, y: number): 'towers' | 'houses' {
-  const bo = boroughAt(layout, x, y)
-  return bo && !bo.preset ? 'houses' : 'towers'
+  return boroughAt(layout, x, y) ? 'houses' : 'towers'
 }
 
-// The drawn boroughs whose repository has a census: their lots stand for its
+// The boroughs whose repository has a census: their lots stand for its
 // folders, whatever the population.
 function censused(sc: Scene): Map<Burb, Census> {
   const out = new Map<Burb, Census>()
-  for (const [b, repo] of [...sc.vacantOf, ...sc.repoOf]) if (repo.census && !burbGeo(sc.layout, b)?.preset) out.set(b, repo.census)
+  for (const [b, repo] of [...sc.vacantOf, ...sc.repoOf]) if (repo.census && burbGeo(sc.layout, b)) out.set(b, repo.census)
   return out
 }
 
@@ -592,7 +585,7 @@ function fabric(items: Item[], sc: Scene) {
   })
   // A drawn borough with a census: its folders on its lots.
   for (const [b, census] of counted) {
-    for (const s of placeBlocks(slotsOf(sc.layout, b, false), census)) {
+    for (const s of placeBlocks(slotsOf(sc.layout, b), census)) {
       if (s.block < 0) continue
       if (s.lit) building(items, s.x, s.y0, s.w, s.d, s.h, s.pal, 0, keep)
       else {
@@ -653,9 +646,6 @@ function blueprint(
   return ground
 }
 
-// The preset's zebra crossings, at its big intersections.
-const CROSSINGS = [14, 20, 28, 35, 38, 40, 42, 47, 52, 56, 58]
-
 // Consecutive values grouped into runs [first, last + 1].
 function runs(set: Set<number>): [number, number][] {
   const out: [number, number][] = []
@@ -669,15 +659,9 @@ function runs(set: Set<number>): [number, number][] {
 
 // Streets and avenues from the layout's roads, on the sidewalk-grey island:
 // lamps along the avenues, zebra crossings at the big intersections (never
-// through a park). On the preset's map a road that reaches the shore runs on
-// to the shoreline itself, as its hand-drawn lines did.
+// through a park).
 function streets(sc: Scene): string {
   const { layout } = sc
-  const preset = 'preset' in layout.map
-  const inside = (x: number, y: number) => {
-    const [w, e] = edges(y)
-    return x > w + 0.1 && x < e - 0.1
-  }
   const avs = new Map<number, Set<number>>()
   const sts = new Map<number, Set<number>>()
   for (const [x, y, dir] of layout.roads) {
@@ -689,25 +673,13 @@ function streets(sc: Scene): string {
   const sorted = (m: Map<number, Set<number>>) => [...m.keys()].sort((a, b) => a - b)
   let st = ''
   for (const y of sorted(sts)) {
-    const [w, e] = edges(y)
-    for (const [a, b] of runs(sts.get(y)!)) {
-      const x0 = preset && a <= Math.ceil(w - 0.5) ? w + 0.05 : a
-      const x1 = preset && b >= Math.floor(e - 0.5) + 1 ? e - 0.05 : b
-      st += `M${xy(p(x0, y))}L${xy(p(x1, y))}`
-    }
+    for (const [a, b] of runs(sts.get(y)!)) st += `M${xy(p(a, y))}L${xy(p(b, y))}`
   }
   let av = ''
   let lamps = ''
   const span = new Map<number, [number, number][]>()
   for (const x of sorted(avs)) {
-    for (const [a, b] of runs(avs.get(x)!)) {
-      let first = a
-      let last = b
-      if (preset) {
-        // On to the shore, in the quarter steps the hand-drawn lines used.
-        while (first - 0.25 >= -2.5 && inside(x, first - 0.25)) first -= 0.25
-        while (last + 0.25 <= 62.5 && inside(x, last + 0.25)) last += 0.25
-      }
+    for (const [first, last] of runs(avs.get(x)!)) {
       span.set(x, [...(span.get(x) ?? []), [first, last]])
       av += `M${xy(p(x, first))}L${xy(p(x, last))}`
       const l0 = Math.ceil((first + 0.1) * 2) / 2 + 0.25
@@ -715,7 +687,7 @@ function streets(sc: Scene): string {
     }
   }
   let zebra = ''
-  const rows = preset ? CROSSINGS : sorted(sts).filter(y => y % 4 === 0)
+  const rows = sorted(sts).filter(y => y % 4 === 0)
   const parks = layout.buildings.filter(b => b.kind === 'plaza').flatMap(b => cellsOf(b))
   const inPark = (x: number, y: number) => parks.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y > y0 - 1 && y < y1)
   for (const y of rows) {
@@ -743,15 +715,11 @@ function streets(sc: Scene): string {
 }
 
 // Parks the person planted: lawn on each cell, and trees, two or three a
-// cell, set back to front with the buildings. The preset's plazas and parks
-// are drawn with their landmarks, so they are left out here.
+// cell, set back to front with the buildings.
 function parks(items: Item[], sc: Scene): string {
-  const preset = 'preset' in sc.layout.map
-  const own = (y: number, x: number) => !(preset && PRESET_PARKS.some(([py, x0, x1]) => py === y && x >= x0 && x < x1))
   let lawn = ''
   for (const [y, x0, x1] of sc.layout.park) {
     for (let x = x0; x < x1; x++) {
-      if (!own(y, x)) continue
       lawn += `M${n(x + 0.04)} ${n(y + 0.04)}h.92v.92h-.92z`
       const count = 2 + Math.floor(seeded(x, y) * 2)
       for (let i = 0; i < count; i++) {
@@ -854,73 +822,12 @@ function labels(sc: Scene): string {
 
 // ---- boroughs: one per other repository -----------------------------------
 
-// A borough's houses, as its repository's census places them (each run of
-// houses a folder, src/draw/blocks.ts), or the preset's own without one.
-function burbHouses(b: PresetBurb, census: Census | undefined): Placed[] {
-  const slots = houses(b)
-  return census ? placeBlocks(slots, census) : slots.map(s => ({ ...s, block: 0, lit: true }))
-}
-
 // The first house of each folder with uncommitted changes, for its scaffolding
 // (three at most, the most changed first).
 function dirtyHouses(placed: Placed[], census: Census | undefined): Placed[] {
   if (!census) return []
   const dirty = census.blocks.map((b, i) => [b.dirty, i] as const).filter(([d]) => d > 0).sort((a, b) => b[0] - a[0]).slice(0, 3)
   return dirty.flatMap(([, i]) => placed.filter(s => s.block === i).slice(0, 1))
-}
-
-// A Brooklyn-ish neighbourhood: brownstone rows back to back along their
-// streets, and a square at the front where the borough's agents gather. The
-// map draws the place itself, with the borough's name; burbLit adds the
-// repository's sign, the glow of work and the scaffolding of an edit. With a
-// census, its houses are its repository's folders.
-function burb(b: PresetBurb, census?: Census): string {
-  const [cx, cy] = BURBS[b].center
-  // The ground: pavement, the streets between the blocks, an avenue down the
-  // east side, and the square in front with a fountain behind the agents.
-  let g = GRID
-  g += gRect(cx - 3.7, cy - 3.7, cx + 3.4, cy + 1.8, '#272c36', ' rx=".2"')
-  g += `<path d="M${n(cx - 3.7)} ${n(cy - 2.45)}H${n(cx + 3.4)}M${n(cx - 3.7)} ${n(cy - 0.5)}H${n(cx + 3.4)}M${n(cx - 0.35)} ${n(cy - 3.7)}V${n(cy - 0.5)}M${n(cx + 3.15)} ${n(cy - 3.7)}V${n(cy + 1.8)}" stroke="#191d26" stroke-width=".42"/>`
-  g += gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, '#343944', ` rx=".3" stroke="#3f4552" stroke-width=".05"`)
-  let tiles = ''
-  for (const ty of [2.95, 3.95]) tiles += `M${n(cx - 3.4)} ${n(cy + ty)}H${n(cx + 2.65)}`
-  for (let tx = -2.25; tx < 2.7; tx += 1.25) tiles += `M${n(cx + tx)} ${n(cy + 2.05)}V${n(cy + 4.85)}`
-  g += `<path d="${tiles}" stroke="#3d4350" stroke-width=".04"/>`
-  g += `<circle cx="${n(cx - 0.3)}" cy="${n(cy + 2.4)}" r=".3" fill="#1e4f86" stroke="#9ca3af" stroke-width=".05"/>`
-  g += '</g>'
-  let stoops = ''
-  let ri = -1
-  burbHouses(b, census).forEach((h, i) => {
-    if (h.ri !== ri) {
-      if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
-      stoops = ''
-      // Street trees along the middle street, in front of the brownstones.
-      if (ri === 2) for (const tx of [-3.0, -1.7, 0.4, 1.6, 2.7]) g += tree(cx + tx, cy - 0.74, 1.3)
-      ri = h.ri
-    }
-    // An empty plot, room to grow: a tree on every other one.
-    if (h.block < 0) {
-      if (i % 2 === 0) g += tree(h.x + h.w / 2, h.y0 + h.d / 2, 1.1)
-      return
-    }
-    g += census ? censusHouse(h, []) : box(h.x, h.y0, h.w, 0.62, h.h, h.pal)
-    // A stoop up to each front door on the rows that face a street.
-    if ((h.ri === 2 || h.ri === 4) && !h.corner) {
-      const sx = h.x + (h.w + 0.03) * 0.3
-      stoops += `M${xy(p(sx, h.y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, h.y0 + 0.62, 1.8))}L${xy(p(sx + 0.12, h.y0 + 0.8))}L${xy(p(sx, h.y0 + 0.8))}z`
-    }
-  })
-  if (stoops) g += `<path d="${stoops}" fill="#8a7a66"/>`
-  // Trees along the front, the square's lamps and its fountain.
-  for (const tx of [-2.9, -1.5, 0.5, 1.9]) g += tree(cx + tx, cy + 1.5, 1.5)
-  g += tree(cx - 3.3, cy + 2.15, 2) + tree(cx + 2.55, cy + 4.75, 2)
-  g += lamp(cx - 3.35, cy + 4.8) + lamp(cx + 2.6, cy + 2.15) + lamp(cx - 1.4, cy + 2.1) + lamp(cx + 0.8, cy + 2.1)
-  const [fx, fy] = p(cx - 0.3, cy + 2.4)
-  g += `<path d="M${n(fx)} ${n(fy)}v-4" stroke="#bfdbfe" stroke-width=".8" opacity=".8"/><circle cx="${n(fx)}" cy="${n(fy - 4.4)}" r="1.1" fill="#dbeafe" opacity=".7"/>`
-  // The sign hangs at the back corner, clear of the square where agents stand.
-  const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
-  g += `<text class="sign sb" x="${n(lx)}" y="${n(ly)}" dy="-1.7em" text-anchor="middle">${BURBS[b].name.toUpperCase()}</text>`
-  return g
 }
 
 // A borough's blueprints (src/blueprints.ts): on the free plots nearest the
@@ -1009,37 +916,6 @@ function censusSign(x: number, y: number, census: Census | undefined, cost?: Cos
   const [line, dirty] = signLine(census)
   const tail = dirty ? `<tspan style="fill:#fcd34d"> · ${esc(dirty)}</tspan>` : ''
   return `<text class="cap" x="${n(x)}" y="${n(y)}" dy="1.6em" text-anchor="middle" style="font-size:calc(6px*var(--zt,1));stroke-width:calc(2.2px*var(--zt,1));font-weight:600;fill:#94a3b8">${esc(line)}${tail}${built}</text>`
-}
-
-// What changes about a borough: the repository's name on the sign (none once
-// it has packed up) with its census line, the glow and lit square while
-// someone works there, and scaffolding while someone edits: on each folder
-// with uncommitted changes when there is a census, else on the corner house.
-function burbLit(b: PresetBurb, repo: Repo | undefined, sc: Scene): string {
-  const [cx, cy] = BURBS[b].center
-  const here = (sc.byBurb.get(b) ?? []).filter(a => a.status !== 'done')
-  const isActive = here.some(a => a.status === 'working')
-  const isBuilding = here.some(a => a.at === 'workshop')
-  const census = repo?.census
-  let g = ''
-  if (isActive) {
-    g += glow(cx - 0.6, cy + 3.4, 44)
-    g += GRID + gRect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, 'none', ` rx=".3" stroke="#fde68a" stroke-width=".05"`) + '</g>'
-  }
-  if (census) {
-    g += weatheredHouses(burbHouses(b, census), census, sc.now)
-    if (repo) g += blueprintHouses(burbHouses(b, census), repo, census, sc.now)
-    dirtyHouses(burbHouses(b, census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
-  } else if (isBuilding) {
-    const corner = houses(b).find(h => h.corner)
-    if (corner) g += scaffold(corner.x, corner.y0, corner.w, 0.62, corner.h)
-  }
-  if (repo) {
-    const [lx, ly] = p(cx + 0.8, cy - 2.6, 40)
-    g += `<text class="sign" x="${n(lx)}" y="${n(ly)}" text-anchor="middle" style="fill:${isActive ? '#fde68a' : '#e2e8f0'}">${esc(repo.name)}</text>`
-    g += censusSign(lx, ly, census, costOf(sc.costs ?? new Map(), repo.root))
-  }
-  return g
 }
 
 // A borough the person drew: its line on the ground, the square on its front
@@ -1136,9 +1012,9 @@ function drawnBurbLit(bo: Borough, repo: Repo | undefined, sc: Scene): string {
   const census = repo?.census
   if (census) {
     const isBuilding = here.some(a => a.at === 'workshop')
-    g += weatheredHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census, sc.now)
-    if (repo) g += blueprintHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), repo, census, sc.now)
-    dirtyHouses(placeBlocks(slotsOf(sc.layout, bo.id, false), census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
+    g += weatheredHouses(placeBlocks(slotsOf(sc.layout, bo.id), census), census, sc.now)
+    if (repo) g += blueprintHouses(placeBlocks(slotsOf(sc.layout, bo.id), census), repo, census, sc.now)
+    dirtyHouses(placeBlocks(slotsOf(sc.layout, bo.id), census), census).forEach((h, i) => (g += scaffold(h.x, h.y0, h.w, h.d, h.h, isBuilding && i === 0)))
   }
   if (repo) {
     const [lx, ly] = p(x0 + (x1 - x0) / 2, y0 + 0.6, 30)
@@ -1309,7 +1185,7 @@ function crownColor(sc: Scene): string {
   return sc.update?.available ? '#fbbf24' : busy ? ACCENT[busy] : '#f8fafc'
 }
 
-// The box each kind's scaffolding hugs while it goes up, at its preset origin.
+// The box each kind's scaffolding hugs while it goes up, at its drawing origin.
 const SCAFFOLDS: Partial<Record<Kind, [number, number, number, number, number][]>> = {
   observatory: [[5.25, 37.2, 0.72, 0.6, 54]],
   library: [[7.25, 39.2, 1.5, 0.58, 12]],
@@ -1324,7 +1200,7 @@ const SCAFFOLDS: Partial<Record<Kind, [number, number, number, number, number][]
 // Everything that moves or lights up on the landmarks: one overlay item per
 // building, keyed by its id and hashed by its markup (none of it holds the
 // clock), so a frame that changes nothing leaves its animations running.
-// Each is drawn at its kind's preset origin and shifted to its building.
+// Each is drawn at its kind's drawing origin and shifted to its building.
 function landmarkLights(sc: Scene): OverlayItem[] {
   const out: OverlayItem[] = []
   const on = (d: District) => sc.active.has(d)
@@ -1405,7 +1281,7 @@ function landmarkLights(sc: Scene): OverlayItem[] {
 }
 
 // The landmarks' still bodies: each building drawn by its kind at the kind's
-// preset origin and shifted to where it stands (the projection is affine, so
+// drawing origin and shifted to where it stands (the projection is affine, so
 // one translate moves it), its flat ground into `ground`, under everything,
 // and its body as depth-sorted items. A lot while unbuilt.
 function landmarks(items: Item[], sc: Scene): string {
@@ -1420,7 +1296,7 @@ function landmarks(items: Item[], sc: Scene): string {
   return ground + '</g>'
 }
 
-// One building, at its kind's preset origin: its ground (grid space) is
+// One building, at its kind's drawing origin: its ground (grid space) is
 // returned, its items pushed. Only what is built matters here.
 function landmark(items: Item[], sc: Scene, b: Building): string {
   let ground = ''
@@ -1439,7 +1315,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
   // edge, the lawn its agents rest on in the middle, trees between, and a
   // pond when there is room for one.
   if (kind === 'plaza' && b.size) {
-    const [ox, oy] = PRESET_SITES.plaza
+    const [ox, oy] = ORIGINS.plaza
     const [[, , w, d]] = footprintOf(kind, b.size)
     const name = SIZES.plaza?.[b.size]?.name ?? LABELS.plaza
     if (!built) {
@@ -1964,43 +1840,6 @@ export function marchingPieces(cells: Set<string>): string {
 }
 
 
-// City lights reflected in the rivers: streaks under the shores that face us.
-function reflections(): string {
-  let warm = ''
-  let cool = ''
-  for (let gy = 16; gy < 62.6; gy += 0.7) {
-    const e = edges(gy)[1]
-    const q = seeded(gy, 7)
-    const [x, y] = p(e + 0.2 + q * 0.5, gy)
-    const w = 2 + seeded(7, gy) * 3
-    const streak = `M${n(x - w / 2)} ${n(y + 1.5)}h${n(w)}M${n(x - w * 0.35)} ${n(y + 3.5)}h${n(w * 0.7)}M${n(x - w * 0.2)} ${n(y + 5.5)}h${n(w * 0.4)}`
-    if (q > 0.3) warm += streak
-    else cool += streak
-  }
-  // New Jersey's lights across the Hudson.
-  for (let gy = -1; gy < 62; gy += 1.3) {
-    const [w] = edges(gy)
-    const [x, y] = p(w - 5 - gy * 0.02 + 0.3, gy)
-    if (seeded(gy, 11) > 0.45) cool += `M${n(x - 1.2)} ${n(y + 1.5)}h2.4M${n(x - 0.6)} ${n(y + 3.5)}h1.2`
-  }
-  return (
-    `<path class="refl" d="${warm}" stroke="#fcd581" stroke-width=".9" opacity=".4"/>` +
-    `<path class="refl" d="${cool}" stroke="#c7ddff" stroke-width=".8" opacity=".3"/>`
-  )
-}
-
-// A few of the reflections twinkle: the overlay's, so the map stays still.
-function twinkles(): string {
-  let twinkle = ''
-  for (let gy = 16; gy < 62.6; gy += 0.7) {
-    const q = seeded(gy, 7)
-    if (q <= 0.9) continue
-    const [x, y] = p(edges(gy)[1] + 0.2 + q * 0.5, gy)
-    twinkle += `<circle cx="${n(x)}" cy="${n(y + 3)}" r=".8" fill="#fff7d6"><animate attributeName="opacity" values="0;1;0" dur="${n(2 + q * 2)}s" begin="${n(-gy % 3)}s" repeatCount="indefinite"/></circle>`
-  }
-  return twinkle
-}
-
 function moon(x: number, y: number): string {
   return (
     `<circle class="sky" cx="${n(x)}" cy="${n(y)}" r="90" fill="url(#mhalo)"/>` +
@@ -2009,93 +1848,8 @@ function moon(x: number, y: number): string {
   )
 }
 
-// ---- bridges, boats, traffic ----------------------------------------------
-
-// The main cable of a suspension bridge, between its towers' tops.
-function cable(a: [number, number], b: [number, number], towers: number[]): string {
-  const [x1, y1] = p(a[0], a[1], 4)
-  const [x2, y2] = p(b[0], b[1], 4)
-  const [t1, t2] = towers.map(t => [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t - 15] as Pt)
-  if (!t1 || !t2) return ''
-  const midX = (t1[0] + t2[0]) / 2
-  const midY = (t1[1] + t2[1]) / 2 + 12
-  return `M${n(x1)} ${n(y1)}L${n(t1[0])} ${n(t1[1])}Q${n(midX)} ${n(midY)} ${n(t2[0])} ${n(t2[1])}L${n(x2)} ${n(y2)}`
-}
-
-function bridge(a: [number, number], b: [number, number], towers: number[], color: string): string {
-  const [x1, y1] = p(a[0], a[1], 4)
-  const [x2, y2] = p(b[0], b[1], 4)
-  let g = `<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" stroke="#94a3b8" stroke-width="2.4"/>`
-  // Lamps along the deck.
-  g += `<line x1="${n(x1)}" y1="${n(y1 - 1)}" x2="${n(x2)}" y2="${n(y2 - 1)}" stroke="#ffe6a8" stroke-width=".9" stroke-linecap="round" stroke-dasharray="0 6"/>`
-  for (const t of towers) {
-    const x = x1 + (x2 - x1) * t
-    const y = y1 + (y2 - y1) * t
-    g += `<rect x="${n(x - 1.5)}" y="${n(y - 16)}" width="3" height="17" fill="#a8a29e"/>`
-  }
-  const d = cable(a, b, towers)
-  if (d) g += `<path d="${d}" fill="none" stroke="${color}" stroke-width="1"/>`
-  return g
-}
-
-// The Brooklyn Bridge's cable flashing red: a merge conflict needs you.
-const BROOKLYN_BRIDGE: [[number, number], [number, number], number[]] = [[14.4, 56], [19.8, 56.2], [0.22, 0.8]]
-
-function bridgeAlarm(): string {
-  return `<path d="${cable(...BROOKLYN_BRIDGE)}" fill="none" stroke="#f87171" stroke-width="1"><animate attributeName="opacity" values="1;.3;1" dur=".8s" repeatCount="indefinite"/></path>`
-}
-
-function mover(path: string, dur: number, begin: number, shape: string): string {
-  return `<g>${shape}<animateMotion path="${path}" dur="${n(dur)}s" begin="${n(begin)}s" repeatCount="indefinite"/></g>`
-}
-
-function line(a: [number, number], b: [number, number]): string {
-  return `M${p(...a).map(n).join(',')} L${p(...b).map(n).join(',')}`
-}
-
-const TAXI = '<rect x="-2" y="-1.4" width="4" height="2.8" rx=".8" fill="#facc15"/>'
-const CAR = '<rect x="-2" y="-1.4" width="4" height="2.8" rx=".8" fill="#e2e8f0"/>'
-
-// Cars on the avenues, under the buildings, and boats on the water.
-function traffic(): string {
-  let g = ''
-  const lanes: [[number, number], [number, number], number, string][] = [
-    [[9, 0], [9, 56], 14, TAXI],
-    [[7, 58], [7, 35.2], 8, TAXI],
-    [[7, 21.8], [7, 2], 7, CAR],
-    [[11, 4], [11, 52], 12, CAR],
-    [[13, 48], [13, 16], 11, TAXI],
-    [[3, 10], [3, 54], 15, CAR],
-    [[15, 50], [15, 22], 10, TAXI],
-    [[1, 50], [1, 22], 12, CAR],
-  ]
-  lanes.forEach(([a, b, dur, shape], i) => {
-    g += mover(line(a, b), dur, -i * 2.3, shape)
-    g += mover(line(a, b), dur, -i * 2.3 - dur / 2, shape)
-  })
-  // Boats and the Staten Island Ferry.
-  const boat = (c: string) => `<path d="M-5 0l10 -1l-2 2.4h-7z" fill="${c}"/><rect x="-2" y="-3.6" width="3" height="2.4" fill="#f5f5f4"/><circle cx="4" cy="-.6" r=".7" fill="#fde68a"/>`
-  g += mover(line([-2.2, 2], [-2.6, 58]), 40, 0, boat('#e2e8f0'))
-  g += mover(line([18.6, 52], [16.8, 24]), 30, -6, boat('#e2e8f0'))
-  g += mover(line([7.4, 64], [2, 76]), 18, 0, boat('#f97316'))
-  return g
-}
-
 // How long each launch plays, in seconds.
 const LAUNCH_SECONDS = { commit: 3.5, push: 9 }
-
-// Liberty Island: the ground under the Statue, on the map.
-function libertyIsland(): string {
-  return poly(
-    [
-      [1.4, 69.4],
-      [2.8, 69.4],
-      [2.8, 70.6],
-      [1.4, 70.6],
-    ],
-    '#1f5130',
-  )
-}
 
 // The launch under way, if any: the Statue's item is keyed on it.
 function launching(launch: Launch | undefined, now: number): Launch['kind'] | undefined {
@@ -2181,21 +1935,6 @@ function statue(launch: Launch | undefined, now: number, state: 'dark' | 'unlit'
   return g + '</g>'
 }
 
-const HOODS: [string, number, number][] = [
-  ['INWOOD', 8, 0.5],
-  ['WASHINGTON HEIGHTS', 8, 7],
-  ['HARLEM', 8.5, 16],
-  ['UPPER WEST SIDE', 3, 28],
-  ['UPPER EAST SIDE', 12.4, 29],
-  ['MIDTOWN', 14.5, 37],
-  ['CHELSEA', 2.4, 45.5],
-  ['GREENWICH VILLAGE', 4.5, 49.5],
-  ['EAST VILLAGE', 15, 48.5],
-  ['SOHO', 7.5, 52.5],
-  ['TRIBECA', 3.6, 54.5],
-  ['FINANCIAL DISTRICT', 8.5, 60.5],
-]
-
 // Fireworks over the Empire State while an update waits: rockets climb from the
 // spire and burst into rings of sparks, staggered so the sky is never quiet.
 function fireworks(): string {
@@ -2228,9 +1967,9 @@ function fireworks(): string {
   return g + '</g>'
 }
 
-// The boroughs the view takes in: the preset's in use, and every drawn one.
+// The boroughs the view takes in: every one.
 export function framed(sc: Scene): Burb[] {
-  return [...sc.repoOf.keys(), ...sc.vacantOf.keys(), ...sc.layout.boroughs.filter(bo => !bo.preset).map(bo => bo.id)]
+  return [...sc.repoOf.keys(), ...sc.vacantOf.keys(), ...sc.layout.boroughs.map(bo => bo.id)]
 }
 
 // What the still map depends on: which landmarks stand, which boroughs have
@@ -2240,55 +1979,21 @@ export function framed(sc: Scene): Burb[] {
 export function mapKey(sc: Scene): string {
   const built = Object.keys(sc.built).sort()
   const burbs = [...sc.repoOf.keys(), ...sc.vacantOf.keys()].filter(b => !isWaiting(b)).sort()
-  const map = 'preset' in sc.layout.map ? [] : [sc.layout.map.seed]
   // The censuses' folders, by borough (none at all keeps the hash it had before censuses).
   const counts = [...sc.vacantOf, ...sc.repoOf].filter(([, r]) => r.census).map(([b, r]) => [b, censusShape(r.census)])
-  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev, ...map, ...(counts.length ? [counts] : [])]))
+  return hash(JSON.stringify([built, burbs, sc.connected, blocksFor(sc.population, lotsOf(sc.layout).length), sc.rev, sc.layout.map.seed, ...(counts.length ? [counts] : [])]))
 }
 
 // The still city, back to front: everything but the agents and the overlay.
 // It reads only what mapKey hashes.
 export function drawMap(sc: Scene): string {
-  const { repoOf, vacantOf } = sc
   const vb = frame(framed(sc), sc.layout)
   let s = ''
   // The water's sparkle, and the city's lights reflected in it.
   s += `<rect x="${n(vb.x - 2000)}" y="${n(vb.y - 2000)}" width="${n(vb.w + 4000)}" height="${n(vb.h + 4000)}" fill="url(#rip)"/>`
-  const isPreset = 'preset' in sc.layout.map
-  if (isPreset) s += reflections()
-  else s += generatedLand(sc.layout)
-  // Land: New Jersey, the Bronx, Queens, Brooklyn and the small islands, each
-  // a shore under its top.
-  const land = (shape: [number, number][], top: string) => {
-    if (!isPreset) return
-    const shifted = shape.map(([gx, gy]) => p(gx, gy)).map(([x, y]) => [x, y + 3] as Pt)
-    s += `<polygon points="${pts(shifted)}" fill="#0d1a14"/>`
-    s += poly(shape, top)
-  }
-  land(NEW_JERSEY, '#17251d')
-  land(BRONX, '#17251d')
-  land(QUEENS, '#17251d')
-  land(BROOKLYN, '#17251d')
-  land(ROOSEVELT, '#1d3326')
-  land(RANDALLS, '#1d3326')
-  land(GOVERNORS, '#1d3326')
-  // Lights across the boroughs.
-  for (let i = 0; i < (isPreset ? 70 : 0); i++) {
-    const r1 = seeded(i, 91)
-    const r2 = seeded(91, i)
-    const [gx, gy] =
-      i % 3 === 0 ? [-14 + r1 * 9, -6 + r2 * 64] : i % 3 === 1 ? [22 + r1 * 14, 20 + r2 * 60] : [16 + r1 * 20, -10 + r2 * 24]
-    const [x, y] = p(gx, gy)
-    s += `<circle cx="${n(x)}" cy="${n(y)}" r=".9" fill="#fcd581" opacity="${n(0.25 + r1 * 0.5)}"/>`
-  }
+  s += generatedLand(sc.layout)
 
-  // Manhattan: the shore, the pavement, the streets, then whatever lies flat
-  // on them, then the cars.
-  if (isPreset) {
-    const shore = ISLAND.map(([gx, gy]) => p(gx, gy)).map(([x, y]) => [x, y + 5] as Pt)
-    s += `<polygon points="${pts(shore)}" fill="#0f172a"/>`
-    s += poly(ISLAND, '#30353f')
-  }
+  // The streets, then whatever lies flat on them.
   s += streets(sc)
   if (sc.connected) s += rails(sc)
   const items: Item[] = []
@@ -2296,73 +2001,14 @@ export function drawMap(sc: Scene): string {
   s += landmarks(items, sc)
   s += pads(sc)
 
-  // Bridges.
-  if (isPreset) s += bridge([edges(4.5)[0], 4.5], [edges(4.5)[0] - 5.2, 4.5], [0.12, 0.88], '#cbd5e1') // George Washington
-  if (isPreset) s += bridge([edges(34.5)[1], 34.5], [19.2, 34.5], [0.3, 0.75], '#94a3b8') // Queensboro
-  if (isPreset) s += bridge([edges(50.5)[1], 50.5], [21.4, 50.5], [0.25, 0.75], '#94a3b8') // Williamsburg
-  if (isPreset) s += bridge([edges(54)[1], 54], [20.5, 54], [0.2, 0.8], '#94a3b8') // Manhattan
-  if (isPreset) s += bridge(...BROOKLYN_BRIDGE, '#e2e8f0') // Brooklyn
-  if (isPreset) s += bridge([12.9, 11], [14.6, 11], [], '#94a3b8') // Third Avenue, to the Bronx
-  if (isPreset) {
-    // The ferry to Jersey City.
-    const [x1, y1] = p(0.4, 39)
-    const [x2, y2] = p(-4.8, 39)
-    s += `<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" stroke="#7aa2d6" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/>`
-  }
-
-  // A borough for each repository in use besides the session's own, and the
-  // houses of the ones that have moved out.
-  const preset = (b: Burb) => !!burbGeo(sc.layout, b)?.preset
-  for (const [b, repo] of vacantOf) if (preset(b)) s += burb(b as PresetBurb, repo.census)
-  for (const [b, repo] of repoOf) if (preset(b)) s += burb(b as PresetBurb, repo.census)
-  for (const bo of sc.layout.boroughs) if (!bo.preset) s += drawnBurb(bo, sc.layout)
+  // Every borough, lived in or not.
+  for (const bo of sc.layout.boroughs) s += drawnBurb(bo, sc.layout)
 
   // Buildings and landmarks, back to front.
   fabric(items, sc)
   items.sort((a, b) => a.depth - b.depth)
   s += compose(items)
-  s += moonAndNames(sc, vb, isPreset)
-  return s
-}
-
-// The sky, and the names on the map. A generated map has neither the
-// preset's glow over Midtown nor its Liberty Island and names.
-function moonAndNames(sc: Scene, vb: { x: number; y: number; w: number; h: number }, isPreset: boolean): string {
-  const { repoOf, vacantOf } = sc
-  let s = ''
-  if (!isPreset) return moon(vb.x + vb.w * 0.3, vb.y + 34)
-  // The city's glow on the haze above Midtown and downtown.
-  s += `<ellipse class="sky" cx="${n(p(9, 41)[0])}" cy="${n(p(9, 41)[1] - 40)}" rx="190" ry="85" fill="url(#sky)"/>`
-  s += `<ellipse class="sky" cx="${n(p(8, 58)[0])}" cy="${n(p(8, 58)[1] - 40)}" rx="130" ry="60" fill="url(#sky)"/>`
-  s += libertyIsland()
   s += moon(vb.x + vb.w * 0.3, vb.y + 34)
-
-  // Names on the map: neighbourhoods once zoomed in, rivers, and the boroughs
-  // not in use. The districts' names are the overlay's: they light up with work.
-  for (const [name, gx, gy] of HOODS) {
-    const [x, y] = p(gx, gy)
-    s += `<text class="hood minor" x="${n(x)}" y="${n(y)}" text-anchor="middle">${name}</text>`
-  }
-  const water: [string, number, number][] = [
-    ['HUDSON RIVER', -2.4, 24],
-    ['EAST RIVER', 18.2, 42],
-    ['UPPER BAY', 4, 67],
-  ]
-  for (const [name, gx, gy] of water) {
-    const [x, y] = p(gx, gy)
-    s += `<text class="water" x="${n(x)}" y="${n(y)}" text-anchor="middle" transform="rotate(-26.6 ${n(x)} ${n(y)})">${name}</text>`
-  }
-  const boroughs: [string, number, number, Burb][] = [
-    ['NEW JERSEY', -11, 28, 'jersey'],
-    ['THE BRONX', 20, 4, 'bronx'],
-    ['QUEENS', 25, 30, 'queens'],
-    ['BROOKLYN', 25, 58, 'brooklyn'],
-  ]
-  for (const [name, gx, gy, b] of boroughs) {
-    if (repoOf.has(b) || vacantOf.has(b)) continue
-    const [x, y] = p(gx, gy)
-    s += `<text class="hood big" x="${n(x)}" y="${n(y)}" text-anchor="middle">${name}</text>`
-  }
   return s
 }
 
@@ -2374,15 +2020,8 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   const put = (k: string, svg: string, top = false) => {
     if (svg) out.push(item(k, svg, top))
   }
-  // The preset's reflections and its traffic, along its own avenues.
-  if ('preset' in sc.layout.map) {
-    put('twinkle', twinkles())
-    put('cars', traffic())
-  }
   put('pads', padsLit(sc))
-  for (const [b] of sc.vacantOf) if (burbGeo(sc.layout, b)?.preset) put(`burb:${b}`, burbLit(b as PresetBurb, undefined, sc))
-  for (const [b, repo] of sc.repoOf) if (burbGeo(sc.layout, b)?.preset) put(`burb:${b}`, burbLit(b as PresetBurb, repo, sc))
-  for (const bo of sc.layout.boroughs) if (!bo.preset) put(`burb:${bo.id}`, drawnBurbLit(bo, sc.repoOf.get(bo.id), sc))
+  for (const bo of sc.layout.boroughs) put(`burb:${bo.id}`, drawnBurbLit(bo, sc.repoOf.get(bo.id), sc))
   put('waiting', waitingSign(sc))
   out.push(...landmarkLights(sc))
   // The Treasury's board: the day's spend, and what is left of the plan's limits.
@@ -2414,9 +2053,8 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
   }
   put('spires', spireLights(sc))
   put('haze', haze(sc))
-  if (sc.hasConflict) put('alarm', bridgeAlarm())
   sc.layout.buildings.filter(b => b.kind === 'liberty').forEach((liberty, i) => {
-    // She stands dark until she goes up (with the Seaport, on the preset);
+    // She stands dark until she goes up (with the Seaport);
     // her torch lights on the first push. Every Statue launches on a push.
     const state = liberty.built === undefined ? 'dark' : sc.built.torch !== undefined ? 'lit' : 'unlit'
     const kind = launching(world.launch, sc.now)

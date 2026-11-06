@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { renderFrame } from '../src/city.ts'
 import { shippedOf } from '../src/deploys.ts'
 import { LIVE_MS, PREVIEW_MS, SAIL_MS, seaway } from '../src/draw/ships.ts'
-import { manhattanLayout } from '../src/layout.ts'
+import { cityWith, wholeLayout } from './whole.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
@@ -28,12 +28,12 @@ test('deploys are read from the commands that make them, and only those', () => 
 })
 
 test('ships leave from the Seaport toward the nearest water', () => {
-  assert.equal(seaway(manhattanLayout()), undefined, 'no ship while the Seaport is a blueprint lot')
-  const built = new City()
+  assert.equal(seaway(wholeLayout()), undefined, 'no ship while the Seaport is a blueprint lot')
+  const built = cityWith()
   built.buildAll(T0)
   const way = seaway(built.layout)!
-  assert.ok(way, 'Manhattan has its Seaport once it stands')
-  assert.deepEqual(way.dir, [1, 0], 'east, to the East River')
+  assert.ok(way, 'a Seaport once it stands')
+  assert.equal(Math.abs(way.dir[0]) + Math.abs(way.dir[1]), 1, 'straight out to the water')
 })
 
 function ev(name: string, extra: Record<string, unknown> = {}): HookEvent {
@@ -41,7 +41,7 @@ function ev(name: string, extra: Record<string, unknown> = {}): HookEvent {
 }
 
 test('a deploy sails a ship out and puts up a LIVE sign, which come down in their time', () => {
-  const city = new City()
+  const city = cityWith()
   city.buildAll(T0)
   city.apply(ev('SessionStart'), T0)
   const extra = { tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: 'vercel --prod' } }

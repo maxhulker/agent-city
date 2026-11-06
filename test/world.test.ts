@@ -6,6 +6,7 @@ import { renderCity } from './render.ts'
 import { opacityFor } from '../src/draw/agents.ts'
 import { AGENT_CAP, BURB_LEAVE, City, IDLE_LEAVE, REST_LEAVE, TRAIN_MS } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 
 // The world rules are pure: feed the city hook events and clock ticks, then
 // look at what it holds. No server, no page, no Claude.
@@ -172,7 +173,7 @@ test('a session that leaves keeps where its conversation is', () => {
 })
 
 test('a borough packs up after an hour of quiet, and its repository moves straight back in', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   idleSession(city, 'S1', T0)
   workingSession(city, 'S2', T0, OTHER)
   const repo = () => city.world.repos.find(r => r.root === OTHER)!
@@ -207,7 +208,7 @@ test('a borough packs up after an hour of quiet, and its repository moves straig
 })
 
 test('a repository moving back in takes its old borough when it is still free', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   idleSession(city, 'S1', T0)
   workingSession(city, 'S2', T0, OTHER)
   assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0))

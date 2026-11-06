@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 
 import { renderFrame } from '../src/city.ts'
 import { BLUEPRINT_MS, addBlueprints, newFolders, pathsInPlan, relativeTo, unbuilt } from '../src/blueprints.ts'
-import { blueprintPlots, houses, placeBlocks } from '../src/draw/blocks.ts'
+import { blueprintPlots, placeBlocks, slotsOf } from '../src/draw/blocks.ts'
 import type { Census } from '../src/types.ts'
-import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
+import { cityWith, layoutWith } from './whole.ts'
 
 // Blueprints: the folders a project is about to get, on its empty plots
 // before they are built.
@@ -42,7 +42,7 @@ test('only folders the census lacks become blueprints; built or stale ones go', 
 })
 
 test('blueprints take the free plots nearest the front, two each while there is room', () => {
-  const placed = placeBlocks(houses('brooklyn'), census(['src']))
+  const placed = placeBlocks(slotsOf(layoutWith('Brooklyn'), 'brooklyn'), census(['src']))
   const free = placed.filter(s => s.block < 0).length
   const plots = blueprintPlots(placed, ['public', 'web'])
   assert.equal(plots.length, 2)
@@ -57,7 +57,7 @@ function ev(name: string, extra: Record<string, unknown> = {}): HookEvent {
 }
 
 test('a plan draws blueprints in its borough; a commit builds them', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply({ hook_event_name: 'SessionStart', session_id: 'S1', cwd: 'C:/fake/home' }, T0)
   city.build({ op: 'movein', id: 'brooklyn', root: ROOT }, T0)
   city.setCensus(ROOT, census(['src']))

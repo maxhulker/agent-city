@@ -116,7 +116,6 @@
   .bp-line.next .st, .bp-line.next .nm { color: #fde68a; }
   .bp-line.locked { opacity: .55; }
   .bp-line .op { flex: none; font-size: 10px; color: #4ade80; }
-  #welcome .wstart { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--dim); }
   .bp-line .nm { flex: 1; min-width: 0; }
   .bp-line .hn { color: var(--dim); font-size: 11px; text-align: right; }
   /* The City Treasury card. */
@@ -558,7 +557,6 @@
         <div class="wm-head"><span>Lay it out yourself: pick the land</span><button class="lnkbtn" type="button" id="wm-shuffle">Shuffle</button></div>
         <div class="wm-row" id="wm-row"></div>
       </div>
-      <div class="wstart" id="w-manhattan">Or <button class="lnkbtn" type="button" id="wm-manhattan">start from Manhattan</button>, whole, and rearrange it.</div>
     </div>
     <div id="ticker"><div id="track"></div></div>
     <!-- The city builder (docs/city-builder.md): the build toolbar, the catalogue, the selection card and the borough sheet. -->
@@ -1030,11 +1028,11 @@
 
   function fit() { view = { z: 1, u: 0.5, v: 0.5 }; applyView(); saveView() }
 
-  // On a generated map, the view opens on the station's island; the rest of
-  // the land is a zoom out away. Elsewhere it fits the whole map.
+  // The view opens on the station's island; the rest of the land is a zoom
+  // out away. With no station it fits the whole map.
   function fitIsland(l, tries = 0) {
     const st = l && l.buildings.find(b => b.kind === 'station')
-    if (!st || 'preset' in l.map) { fit(); return }
+    if (!st) { fit(); return }
     // The map's frame and the shared rules may still be on their way.
     if (!base || !window.cityRules || !mapSvg) {
       if (tries < 25) setTimeout(() => fitIsland(l, tries + 1), 200)
@@ -2184,7 +2182,7 @@
     if (!g) return
     const w = $('welcome')
     w.hidden = !g.welcome
-    $('w-maps').hidden = $('w-manhattan').hidden = !g.pick
+    $('w-maps').hidden = !g.pick
     if (g.welcome && g.pick && typeof drawMapPicker === "function") drawMapPicker()
     if (g.welcome) {
       const st = $('w-state')
@@ -2195,9 +2193,8 @@
       $('w-next').hidden = g.connected
     }
     const MARK = { blueprint: '◻', building: '▲', built: '✓', done: '✓', next: '★', todo: '◻', locked: '🔒' }
-    // Rebuild's two starts.
-    const rebuild = `<button class="btn sm" type="button" data-rebuild="land" title="New land to lay out; sessions and agents stay">Rebuild: new land</button>
-      <button class="btn sm" type="button" data-rebuild="manhattan" title="Manhattan, whole; sessions and agents stay">Rebuild: Manhattan</button>`
+    // Rebuild: new land to lay out.
+    const rebuild = `<button class="btn sm" type="button" data-rebuild="land" title="New land to lay out; sessions and agents stay">Rebuild: new land</button>`
     $('bp-title').textContent = g.complete ? 'The city' : g.quests ? 'First district' : 'Blueprints'
     const html = g.quests && !g.complete
       ? g.quests.map(q => `<div class="bp-line q ${esc(q.state)}" title="${esc(q.hint)}"><span class="st">${MARK[q.state] || ''}</span><span class="nm">${esc(q.name)}</span>
@@ -2274,11 +2271,8 @@
     } else if (b.dataset.buildall) {
       post('/buildall', {}).then(r => { if (r.error) toast(r.error) })
     } else if (b.dataset.rebuild) {
-      const land = b.dataset.rebuild !== 'manhattan'
-      if (confirm(land
-        ? 'Rebuild the city on new land? Everything you laid out goes, and you lay out a first district again. Sessions and agents stay.'
-        : 'Rebuild the city as Manhattan, whole? Everything you laid out goes. Sessions and agents stay.')) {
-        post('/rebuild', { start: land ? 'land' : 'manhattan' }).then(r => { if (r.error) toast(r.error) })
+      if (confirm('Rebuild the city on new land? Everything you laid out goes, and you lay out a first district again. Sessions and agents stay.')) {
+        post('/rebuild', {}).then(r => { if (r.error) toast(r.error) })
       }
     } else if (b.dataset.resolve) {
       post('/resolve', { id: b.dataset.resolve })
@@ -4049,8 +4043,8 @@
   })
 
   // ---- the welcome's map picker (docs/city-builder.md, step seven) --------
-  // Three maps made from seeds, drawn small from the shared rules, and the
-  // hand-drawn Manhattan. Picking one starts the new city on it.
+  // Three maps made from seeds, drawn small from the shared rules. Picking
+  // one starts the new city on it.
   let pickSeeds = [0, 0, 0].map(() => 1 + Math.floor(Math.random() * 2147483000))
   function thumb(l) {
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, d = ''
@@ -4067,8 +4061,8 @@
     const row = document.getElementById('wm-row')
     if (!row || !window.cityRules || document.getElementById('welcome').hidden) return
     const now = layout && layout.map
-    const isOn = s => now && (s === 'manhattan' ? 'preset' in now : now.seed === s)
-    const seeds = isOn('manhattan') || !now || pickSeeds.includes(now.seed) ? pickSeeds : [now.seed, ...pickSeeds.slice(0, 2)]
+    const isOn = s => now && now.seed === s
+    const seeds = !now || pickSeeds.includes(now.seed) ? pickSeeds : [now.seed, ...pickSeeds.slice(0, 2)]
     const key = JSON.stringify([seeds, now])
     if (row.dataset.key === key) return
     row.dataset.key = key
@@ -4077,11 +4071,7 @@
   document.getElementById('wm-row').addEventListener('click', e => {
     const b = e.target.closest('[data-seed]')
     if (!b) return
-    const seed = b.dataset.seed === 'manhattan' ? 'manhattan' : Number(b.dataset.seed)
-    post('/newmap', { seed }).then(r => { if (r && r.error) toast(r.error) })
-  })
-  document.getElementById('wm-manhattan').addEventListener('click', () => {
-    post('/newmap', { seed: 'manhattan' }).then(r => { if (r && r.error) toast(r.error) })
+    post('/newmap', { seed: Number(b.dataset.seed) }).then(r => { if (r && r.error) toast(r.error) })
   })
   document.getElementById('wm-shuffle').addEventListener('click', () => {
     pickSeeds = pickSeeds.map(() => 1 + Math.floor(Math.random() * 2147483000))

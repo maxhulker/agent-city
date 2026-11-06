@@ -1,17 +1,16 @@
-import type { Burb, District, Landmark, PresetBurb } from './types.ts'
+import type { Burb, District, Landmark } from './types.ts'
 
 // The city's layout (docs/city-builder.md): what stands where, on one grid of
 // unit cells, with roads along the cells' edges. Pure, and it imports nothing
 // at runtime (the type import above is erased), so the server can hand this
 // file to the page as JavaScript and both check a placement by the same rules.
-// `manhattanLayout()` is today's hand-drawn city as a layout, and what a city
-// saved before layouts existed migrates to.
+// Every city stands on a map generated from a seed (`generateMap`).
 
 // ---- types ----------------------------------------------------------------
 
 // What can be placed: the game's landmarks (the torch is a light on the
 // Statue, not a building), the station everyone arrives at, the Statue of
-// Liberty, and two scenery towers the Manhattan preset keeps.
+// Liberty, two scenery towers and the City Treasury.
 export type Kind = Exclude<Landmark, 'torch'> | 'station' | 'liberty' | 'woolworth' | 'wtc' | 'treasury'
 
 export type RoadKind = 'street' | 'avenue'
@@ -42,8 +41,6 @@ export type Borough = {
   y: number
   w: number
   h: number
-  // One of the Manhattan preset's four, drawn by hand (`burb()` in map.ts).
-  preset?: true
   // A section of another borough (its id): another worktree of the same
   // project, built onto that borough so the two read as one. Never a
   // section of a section.
@@ -78,10 +75,8 @@ export type Road = [x: number, y: number, dir: 0 | 1, kind: RoadKind]
 export type Layout = {
   // Bumps on every change; the map's hash covers it.
   rev: number
-  // The map: a generated one by its seed, or the hand-drawn Manhattan, whose
-  // smooth shoreline, mainland, small islands, Liberty Island and named
-  // rivers are drawn as its backdrop. Either way `land` holds the cells.
-  map: { seed: number } | { preset: 'manhattan' }
+  // The map, generated from its seed; `land` holds its cells.
+  map: { seed: number }
   land: Span[]
   park: Span[]
   roads: Road[]
@@ -130,8 +125,8 @@ export function footprintOf(kind: Kind, size?: string): [number, number, number,
 
 const hasSize = (kind: Kind, size: string) => Object.hasOwn(SIZES[kind] ?? {}, size)
 
-// The kinds that always stand, never a lot: the preset's own (never in the
-// catalogue) and the civic buildings, which are no part of the game.
+// The kinds that always stand, never a lot: the station, the scenery towers
+// and the civic buildings, which are no part of the game.
 export const FIXED: Kind[] = ['station', 'woolworth', 'wtc', 'treasury']
 
 // A building's cells on the grid: [x0, y0, x1, y1] per rect.
@@ -177,51 +172,10 @@ export function seeded(i: number, j: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
 }
 
-// ---- the Manhattan preset: the island ----------------------------------------
+// ---- districts ---------------------------------------------------------------
 
-// Shoreline as [gy, west, east], north to south.
-export const PROFILE: [number, number, number][] = [
-  [-2.6, 7.6, 8.4],
-  [-1.6, 6.3, 9.8],
-  [1, 5, 11],
-  [5, 4, 12],
-  [9, 3.2, 12.6],
-  [14, 2.3, 13.3],
-  [17, 2, 15],
-  [20, 1.5, 15.4],
-  [26, 1, 15.6],
-  [34, 0.5, 16],
-  [40, 0.2, 16.4],
-  [45, 0.3, 16.6],
-  [47, 0.6, 18],
-  [50, 1, 18.6],
-  [52, 1.3, 17.6],
-  [54, 1.8, 16.2],
-  [57, 2.5, 14.6],
-  [59, 3.5, 13.2],
-  [60.8, 4.8, 11],
-  [62, 6.2, 8.6],
-  [62.6, 7.2, 7.6],
-]
-
-export function edges(gy: number): [number, number] {
-  const first = PROFILE[0]!
-  const last = PROFILE[PROFILE.length - 1]!
-  if (gy <= first[0]) return [first[1], first[2]]
-  if (gy >= last[0]) return [last[1], last[2]]
-  for (let i = 1; i < PROFILE.length; i++) {
-    const b = PROFILE[i]!
-    if (gy <= b[0]) {
-      const a = PROFILE[i - 1]!
-      const t = (gy - a[0]) / (b[0] - a[0])
-      return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
-    }
-  }
-  return [last[1], last[2]]
-}
-
-// ---- the Manhattan preset: districts and boroughs ----------------------------
-
+// Each district's agents' spot and its label, where its landmark's drawing is
+// made (at the kind's origin in ORIGINS); both move with the building.
 export type Site = {
   // Where agents stand: on the street in front of the landmark.
   spot: [number, number]
@@ -243,38 +197,6 @@ export const SITES: Record<District, Site> = {
   plaza: { spot: [7, 28.6], label: [7, 31.3, -2] },
 }
 
-// Lots the landmarks take, skipped when filling the grid.
-export const RESERVED: [number, number, number, number][] = [
-  [5, 22, 9, 35], // Central Park
-  [3, 37, 7, 38], // Times Square's towers
-  [5, 38, 7, 39], // Times Square's plaza
-  [7, 39, 9, 40], // Public Library
-  [7, 40, 9, 41], // Bryant Park
-  [9, 39, 13, 40], // Grand Central, Chrysler
-  [9, 38, 11, 39], // MetLife
-  [5, 41, 7, 42], // Garment District
-  [5, 42, 7, 43], // Herald Square
-  [7, 42, 9, 43], // Empire State
-  [1, 40, 5, 42], // Hudson Yards
-  [5, 55, 7, 56], // Woolworth
-  [7, 55, 10, 56], // City Hall
-  [11, 57, 15, 58], // Seaport
-  [3, 57, 6, 58], // One World Trade
-]
-
-export function isReserved(x: number, y: number): boolean {
-  return RESERVED.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1)
-}
-
-export const BURBS: Record<PresetBurb, { name: string; center: [number, number]; near: [number, number]; far: [number, number] }> = {
-  brooklyn: { name: 'Brooklyn', center: [24, 55.5], near: [14.4, 56], far: [19.8, 56.2] },
-  queens: { name: 'Queens', center: [24, 32.5], near: [16, 34.5], far: [19.2, 34.5] },
-  bronx: { name: 'The Bronx', center: [19.5, 8], near: [12.9, 11], far: [14.6, 11] },
-  jersey: { name: 'Jersey City', center: [-8.5, 40], near: [0.4, 39], far: [-4.8, 39] },
-}
-
-export const BURB_ORDER: PresetBurb[] = ['brooklyn', 'queens', 'bronx', 'jersey']
-
 // ---- where a repository lives -------------------------------------------------
 
 // A repository with no borough waits at the station under this id, which no
@@ -285,21 +207,16 @@ export const isWaiting = (id: string | undefined): boolean => !!id && id.startsW
 // A borough as the walks and the drawing need it: its name, the square where
 // its agents gather, the edge they come in by (`near`, where the road meets
 // it) and the point inside it they cross to (`far`), and the rectangle it
-// covers. The preset's four keep their hand-drawn places; a drawn one gathers
-// its agents along the middle of its front (south) edge, facing the viewer.
-export type BurbGeo = { name: string; square: Pt2; near: Pt2; far: Pt2; rect: Rect; preset: boolean }
+// covers. Agents gather along the middle of its front (south) edge, facing
+// the viewer.
+export type BurbGeo = { name: string; square: Pt2; near: Pt2; far: Pt2; rect: Rect }
 
 export function burbGeo(layout: Layout | undefined, id: Burb): BurbGeo | undefined {
   const bo = layout?.boroughs.find(b => b.id === id)
-  if (id in BURBS && (layout ? bo?.preset : true)) {
-    const b = BURBS[id as PresetBurb]
-    const [cx, cy] = b.center
-    return { name: b.name, square: [cx, cy], near: b.near, far: b.far, rect: [cx - 3.5, cy - 3.5, cx + 3.5, cy + 3.5], preset: true }
-  }
   if (!bo) return undefined
   const mid = bo.x + bo.w / 2
   const front = bo.y + bo.h
-  return { name: shownName(layout!, bo), square: [mid, front - 1], near: [mid, front], far: [mid, front - 0.5], rect: boroughRect(bo), preset: false }
+  return { name: shownName(layout!, bo), square: [mid, front - 1], near: [mid, front], far: [mid, front - 0.5], rect: boroughRect(bo) }
 }
 
 // The building of a kind its agents use inside a borough, if the person placed one there.
@@ -307,47 +224,26 @@ export function burbBuilding(layout: Layout | undefined, id: Burb, kind: Distric
   return layout?.buildings.find(b => b.burb === id && b.kind === kind)
 }
 
-// ---- the Manhattan preset: the filler lots --------------------------------------
+// ---- the filler lots ------------------------------------------------------------
 
-// The filler blocks: one more for every so many tool calls, Midtown and
-// downtown first, spreading out from there (with a little jitter), until the
-// island is full.
+// The filler blocks: one more for every so many tool calls, in zoning order,
+// until every zoned lot has one.
 export const BLOCK_EVERY = 40
+// The population at which a city's blocks are all up, however many lots it
+// has zoned: the scale `blocksFor` grows on (356 lots' worth, what the old
+// hand-drawn island held).
+export const FULL_POPULATION = 356 * BLOCK_EVERY
 
 export type Lot = { x: number; y: number; x0: number; x1: number }
 
-let LOTS: Lot[] | undefined
+// ---- where each kind is drawn ----------------------------------------------------
 
-export function lots(): Lot[] {
-  if (LOTS) return LOTS
-  const list: Lot[] = []
-  for (let y = -2; y < 63; y++) {
-    const [w0, e0] = edges(y)
-    const [w1, e1] = edges(y + 1)
-    const west = Math.max(w0, w1) + 0.15
-    const east = Math.min(e0, e1) - 0.15
-    for (let x = -1; x < 19; x += 2) {
-      if (isReserved(x + 1, y)) continue
-      const x0 = Math.max(x + 0.26, west)
-      const x1 = Math.min(x + 1.74, east)
-      if (x1 - x0 < 0.5) continue
-      list.push({ x, y, x0, x1 })
-    }
-  }
-  const score = (l: Lot) => Math.min(Math.hypot(l.x0 - 8, (l.y - 41) / 2.5), Math.hypot(l.x0 - 8, (l.y - 58) / 2.5)) + seeded(l.x0, l.y) * 3
-  list.sort((a, b) => score(a) - score(b))
-  LOTS = list
-  return list
-}
-
-// ---- the Manhattan preset as a layout ------------------------------------------
-
-// Where each kind stands in the preset: its reserved lot's corner, which is
-// also the origin its drawing is made at (map.ts draws a kind there and
-// shifts it to wherever the building is). The relay's towers are the MetLife
-// lot behind the station; the Chrysler rises from the station's own lot once
-// the towers are built. The Statue has Liberty Island. In drawing order.
-export const PRESET_SITES: Record<Exclude<Kind, 'treasury'>, [number, number]> = {
+// The origin each kind's drawing is made at (map.ts draws a kind there and
+// shifts it to wherever the building is): the cells it stood on in the old
+// hand-drawn city. The relay's towers are the MetLife lot behind the
+// station; the Chrysler rises from the station's own lot once the towers
+// are built. In drawing order.
+export const ORIGINS: Record<Exclude<Kind, 'treasury'>, [number, number]> = {
   plaza: [5, 22],
   observatory: [3, 37],
   library: [7, 39],
@@ -363,10 +259,10 @@ export const PRESET_SITES: Record<Exclude<Kind, 'treasury'>, [number, number]> =
   liberty: [1, 69],
 }
 
-// How far a building stands from its kind's preset origin, in cells.
+// How far a building stands from its kind's drawing origin, in cells.
 export function deltaOf(b: Building): [number, number] {
-  // The Treasury has no place on the preset: it is drawn from the grid's origin.
-  const [ox, oy] = b.kind === 'treasury' ? [0, 0] : PRESET_SITES[b.kind]
+  // The Treasury came later: it is drawn from the grid's origin.
+  const [ox, oy] = b.kind === 'treasury' ? [0, 0] : ORIGINS[b.kind]
   return [b.x - ox, b.y - oy]
 }
 
@@ -394,25 +290,13 @@ export function landSpan(layout: Layout, x: number, y: number): [number, number]
 }
 
 // The zoned lots with their widths, in zoning order: a lot runs from the
-// avenue at x + 0.26 to x + 1.74, clipped to the shore. The preset keeps its
-// smooth shoreline, so its lots are exactly `lots()`.
+// avenue at x + 0.26 to x + 1.74, clipped to the shore.
 export function lotsOf(layout: Layout): Lot[] {
-  const preset = 'preset' in layout.map
   const out: Lot[] = []
   for (const [x, y] of layout.zoned) {
-    let west: number
-    let east: number
-    if (preset) {
-      const [w0, e0] = edges(y)
-      const [w1, e1] = edges(y + 1)
-      west = Math.max(w0, w1) + 0.15
-      east = Math.min(e0, e1) - 0.15
-    } else {
-      const span = landSpan(layout, x, y) ?? landSpan(layout, x + 1, y)
-      if (!span) continue
-      west = span[0]
-      east = span[1]
-    }
+    const span = landSpan(layout, x, y) ?? landSpan(layout, x + 1, y)
+    if (!span) continue
+    const [west, east] = span
     const x0 = Math.max(x + 0.26, west)
     const x1 = Math.min(x + 1.74, east)
     if (x1 - x0 < 0.5) continue
@@ -424,78 +308,11 @@ export function lotsOf(layout: Layout): Lot[] {
 // The rails: along the street behind the station's front, from the station
 // east to the shore, where the tunnel mouth is.
 export function trackOf(layout: Layout): { y: number; x0: number; x1: number; mouth: number } {
-  const station = cityBuildings(layout, 'station')[0] ?? { x: PRESET_SITES.station[0], y: PRESET_SITES.station[1] }
+  const station = cityBuildings(layout, 'station')[0] ?? { x: ORIGINS.station[0], y: ORIGINS.station[1] }
   const y = station.y + 1.55
-  let shore: number
-  if ('preset' in layout.map) shore = edges(y)[1]
-  else {
-    const span = landSpan(layout, station.x, Math.floor(y))
-    shore = span ? span[1] : station.x + 4
-  }
+  const span = landSpan(layout, station.x, Math.floor(y))
+  const shore = span ? span[1] : station.x + 4
   return { y, x0: station.x + 0.2, x1: shore + 0.6, mouth: shore + 0.1 }
-}
-
-// The plazas and parks the landmarks open onto, which no building takes.
-export const PRESET_PARKS: Span[] = [
-  [38, 5, 7], // Times Square's plaza
-  [40, 7, 9], // Bryant Park
-  [42, 5, 7], // Herald Square
-]
-
-// Math.ceil gives -0 near the shore, which JSON turns into 0: keep it 0 here.
-function whole(v: number): number {
-  return v === 0 ? 0 : v
-}
-
-// Is the avenue at x on the island at row y (clear of the shore)?
-function onIsland(x: number, y: number): boolean {
-  const [w, e] = edges(y)
-  return x > w + 0.1 && x < e - 0.1
-}
-
-// Today's city as a layout: the island rasterised to cells, its avenues and
-// streets, every filler lot zoned in the order it fills, the landmarks on
-// their lots and a borough at each of the four sites. `built` says which
-// landmarks stand (a city mid-game keeps its remaining lots).
-export function manhattanLayout(built: Partial<Record<Landmark, number>> = {}): Layout {
-  const land: Span[] = []
-  for (let y = -3; y < 63; y++) {
-    // A cell is land when its centre is on the island.
-    const [w, e] = edges(y + 0.5)
-    const x0 = whole(Math.ceil(w - 0.5))
-    const x1 = Math.floor(e - 0.5) + 1
-    if (x1 > x0) land.push([y, x0, x1])
-  }
-  const roads: Road[] = []
-  for (let x = 1; x < 18; x += 2) {
-    for (let y = -3; y < 63; y++) if (onIsland(x, y) && onIsland(x, y + 1)) roads.push([x, y, 0, 'avenue'])
-  }
-  for (let y = -2; y <= 63; y++) {
-    const [w, e] = edges(y)
-    if (e - w < 0.8) continue
-    for (let x = whole(Math.ceil(w - 0.5)); x + 1 <= e + 0.5; x++) roads.push([whole(x), y, 1, 'street'])
-  }
-  const buildings: Building[] = (Object.keys(PRESET_SITES) as (keyof typeof PRESET_SITES)[]).map(kind => {
-    const [x, y] = PRESET_SITES[kind]!
-    const b: Building = { id: kind, kind, x, y, face: 's' }
-    if (FIXED.includes(kind)) b.built = 0
-    return b
-  })
-  const layout: Layout = {
-    rev: 0,
-    map: { preset: 'manhattan' },
-    land,
-    park: PRESET_PARKS.map(s => [...s] as Span),
-    roads,
-    zoned: lots().map(l => [l.x, l.y]),
-    buildings,
-    boroughs: BURB_ORDER.map(b => {
-      const [cx, cy] = BURBS[b].center
-      return { id: b, name: BURBS[b].name, x: Math.floor(cx - 4), y: Math.floor(cy - 4), w: 8, h: 9, preset: true as const }
-    }),
-  }
-  for (const [kind, at] of Object.entries(built) as [Landmark, number][]) if (at !== undefined) markBuilt(layout, kind, at)
-  return layout
 }
 
 // ---- placement: the rules -----------------------------------------------------
@@ -517,7 +334,7 @@ export type Op =
 export type Applied = { layout: Layout } | { error: string }
 
 // The grid the city may spread over.
-// The preset's boroughs reach west and north of 0; a generated map runs to GEN.
+// A generated map runs from 0 to GEN; the margin is room to spare.
 const RANGE = { x0: -60, x1: 140, y0: -40, y1: 140 }
 const RUN_MAX = 64
 const BOROUGH_MIN = 3
@@ -593,10 +410,9 @@ export function boroughAt(layout: Layout, x: number, y: number): Borough | undef
   return layout.boroughs.find(bo => within(boroughRect(bo), x, y))
 }
 
-// Land, or a preset borough's ground: the hand-drawn boroughs stand on the
-// mainland the preset's backdrop draws, which `land` does not list.
+// Ground to build on: land.
 export function groundAt(layout: Layout, x: number, y: number): boolean {
-  return landAt(layout, x, y) || layout.boroughs.some(bo => bo.preset && within(boroughRect(bo), x, y))
+  return landAt(layout, x, y)
 }
 
 // What takes a cell: a building, a zoned lot or a park.
@@ -883,7 +699,7 @@ const within2 = (bo: Borough, x: number, y: number) => x >= bo.x && x < bo.x + b
 // stays clear for the square.
 export function fillBorough(layout: Layout, id: string, want = Infinity): { layout: Layout; lots: number; added: number } {
   const bo = layout.boroughs.find(b => b.id === id)
-  if (!bo || bo.preset) return { layout, lots: 0, added: 0 }
+  if (!bo) return { layout, lots: 0, added: 0 }
   let cur = layout
   const count = () => cur.zoned.filter(([x, y]) => within2(bo, x, y)).length
   const had = count()
@@ -1104,7 +920,7 @@ function mergeSpans(spans: Span[]): Span[] {
 export type Pt2 = [number, number]
 
 // Where a building's agents stand: on the road along its front. A kind with a
-// preset site keeps that spot (where its hand-drawn door is) while it faces
+// district site keeps that spot (where its drawn door is) while it faces
 // south; otherwise the midpoint of the face it turns to the road. A sized
 // park's agents rest on its lawn, rows from just behind its middle.
 export function doorOf(b: Building): Pt2 {
@@ -1134,7 +950,7 @@ export function roomOf(b: Building | undefined): number {
 // Where a district's agents stand: its building's door, or the station's
 // forecourt while nothing of the kind is placed. With the station bulldozed
 // (being moved), at the door of the first building still standing in the
-// city; the preset's spot when there is none.
+// city; the district's own spot when there is none.
 export function spotFor(layout: Layout, d: District): Pt2 {
   const b = siteFor(layout, d) ?? cityBuildings(layout, 'station')[0] ?? layout.buildings.find(one => !one.burb && one.kind !== 'liberty')
   return b ? doorOf(b) : SITES[d].spot
@@ -1508,10 +1324,9 @@ export function generateMap(seed: number): Layout {
 // The hub: on a generated map, the island in its middle, which the strait
 // keeps apart from the mainland. It is the city's own (Grand Central, the
 // landmarks, the fabric); every borough goes on the mainland around it. None
-// on the Manhattan preset, nor on a map whose island joins the mainland.
+// on a map whose island joins the mainland.
 const hubs = new WeakMap<Span[], (x: number, y: number) => boolean>()
 export function hubOf(layout: Layout): (x: number, y: number) => boolean {
-  if (!('seed' in layout.map)) return () => false
   const known = hubs.get(layout.land)
   if (known) return known
   const { cx, cy } = mapShape(layout.map.seed)

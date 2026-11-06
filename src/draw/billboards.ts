@@ -6,7 +6,7 @@ import type { Billboard, World } from '../types.ts'
 
 // The billboards: one for each local server a session started (a front end
 // on localhost) while it answers, in its project's part of the city.
-// Manhattan's stand by Times Square, a borough's along its front row, and a
+// Home's stand by Times Square, a borough's along its front row, and a
 // project still waiting for a borough's on the station's forecourt, unless
 // the person moved one. A click opens the page (the page's own handler, by
 // data-url); the ⚙ on its corner opens its card (move, turn, take down). A new
@@ -27,11 +27,10 @@ function spotOf(world: World, sc: Scene, b: Billboard, i: number): [number, numb
   }
   const repo = world.repos.find(r => same(r.root, b.root) && !r.left) ?? world.repos.find(r => same(r.root, b.root))
   const geo = repo ? burbGeo(layout, repo.burb) : undefined
-  if (geo && !geo.preset) {
+  if (geo) {
     const [x0, , , y1] = geo.rect
     return [x0 + 2 + i * GAP, y1 - 0.4]
   }
-  if (geo) return [geo.square[0] - 3 + i * GAP, geo.square[1] + 2.2]
   const [wx, wy] = waitAt(layout, 0)
   return [wx - 3.5 - i * GAP, wy + 1.4]
 }

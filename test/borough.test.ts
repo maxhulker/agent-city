@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import { renderFrame } from '../src/city.ts'
 import { burbAt, p, waitAt } from '../src/draw/geo.ts'
 import { lotStyle } from '../src/draw/map.ts'
-import { doorOf, findSite, hubOf, landAt, manhattanLayout, mapShape } from '../src/layout.ts'
+import { doorOf, findSite, hubOf, landAt, mapShape } from '../src/layout.ts'
+import { cityWith, layoutWith, stationDoor } from './whole.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
@@ -18,8 +19,12 @@ const T0 = 1_700_000_000_000
 const HOME = 'C:/fake/home'
 const OTHER = 'C:/fake/api'
 const THIRD = 'C:/fake/web'
-// Free land at the island's north end, with a street along its front edge.
-const INWOOD = { op: 'borough', x: 2, y: 14, w: 5, h: 5, name: 'Red Hook' } as const
+// Free mainland near the station, beside Brooklyn.
+const INWOOD = (() => {
+  const l = layoutWith('Brooklyn')
+  const [x, y] = findSite(l, 5, 5, stationDoor(l))!
+  return { op: 'borough', x, y, w: 5, h: 5, name: 'Red Hook' } as const
+})()
 
 function ev(name: string, sid: string, extra: Record<string, unknown> = {}): HookEvent {
   return { hook_event_name: name, session_id: sid, cwd: HOME, ...extra }
@@ -33,7 +38,7 @@ function read(city: City, sid: string, cwd: string, now: number) {
 
 // A built city with a home session, and a second session working in api.
 function twoRepos(): City {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.buildAll(T0 - 60_000)
   city.apply(ev('SessionStart', 'S1'), T0)
   read(city, 'S1', HOME, T0 + 10)
@@ -71,7 +76,7 @@ test('a new repository waits at the station until a borough is laid out for it, 
   const there = leadAt(city, T0 + 500)
   assert.deepEqual(there.at, round(p(...burbAt(inwood.id, 0, city.world.layout))), 'on its square')
   const [sx, sy] = burbAt(inwood.id, 0, city.world.layout)
-  assert.ok(sy === 18 && sx > 2 && sx < 7, `along its front edge, a row in: ${sx},${sy}`)
+  assert.ok(sy === INWOOD.y + INWOOD.h - 1 && sx > INWOOD.x && sx < INWOOD.x + INWOOD.w, `along its front edge, a row in: ${sx},${sy}`)
   assert.equal(sign(there.frame, 'waiting'), '', 'nobody waits any more')
   assert.ok(sign(there.frame, `burb:${inwood.id}`).includes('api'), 'its sign')
   assert.ok(there.frame.map?.svg.includes('RED HOOK'), 'drawn on the map')
@@ -103,10 +108,13 @@ test('a packed-up borough keeps its layout and takes its repository back', () =>
   assert.ok('ok' in city.build({ ...INWOOD, root: OTHER }, T0 + 300))
   const inwood = city.world.layout!.boroughs.find(b => b.name === 'Red Hook')!
   // A Library inside it: a lot until api's first read, and where its reads go.
-  for (const [x, y] of city.world.layout!.zoned.filter(([x, y]) => x >= 1 && x < 7 && y >= 14 && y < 19)) {
+  const { x: ix, y: iy, w: iw, h: ih } = INWOOD
+  for (const [x, y] of city.world.layout!.zoned.filter(([x, y]) => x >= ix - 1 && x < ix + iw && y >= iy && y < iy + ih)) {
     assert.ok('ok' in city.build({ op: 'unzone', x, y }, T0 + 340))
   }
-  assert.ok('ok' in city.build({ op: 'place', kind: 'library', x: 3, y: 18 }, T0 + 350))
+  city.build({ op: 'road', x: ix, y: iy + ih, dir: 1, len: iw }, T0 + 345)
+  const placed = city.build({ op: 'place', kind: 'library', x: ix + 1, y: iy + ih - 1 }, T0 + 350)
+  assert.ok('ok' in placed, JSON.stringify(placed))
   const lib = city.world.layout!.buildings.find(b => b.burb === inwood.id)!
   assert.equal(lib.built, undefined)
   read(city, 'S2', OTHER, T0 + 400)
@@ -188,7 +196,6 @@ test("a drawn borough's zoned blocks fill with brownstones, the city's with towe
   assert.ok('ok' in city.build({ op: 'zone', x: x + 1, y: y + 1 }, T0), 'a block inside it')
   assert.equal(lotStyle(l(), x + 1, y + 1), 'houses')
   assert.equal(lotStyle(l(), st.x, st.y + 3), 'towers')
-  assert.equal(lotStyle(manhattanLayout(), 24, 55), 'towers', "the preset's boroughs keep their hand-drawn houses")
   const draw = (population: number) => {
     city.world.population = population
     city.world.layout!.rev += 1

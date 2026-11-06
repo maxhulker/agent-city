@@ -5,8 +5,10 @@ import { fileURLToPath } from 'node:url'
 
 import { renderFrame } from '../src/city.ts'
 import { CensusTaker, REST, censusFrom, groupFolders, parseLog, parseStatus, parseTree, sameCensus } from '../src/census.ts'
-import { heightOf, houses, placeBlocks, plotsFor, runsOf, signLine, slotsOf } from '../src/draw/blocks.ts'
+import { heightOf, placeBlocks, plotsFor, runsOf, signLine, slotsOf } from '../src/draw/blocks.ts'
+import { findSite } from '../src/layout.ts'
 import { City } from '../src/world.ts'
+import { cityWith, layoutWith, stationDoor } from './whole.ts'
 import type { HookEvent } from '../src/world.ts'
 import type { Census } from '../src/types.ts'
 
@@ -102,7 +104,7 @@ const census = (blocks: [string, number, number, number, number][], extra: Parti
 })
 
 test('houses: each folder a run, by its share of the files, the front plots first, the biggest at the back', () => {
-  const slots = houses('brooklyn')
+  const slots = slotsOf(layoutWith('Brooklyn'), 'brooklyn')
   const c = census([['src', 300, 900_000, 5, 0], ['test', 80, 120_000, 0, 0], ['docs', 20, 30_000, 1, 0]])
   const placed = placeBlocks(slots, c)
   assert.equal(placed.length, slots.length)
@@ -135,7 +137,7 @@ function ev(name: string, sid: string, extra: Record<string, unknown> = {}): Hoo
 }
 
 function withBrooklyn(): City {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.buildAll(T0 - 60_000)
   city.apply(ev('SessionStart', 'S1'), T0)
   city.world.repos.push({ root: OTHER, name: 'api', burb: 'brooklyn', lastSeen: T0 })
@@ -175,15 +177,16 @@ test('a borough draws its census: the map follows the folders, the overlay the s
 })
 
 test("a drawn borough's zoned lots take its folders, whatever the population", () => {
-  const city = new City()
+  const city = cityWith()
   city.buildAll(T0 - 60_000)
   city.apply(ev('SessionStart', 'S1'), T0)
   city.world.population = 0
   city.apply(ev('SessionStart', 'S2', { cwd: OTHER }), T0 + 100)
-  assert.ok('ok' in city.build({ op: 'borough', x: 2, y: 14, w: 5, h: 5, name: 'Red Hook', root: OTHER }, T0 + 200))
+  const [x, y] = findSite(city.world.layout!, 6, 6, stationDoor(city.world.layout!))!
+  assert.ok('ok' in city.build({ op: 'borough', x, y, w: 6, h: 6, name: 'Red Hook', root: OTHER, fill: true }, T0 + 200))
   const bo = city.world.layout!.boroughs.find(b => b.name === 'Red Hook')!
-  const slots = slotsOf(city.world.layout!, bo.id, false)
-  assert.ok(slots.length > 0, 'Manhattan is zoned, so the borough has lots')
+  const slots = slotsOf(city.world.layout!, bo.id)
+  assert.ok(slots.length > 0, 'its streets and lots laid, so it has plots')
   const before = renderFrame(city.world, T0 + 300)
   city.setCensus(OTHER, census([['src', 40, 200_000, 3, 1], ['docs', 5, 9000, 0, 0]]))
   const after = renderFrame(city.world, T0 + 400)

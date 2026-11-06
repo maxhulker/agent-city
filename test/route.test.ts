@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 
 import { renderFrame } from '../src/city.ts'
 import { p, walk } from '../src/draw/geo.ts'
-import { applyOp, doorOf, hasRoad, manhattanLayout, route, spotFor } from '../src/layout.ts'
+import { applyOp, doorOf, hasRoad, route, spotFor } from '../src/layout.ts'
+import { cityWith, layoutWith } from './whole.ts'
 import type { Layout } from '../src/layout.ts'
-import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
 // Walking the roads (docs/city-builder.md, step five): a route follows the
@@ -93,9 +93,10 @@ test('a walk follows the roads between two buildings; with no road it goes strai
 })
 
 test('an agent whose kind has no building waits at the station, and moves when the lot is placed', () => {
-  const city = new City()
+  const city = cityWith()
   city.buildAll(T0 - 60_000)
-  assert.ok('ok' in city.build({ op: 'remove', id: 'library' }, T0))
+  const lib = city.world.layout!.buildings.find(b => b.kind === 'library')!
+  assert.ok('ok' in city.build({ op: 'remove', id: lib.id }, T0))
   city.apply(ev('SessionStart', 'S1'), T0)
   city.apply(ev('PreToolUse', 'S1', { tool_name: 'Read', tool_use_id: 't1', tool_input: { file_path: `${HOME}/a.ts` } }), T0 + 100)
   city.flush(T0 + 100)
@@ -108,21 +109,22 @@ test('an agent whose kind has no building waits at the station, and moves when t
   assert.deepEqual([waiting.x, waiting.y], [Math.round(station[0] * 10) / 10, Math.round(station[1] * 10) / 10], 'on the forecourt')
   assert.ok(waiting.title.includes('no Public Library yet'), waiting.title)
   // The lot goes down (the city: it stands at once), and the reader walks over.
-  assert.ok('ok' in city.build({ op: 'place', kind: 'library', x: 7, y: 39 }, T0 + 300))
+  assert.ok('ok' in city.build({ op: 'place', kind: 'library', x: lib.x, y: lib.y, face: lib.face }, T0 + 300))
   city.flush(T0 + 300)
   const there = at(renderFrame(city.world, T0 + 400))
-  const door = p(8, 40)
+  const door = p(...doorOf(lib))
   assert.deepEqual([there.x, there.y], [Math.round(door[0] * 10) / 10, Math.round(door[1] * 10) / 10], 'in front of the Library')
   assert.ok(!there.title.includes('no Public Library yet'))
 })
 
-test('on the preset the walks run along its streets and avenues', () => {
-  const l = manhattanLayout()
-  const w = walk({ at: 'library' }, { at: 'hall' }, [8.5, 56], l)
+test('in a whole city the walks run along its streets and avenues', () => {
+  const l = layoutWith('Brooklyn')
+  const w = walk({ at: 'library' }, { at: 'hall' }, spotFor(l, 'hall'), l)
   const pts = w.pts.map(([x, y]) => [Math.round(((x / 10 + y / 5) / 2) * 10) / 10, Math.round(((y / 5 - x / 10) / 2) * 10) / 10] as [number, number])
   assert.ok(pts.length >= 3, 'it turns at least once')
   onRoads(l, pts)
-  // Into Brooklyn, over the bridge.
-  const b = walk({ at: 'library' }, { at: 'library', burb: 'brooklyn' }, [24, 58.5], l)
+  // Into Brooklyn, along its road to the city.
+  const bo = l.boroughs.find(one => one.id === 'brooklyn')!
+  const b = walk({ at: 'library' }, { at: 'library', burb: 'brooklyn' }, [bo.x + bo.w / 2, bo.y + bo.h - 0.5], l)
   assert.ok(b.pts.length >= 4)
 })

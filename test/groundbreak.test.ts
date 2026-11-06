@@ -31,8 +31,8 @@ test('new projects go beside a repository, or inside a folder of projects', () =
     mkdirSync(join(repo, '.git'), { recursive: true })
     assert.equal(projectsDir(repo, '/home/x'), norm(dir), 'beside the repository')
     assert.equal(projectsDir(dir, '/home/x'), norm(dir), 'a plain folder holds them')
-    assert.equal(projectsDir(undefined, dir), norm(dir), 'no Manhattan yet: the home folder')
-    assert.equal(projectsDir(join(dir, 'gone'), dir), norm(dir), 'a Manhattan that is gone: the home folder')
+    assert.equal(projectsDir(undefined, dir), norm(dir), 'no home repository yet: the user folder')
+    assert.equal(projectsDir(join(dir, 'gone'), dir), norm(dir), 'a home repository that is gone: the user folder')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

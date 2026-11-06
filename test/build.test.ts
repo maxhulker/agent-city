@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { applyOp, canPlace, facesRoad, isBridge, manhattanLayout, parseOp, spotFor } from '../src/layout.ts'
+import { applyOp, boroughAt, boroughRect, canPlace, facesRoad, isBridge, parseOp, spotFor } from '../src/layout.ts'
+import { cityWith, wholeLayout } from './whole.ts'
 import { renderFrame } from '../src/city.ts'
 import type { Layout } from '../src/layout.ts'
 import { City } from '../src/world.ts'
@@ -41,8 +42,8 @@ const refused = (r: ReturnType<typeof applyOp>, why: string) => {
   assert.ok(r.error.toLowerCase().includes(why.toLowerCase()), `${r.error} ~ ${why}`)
 }
 
-test('the preset could be placed as it stands: every building passes its own rules', () => {
-  const l = manhattanLayout()
+test('the test city could be placed as it stands: every building passes its own rules', () => {
+  const l = wholeLayout()
   for (const b of l.buildings) {
     const rest = { ...l, buildings: l.buildings.filter(one => one !== b) }
     assert.equal(canPlace(rest, b.kind, b.x, b.y, b.face), undefined, b.kind)
@@ -134,8 +135,8 @@ test('Grand Central moves: bulldozed, the waiting gather elsewhere; placed again
   l = ok(applyOp(l, { op: 'place', kind: 'station', x: 5, y: 2 }))
   assert.equal(l.buildings.find(b => b.kind === 'station')!.x, 5)
 
-  // On the preset too, and the city draws while it is gone: no rails, no trains.
-  const city = new City()
+  // In a whole city too, and the city draws while it is gone: no rails, no trains.
+  const city = cityWith()
   city.buildAll(T0)
   read(city, 'S1', HOME, T0 + 10)
   city.apply(ev('SessionEnd', 'S1'), T0 + 100)
@@ -195,13 +196,14 @@ test('a borough is a rectangle of land that overlaps no other; what is placed in
 })
 
 test('the world: placing in the city builds at once; in a borough the first such work does', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply(ev('SessionStart', 'S1'), T0)
-  // The city: a second Library on Fifth Avenue, on a block the person unzones first.
+  // The city: a second Library on a zoned block the person unzones first.
   const l = () => city.world.layout!
-  assert.deepEqual(city.build({ op: 'place', kind: 'library', x: 9, y: 46 }, T0 + 50), { error: 'Something is already there' })
-  assert.ok('ok' in city.build({ op: 'unzone', x: 9, y: 46 }, T0 + 60))
-  const r = city.build({ op: 'place', kind: 'library', x: 9, y: 46 }, T0 + 100)
+  const [zx, zy] = l().zoned.find(([x, y]) => !boroughAt(l(), x, y) && canPlace({ ...l(), zoned: l().zoned.filter(z => z[0] !== x || z[1] !== y) }, 'library', x, y) === undefined)!
+  assert.deepEqual(city.build({ op: 'place', kind: 'library', x: zx, y: zy }, T0 + 50), { error: 'Something is already there' })
+  assert.ok('ok' in city.build({ op: 'unzone', x: zx, y: zy }, T0 + 60))
+  const r = city.build({ op: 'place', kind: 'library', x: zx, y: zy }, T0 + 100)
   assert.ok('ok' in r, JSON.stringify(r))
   const lib2 = l().buildings.find(b => b.kind === 'library' && b.id !== 'library')!
   assert.ok(lib2, 'placed')
@@ -209,20 +211,24 @@ test('the world: placing in the city builds at once; in a borough the first such
   assert.equal(city.world.built!.library, T0 + 100, 'the game counts it')
   assert.ok(city.toasts.includes('Public Library went up'))
   assert.equal(l().rev, 2)
-  const refusal = city.build({ op: 'place', kind: 'library', x: 9, y: 46 }, T0 + 200)
+  const refusal = city.build({ op: 'place', kind: 'library', x: zx, y: zy }, T0 + 200)
   assert.ok('error' in refusal && refusal.error)
   assert.equal(l().rev, 2, 'a refused op leaves the revision')
   assert.deepEqual(city.build({ op: 'nonsense' }, T0), { error: 'Not a placement' })
-  assert.deepEqual(city.build({ op: 'place', kind: 'empire', x: 9, y: 48 }, T0), { error: 'Build every district first' })
+  assert.deepEqual(city.build({ op: 'place', kind: 'empire', x: zx, y: zy + 2 }, T0), { error: 'Build every district first' })
 
-  // A borough: api arrives, waits at the station, and moves into Brooklyn (a preset borough, on the mainland).
+  // A borough: api arrives, waits at the station, and moves into Brooklyn (on the mainland).
   city.apply(ev('SessionStart', 'S2', { cwd: OTHER }), T0 + 300)
   read(city, 'S2', OTHER, T0 + 400)
   assert.ok(city.world.repos[0]?.burb.startsWith('@'), 'waiting for a borough')
   assert.ok('ok' in city.build({ op: 'movein', id: 'brooklyn', root: OTHER }, T0 + 450))
   assert.equal(city.world.repos[0]?.burb, 'brooklyn')
-  assert.ok('ok' in city.build({ op: 'road', x: 21, y: 54, dir: 1, len: 4 }, T0 + 500))
-  const placed = city.build({ op: 'place', kind: 'library', x: 22, y: 53 }, T0 + 600)
+  // Its lots cleared, a Library on its front row, on the street along its front.
+  const bo = l().boroughs.find(b => b.id === 'brooklyn')!
+  const [bx0, by0, bx1, by1] = boroughRect(bo)
+  for (const [x, y] of l().zoned.filter(([x, y]) => x >= bx0 - 1 && x < bx1 && y >= by0 && y < by1)) city.build({ op: 'unzone', x, y }, T0 + 480)
+  city.build({ op: 'road', x: bx0, y: by1, dir: 1, len: bx1 - bx0 }, T0 + 500)
+  const placed = city.build({ op: 'place', kind: 'library', x: bx0 + 1, y: by1 - 1 }, T0 + 600)
   assert.ok('ok' in placed, JSON.stringify(placed))
   const bk = l().buildings.find(b => b.burb === 'brooklyn')!
   assert.equal(bk.kind, 'library')

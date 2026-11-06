@@ -5,6 +5,7 @@ import { renderFrame } from '../src/city.ts'
 import { costOf, costsByRoot, signCost } from '../src/costs.ts'
 import type { LedgerEntry, World } from '../src/types.ts'
 import { City } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 
 // What each project has cost to build: the Treasury's ledger by the
 // repository each session started in.
@@ -23,7 +24,7 @@ test('the ledger summed by project, whatever the slashes and case', () => {
 })
 
 test("a borough's sign and the Treasury card say what it cost to build", () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply({ hook_event_name: 'SessionStart', session_id: 'S1', cwd: 'C:/fake/home' }, T0)
   city.build({ op: 'movein', id: 'brooklyn', root: 'C:/fake/api' }, T0 + 10)
   city.world.treasury = { days: {}, total: 7, last: {}, ledger: { S2: entry('C:/fake/api', 5), S3: entry('C:/fake/api', 1.25), S1: entry('C:/fake/home', 0.75) } }

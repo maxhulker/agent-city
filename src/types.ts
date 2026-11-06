@@ -14,11 +14,8 @@ export type District =
 // torch, and the Empire State Building as the capstone.
 export type Landmark = District | 'torch' | 'empire'
 
-// The Manhattan preset's four hand-drawn boroughs.
-export type PresetBurb = 'brooklyn' | 'queens' | 'bronx' | 'jersey'
-
-// Where a repository other than Manhattan's lives: a borough's id in the
-// layout (the preset's four keep their names as ids), or, while it has none,
+// Where a repository other than home lives: a borough's id in the layout,
+// or, while it has none,
 // `@<root>`: its agents wait on Grand Central's forecourt (`waitingId` in
 // src/layout.ts).
 export type Burb = string
@@ -29,7 +26,7 @@ export type View = 'island' | 'uptown' | 'midtown' | 'downtown'
 // the train pulls out (Agent.leaving).
 export type AgentStatus = 'working' | 'idle' | 'waiting' | 'done' | 'failed' | 'leaving'
 
-// Where an agent is: a district of Manhattan (the home repository), or a
+// Where an agent is: a district on the island (the home repository), or a
 // borough when it works in another one.
 export type Place = { at: District; burb?: Burb }
 
@@ -185,7 +182,7 @@ export type DevHint = { id: string; root: string; at: number }
 
 // A power line between two projects (src/draw/links.ts): sessions that
 // started in one worked in the other. a and b are repository roots (or
-// Manhattan's folder), a sorting before b; the sessions that crossed, the
+// home's folder), a sorting before b; the sessions that crossed, the
 // latest 20; when work last crossed.
 export type Link = { a: string; b: string; sessions: string[]; lastAt: number }
 
@@ -348,7 +345,7 @@ export type TaskTurn = {
   costUsd?: number
 }
 
-// A repository other than Manhattan's and the borough it lives in (or `@<root>`
+// A repository other than home and the borough it lives in (or `@<root>`
 // while it waits at the station for one). One that has packed up (`left`) is
 // still known: it moves straight back in, to the same borough when nobody else
 // has, as soon as a session works there again. Its census is what its
@@ -488,7 +485,7 @@ export type World = {
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts
-  // existed gets the Manhattan preset on load.
+  // existed, or on the retired hand-drawn Manhattan, gets new land on load.
   layout?: Layout
   // Once the boroughs were moved off the hub island and each project's
   // worktrees gathered into one borough (2026-11-05): done once per city.

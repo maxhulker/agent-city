@@ -1,5 +1,5 @@
-import type { Block, Burb, Census, PresetBurb } from '../types.ts'
-import { BURBS, seeded } from './geo.ts'
+import type { Block, Burb, Census } from '../types.ts'
+import { seeded } from './geo.ts'
 import { boroughAt, lotsOf } from '../layout.ts'
 import type { Layout, Lot } from '../layout.ts'
 import type { Pal } from './map.ts'
@@ -19,42 +19,6 @@ export const HOUSE_PALS: Pal[] = ['b', 'b', 'r', 'b', 'r', 's']
 // height and palette when no census says otherwise, whether it is the tall
 // corner house, and its row (back to front).
 export type Slot = { x: number; y0: number; w: number; d: number; h: number; pal: Pal; corner: boolean; ri: number }
-
-// A preset borough's houses: rows back to front, each row west to east,
-// apartments at the back, then brownstone rows back to back, the front row
-// facing the square, with the tall corner house at its east end.
-export function houses(b: PresetBurb): Slot[] {
-  const [cx, cy] = BURBS[b].center
-  const rows: [number, number, number][] = [
-    [cy - 3.4, 12, 3],
-    [cy - 2.15, 6.4, 1.4],
-    [cy - 1.45, 6.4, 1.4],
-    [cy - 0.2, 6, 1.4],
-    [cy + 0.5, 6, 1.4],
-  ]
-  const out: Slot[] = []
-  rows.forEach(([y0, base, spread], ri) => {
-    let x = cx - 3.4
-    let i = 0
-    while (x < cx + 2.95) {
-      // A cross street through the back blocks.
-      if (ri < 3 && x < cx - 0.1 && x + 0.5 > cx - 0.6) {
-        x = cx - 0.1
-        continue
-      }
-      const q = seeded(x * 7 + ri, y0 * 3 + i)
-      const w = Math.min(q > 0.85 ? 0.75 : 0.5, cx + 3.0 - x)
-      if (w < 0.3) break
-      const corner = ri === 4 && x + w >= cx + 2.9
-      const h = corner ? 11 : base + q * spread
-      const pal: Pal = ri === 0 ? (q > 0.5 ? 'k' : 's') : corner ? 'k' : HOUSE_PALS[Math.floor(q * HOUSE_PALS.length)]!
-      out.push({ x, y0, w: w - 0.03, d: 0.62, h, pal, corner, ri })
-      x += w
-      i++
-    }
-  })
-  return out
-}
 
 // A zoned lot in a drawn borough: three or four narrow houses, a storey or
 // two apart, with a tall corner one now and then.
@@ -76,10 +40,8 @@ export function lotsIn(layout: Layout, id: Burb): Lot[] {
   return lotsOf(layout).filter(l => boroughAt(layout, l.x, l.y)?.id === id)
 }
 
-// A borough's house plots, back to front: the preset's own rows, or the
-// houses on a drawn borough's zoned lots.
-export function slotsOf(layout: Layout, id: Burb, preset: boolean): Slot[] {
-  if (preset) return houses(id as PresetBurb)
+// A borough's house plots, back to front: the houses on its zoned lots.
+export function slotsOf(layout: Layout, id: Burb): Slot[] {
   const lots = lotsIn(layout, id).sort((a, b) => a.y - b.y || a.x - b.x)
   return lots.flatMap((l, i) => lotHouses(l, i))
 }

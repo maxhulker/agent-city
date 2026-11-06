@@ -27,8 +27,8 @@ export function slugFor(name: string): string {
     .slice(0, 64)
 }
 
-// Where new projects go when the person hasn't said: beside Manhattan's
-// repository, or inside Manhattan's folder when it is a folder of projects
+// Where new projects go when the person hasn't said: beside the home
+// repository, or inside the home folder when it is a folder of projects
 // rather than a repository itself.
 export function projectsDir(homeRoot: string | undefined, home: string): string {
   if (homeRoot && existsSync(homeRoot)) return norm(existsSync(join(homeRoot, '.git')) ? dirname(homeRoot) : homeRoot)

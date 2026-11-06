@@ -7,8 +7,8 @@ import { join } from 'node:path'
 
 import { renderFrame } from '../src/city.ts'
 import { dayOf } from '../src/draw/geo.ts'
-import { canPlace } from '../src/layout.ts'
 import { City } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 import type { HookEvent } from '../src/world.ts'
 
 // The City Treasury: what sessions spend (Claude Code's own estimate, from
@@ -22,7 +22,7 @@ function ev(name: string, sid: string, extra: Record<string, unknown> = {}): Hoo
 }
 
 function city(): City {
-  const c = new City()
+  const c = cityWith()
   c.buildAll(T0 - 60_000)
   c.apply(ev('SessionStart', 'S1'), T0)
   return c
@@ -141,16 +141,11 @@ test('the status line brings the cost and the plan limits, and shows the Treasur
 test('the Treasury stands where it is placed, outside the game, with its board and its tooltip', () => {
   const c = city()
   const l = () => c.world.layout!
-  // Somewhere on the island with a street along its front.
-  let at: [number, number] | undefined
-  for (let y = 4; y < 60 && !at; y++) for (let x = 0; x < 14 && !at; x++) if (!canPlace(l(), 'treasury', x, y)) at = [x, y]
-  if (!at) {
-    // The preset's blocks are all zoned: clear one.
-    const [x, y] = l().zoned[10]!
-    assert.ok('ok' in c.build({ op: 'unzone', x, y }, T0))
-    at = [x, y]
-  }
-  const r = c.build({ op: 'place', kind: 'treasury', x: at[0], y: at[1] }, T0 + 100)
+  // The test city has one: bulldozed, then placed again where it stood.
+  const old = l().buildings.find(b => b.kind === 'treasury')!
+  assert.ok('ok' in c.build({ op: 'remove', id: old.id }, T0))
+  const at: [number, number] = [old.x, old.y]
+  const r = c.build({ op: 'place', kind: 'treasury', x: at[0], y: at[1], face: old.face }, T0 + 100)
   assert.ok('ok' in r, JSON.stringify(r))
   const t = l().buildings.find(b => b.kind === 'treasury')!
   assert.equal(t.built, 0, 'it stands at once')

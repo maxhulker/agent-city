@@ -2,7 +2,7 @@
   "name": "agent-city",
   "version": "0.1.0",
   "private": true,
-  "description": "Watch every Claude Code session on this machine at work in an isometric Manhattan",
+  "description": "Watch every Claude Code session on this machine at work in an isometric city",
   "type": "module",
   "engines": {
     "node": ">=22.18"

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 
 import { renderFrame } from '../src/city.ts'
 import { City } from '../src/world.ts'
+import { findSite } from '../src/layout.ts'
+import { cityWith, stationDoor } from './whole.ts'
 import type { HookEvent } from '../src/world.ts'
 
 // Site plans (docs/handoff.md, B3) and act two of the onboarding
@@ -16,7 +18,7 @@ function ev(name: string, sid: string, extra: Record<string, unknown> = {}): Hoo
 }
 
 function city(): City {
-  const c = new City()
+  const c = cityWith()
   c.buildAll(T0 - 60_000)
   c.apply(ev('SessionStart', 'S1'), T0)
   c.apply(ev('UserPromptSubmit', 'S1', { prompt: 'go' }), T0 + 10)
@@ -95,7 +97,8 @@ test('act two shows once the city stands, records each feature once, and gates n
   assert.ok(c.toasts.includes('Act two: Send a telegram'))
   c.achieve('telegram', T0 + 200)
   assert.equal(c.world.feats?.telegram, T0 + 100, 'once')
-  assert.ok('ok' in c.build({ op: 'borough', x: 2, y: 14, w: 5, h: 5, name: 'Red Hook' }, T0 + 300))
+  const [bx, by] = findSite(c.world.layout!, 5, 5, stationDoor(c.world.layout!))!
+  assert.ok('ok' in c.build({ op: 'borough', x: bx, y: by, w: 5, h: 5, name: 'Red Hook' }, T0 + 300))
   assert.equal(c.actTwo()!.find(q => q.id === 'borough')!.state, 'done')
   assert.ok(c.sendHome('S1', T0 + 400))
   assert.equal(c.actTwo()!.find(q => q.id === 'train')!.state, 'done')

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { applyOp, boroughRect, cityBuildings, findSite, generateMap, groupOf, hubOf, manhattanLayout, mapShape, partName, sectionSite, shownName } from '../src/layout.ts'
+import { applyOp, boroughRect, cityBuildings, findSite, generateMap, groupOf, hubOf, mapShape, partName, sectionSite, shownName } from '../src/layout.ts'
 import type { Borough, Layout, Rect } from '../src/layout.ts'
 import { renderFrame } from '../src/city.ts'
 import { City } from '../src/world.ts'
@@ -45,7 +45,6 @@ test('the hub is the island in the middle of a generated map, and no borough goe
     assert.ok(site, `seed ${seed}: room on the mainland`)
     assert.ok(cells(site).every(([x, y]) => !hub(x, y)), `seed ${seed}: the site is off the hub`)
   }
-  assert.equal(hubOf(manhattanLayout())(10, 30), false, 'Manhattan is all one island: no hub to keep')
 })
 
 test('a section is built onto its project borough: sharing an edge, off the hub, clear of the rest', () => {
