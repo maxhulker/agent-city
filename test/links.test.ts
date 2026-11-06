@@ -8,6 +8,7 @@ import { renderFrame } from '../src/city.ts'
 import { LIVE_MS } from '../src/draw/links.ts'
 import { City, norm } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 
 // Power lines between projects worked on together: a session that started in
 // one and worked in the other strings one, a cable for each such session.
@@ -26,7 +27,7 @@ test('work across two projects strings a power line, one cable per session', () 
   try {
     const home = repo(dir, 'home')
     const api = repo(dir, 'api')
-    const city = new City()
+    const city = cityWith('Brooklyn')
     const ev = (name: string, sid: string, extra: Record<string, unknown> = {}): HookEvent => ({ hook_event_name: name, session_id: sid, cwd: home, ...extra })
     const read = (sid: string, file: string, now: number) => {
       const extra = { tool_name: 'Read', tool_use_id: `${sid}${now}`, tool_input: { file_path: file } }

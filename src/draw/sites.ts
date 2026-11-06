@@ -104,7 +104,7 @@ function ribbon(cx: number, cy: number): string {
 }
 
 // Where a project's site is: its board, and the middle of its square for the
-// ribbon. Manhattan's is by City Hall; a project with no borough has none.
+// ribbon. Home's is by City Hall; a project with no borough has none.
 export function placeOf(world: World, sc: Scene, root: string): { board: [number, number]; square: [number, number]; census?: Census } | undefined {
   if (same(root, world.homeRoot)) {
     const [x, y] = spotFor(sc.layout, 'hall')
@@ -114,11 +114,8 @@ export function placeOf(world: World, sc: Scene, root: string): { board: [number
   const geo = repo ? burbGeo(sc.layout, repo.burb) : undefined
   if (!repo || !geo) return undefined
   const [sx, sy] = geo.square
-  if (!geo.preset) {
-    const [, , x1, y1] = geo.rect
-    return { board: [x1 - 1.5, y1 - 0.4], square: [sx, sy + 0.2], census: repo.census }
-  }
-  return { board: [sx + 3.2, sy + 2.2], square: [sx, sy + 1.2], census: repo.census }
+  const [, , x1, y1] = geo.rect
+  return { board: [x1 - 1.5, y1 - 0.4], square: [sx, sy + 0.2], census: repo.census }
 }
 
 export function drawSites(world: World, sc: Scene): OverlayItem[] {

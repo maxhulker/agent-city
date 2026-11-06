@@ -1,9 +1,9 @@
-import { BURBS, burbGeo, n, p } from './geo.ts'
+import { burbGeo, n, p } from './geo.ts'
 import { lotsIn, placeBlocks, slotsOf } from './blocks.ts'
 import type { Placed } from './blocks.ts'
 import { censusHouse, scaffold, tree } from './map.ts'
 import type { Layout } from '../layout.ts'
-import type { Burb, Census, PresetBurb } from '../types.ts'
+import type { Burb, Census } from '../types.ts'
 
 // A borough's time-lapse on a stage of its own (src/timelapse.ts): its ground
 // and lots as the map has them, and for each frame its houses as that
@@ -17,11 +17,7 @@ const rect = (x0: number, y0: number, x1: number, y1: number, fill: string, extr
 
 // The borough's ground, in cells: x0, y0, x1, y1.
 function groundOf(layout: Layout, id: Burb): [number, number, number, number] | undefined {
-  const g = burbGeo(layout, id)
-  if (!g) return undefined
-  if (!g.preset) return g.rect
-  const [cx, cy] = BURBS[id as PresetBurb].center
-  return [cx - 3.9, cy - 3.9, cx + 3.6, cy + 5.1]
+  return burbGeo(layout, id)?.rect
 }
 
 export type Stage = { viewBox: string; ground: string }
@@ -32,18 +28,12 @@ export function stageOf(layout: Layout, id: Burb): Stage | undefined {
   const g = burbGeo(layout, id)
   if (!r || !g) return undefined
   const [x0, y0, x1, y1] = r
-  // Streets under everything, the lots (or the preset's blocks) on them.
+  // Streets under everything, the lots on them.
   let ground = GRID + rect(x0, y0, x1, y1, '#3a3f4a', ' rx=".3"')
-  if (g.preset) {
-    const [cx, cy] = BURBS[id as PresetBurb].center
-    ground += rect(cx - 3.7, cy - 3.7, cx + 3.4, cy + 1.8, '#272c36', ' rx=".2"')
-    ground += rect(cx - 3.5, cy + 1.95, cx + 2.75, cy + 4.95, '#343944', ' rx=".3"')
-  } else {
-    for (const l of lotsIn(layout, id)) ground += rect(l.x0 + 0.03, l.y + 0.06, l.x1 - 0.03, l.y + 0.94, '#272c36', ' rx=".08"')
-    const [sx, sy] = g.square
-    const half = Math.min(1.6, (x1 - x0) / 2 - 0.2)
-    ground += rect(sx - half, sy - 0.6, sx + half, y1 - 0.15, '#343944', ' rx=".25"')
-  }
+  for (const l of lotsIn(layout, id)) ground += rect(l.x0 + 0.03, l.y + 0.06, l.x1 - 0.03, l.y + 0.94, '#272c36', ' rx=".08"')
+  const [sx, sy] = g.square
+  const half = Math.min(1.6, (x1 - x0) / 2 - 0.2)
+  ground += rect(sx - half, sy - 0.6, sx + half, y1 - 0.15, '#343944', ' rx=".25"')
   ground += '</g>'
   // A few trees round the edge, for scale.
   for (const [tx, ty] of [[x0 + 0.3, y1 - 0.3], [x1 - 0.3, y1 - 0.3], [x1 - 0.3, y0 + 0.3]] as const) ground += tree(tx, ty, 1.4)
@@ -63,7 +53,7 @@ export function stageOf(layout: Layout, id: Burb): Stage | undefined {
 export function framesHouses(layout: Layout, id: Burb, census: Census, changed: string[]): string {
   const g = burbGeo(layout, id)
   if (!g) return ''
-  const placed = placeBlocks(slotsOf(layout, id, g.preset), census)
+  const placed = placeBlocks(slotsOf(layout, id), census)
   const isChanged = (s: Placed) => s.block >= 0 && changed.includes(census.blocks[s.block]!.path)
   const biggest = census.blocks.findIndex(b => changed.includes(b.path))
   let out = ''

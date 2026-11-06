@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 
 import { renderFrame } from '../src/city.ts'
 import { censusShape } from '../src/census.ts'
-import { houses, nearestSlot, placeBlocks } from '../src/draw/blocks.ts'
+import { nearestSlot, placeBlocks, slotsOf } from '../src/draw/blocks.ts'
+import { cityWith, layoutWith } from './whole.ts'
 import type { Census } from '../src/types.ts'
-import { City } from '../src/world.ts'
 
 // Moving a house: a folder the person pins stands from the plot they chose;
 // the rest fill in around it, as the census would place them.
@@ -24,7 +24,7 @@ const runOf = (placed: ReturnType<typeof placeBlocks>, bi: number) => placed.map
 const mid = (s: { x: number; y0: number; w: number; d: number }): [number, number] => [Math.round((s.x + s.w / 2) * 100) / 100, Math.round((s.y0 + s.d / 2) * 100) / 100]
 
 test('a pinned folder stands from the plot nearest its pin; the rest fill in as before', () => {
-  const slots = houses('brooklyn')
+  const slots = slotsOf(layoutWith('Brooklyn'), 'brooklyn')
   const plain = placeBlocks(slots, census())
   // With no pins, unchanged: the front plots, in census order.
   const docsBefore = runOf(plain, 2)
@@ -42,13 +42,13 @@ test('a pinned folder stands from the plot nearest its pin; the rest fill in as 
 })
 
 test('moving a house on the map: pinned, swapped with another moved one, let go, and reset by a move', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn', 'Queens')
   city.apply({ hook_event_name: 'SessionStart', session_id: 'S1', cwd: 'C:/fake/home' }, T0)
   const root = 'C:/fake/api'
   city.build({ op: 'movein', id: 'brooklyn', root }, T0)
   city.setCensus(root, census())
   const repo = () => city.world.repos.find(r => r.root === root)!
-  const slots = houses('brooklyn')
+  const slots = slotsOf(city.world.layout!, 'brooklyn')
   const at = (i: number) => mid(slots[i]!)
 
   assert.match((city.moveHouse({ root, folder: 'nope', x: 1, y: 1 }) as { error: string }).error, /No such folder/)

@@ -8,11 +8,11 @@ import { drawSites } from './draw/sites.ts'
 import { drawLinks } from './draw/links.ts'
 import { drawShips } from './draw/ships.ts'
 import { costsByRoot } from './costs.ts'
-import { manhattanLayout } from './layout.ts'
+import { generateMap } from './layout.ts'
 import type { Layout } from './layout.ts'
 import type { Agent, Burb, District, World } from './types.ts'
 
-export { AGENT_COLORS, BLUEPRINTS, BURBS, BURB_ORDER, LABELS, LANDMARKS, districtFor, mainColor } from './draw/geo.ts'
+export { AGENT_COLORS, BLUEPRINTS, LABELS, LANDMARKS, districtFor, mainColor } from './draw/geo.ts'
 export type { OverlayItem, Sprite } from './draw/geo.ts'
 
 // Draws the world as the three layers the page composes (docs/frames.md):
@@ -57,7 +57,7 @@ export function renderFrame(world: World, now: number, opts: RenderOptions = {})
       .sort((a, b) => (a.left ?? 0) - (b.left ?? 0))
       .map(r => [r.burb, r]),
   )
-  const layout = world.layout ?? manhattanLayout(world.built)
+  const layout = world.layout ?? generateMap(1)
   const sc: Scene = {
     now,
     byDistrict,

@@ -6,6 +6,7 @@ import { renderCity } from './render.ts'
 import { BLOCK_EVERY, LANDMARKS, fullPopulation } from '../src/draw/geo.ts'
 import { City, FIREWORKS_MS, SCAFFOLD_MS, TRAIN_MS, emptyWorld } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
+import { cityWith } from './whole.ts'
 import type { Landmark, World } from '../src/types.ts'
 
 // The onboarding game: the island starts bare, and each landmark goes up the
@@ -34,7 +35,7 @@ function started(city: City, sid = 'S1', now = T0) {
 const built = (city: City) => Object.keys(city.world.built ?? {}).sort()
 
 test('a brand-new city is bare land, and the welcome shows until a session is seen', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   assert.deepEqual(city.world.built, {})
   assert.equal(city.world.population, 0)
   assert.equal(city.isNew, true)
@@ -50,7 +51,7 @@ test('a brand-new city is bare land, and the welcome shows until a session is se
 })
 
 test('City Hall rises on the first prompt', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply(ev('SessionStart', 'S1'), T0)
   assert.deepEqual(built(city), [])
   city.apply(ev('UserPromptSubmit', 'S1', { prompt: 'hi' }), T0 + 100)
@@ -78,7 +79,7 @@ test('each kind of work builds its landmark, once', () => {
     ['Agent', { description: 'look around', prompt: 'x' }, 'relay'],
   ]
   for (const [name, input, landmark] of cases) {
-    const city = new City()
+    const city = cityWith('Brooklyn')
     started(city)
     tool(city, 'S1', name, input, T0 + 1000)
     assert.deepEqual(built(city), ['hall', landmark].sort(), `${name} builds ${landmark}`)
@@ -89,7 +90,7 @@ test('each kind of work builds its landmark, once', () => {
 })
 
 test('a git command is a shell command too, but only a commit builds the Seaport', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   tool(city, 'S1', 'Bash', { command: 'git status' }, T0 + 1000)
   assert.deepEqual(built(city), ['foundry', 'hall'])
@@ -99,7 +100,7 @@ test('a git command is a shell command too, but only a commit builds the Seaport
 })
 
 test('a commit that fails builds nothing; a push builds the Seaport and lights the torch', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   const extra = { tool_name: 'Bash', tool_use_id: 'c1', tool_input: { command: 'git commit -m "x"' } }
   city.apply(ev('PreToolUse', 'S1', extra), T0 + 1000)
@@ -112,7 +113,7 @@ test('a commit that fails builds nothing; a push builds the Seaport and lights t
 })
 
 test("Central Park greens when the first subagent finishes; a lead's own stop does not count", () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   city.apply(ev('Stop', 'S1'), T0 + 500)
   assert.deepEqual(built(city), ['hall'])
@@ -124,7 +125,7 @@ test("Central Park greens when the first subagent finishes; a lead's own stop do
 })
 
 test('the Empire State goes up once every district is built, with the news once', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   tool(city, 'S1', 'Read', { file_path: `${HOME}/a.ts` }, T0 + 1000)
   tool(city, 'S1', 'Edit', { file_path: `${HOME}/a.ts` }, T0 + 2000)
@@ -148,7 +149,7 @@ test('the Empire State goes up once every district is built, with the news once'
 })
 
 test('the population counts tool calls, and the fabric grows with it', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   for (let i = 0; i < 5; i++) tool(city, 'S1', 'Read', { file_path: `${HOME}/${i}.ts` }, T0 + 1000 + i * 100)
   assert.equal(city.world.population, 5)
@@ -164,7 +165,7 @@ test('the population counts tool calls, and the fabric grows with it', () => {
 })
 
 test('a landmark stands in scaffolding for a few seconds, then finished; the server redraws when it comes down', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   // Well after City Hall's own scaffolding has come down.
   tool(city, 'S1', 'Read', { file_path: `${HOME}/a.ts` }, T0 + 3 * SCAFFOLD_MS)
@@ -180,7 +181,7 @@ test('a landmark stands in scaffolding for a few seconds, then finished; the ser
 })
 
 test('the finished city gets fireworks for a while', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.buildAll(T0)
   city.world.built!.empire = T0 + 10_000
   assert.ok(renderCity(city.world, T0 + 11_000, {}).includes('class="fireworks"'))
@@ -189,7 +190,7 @@ test('the finished city gets fireworks for a while', () => {
 })
 
 test('the Statue is dark until the first commit, and her torch unlit until the first push', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   assert.ok(renderCity(city.world, T0 + 500, {}).includes('class="statue dark"'))
   tool(city, 'S1', 'Bash', { command: 'git commit -m x' }, T0 + 1000)
@@ -199,20 +200,17 @@ test('the Statue is dark until the first commit, and her torch unlit until the f
   assert.ok(renderCity(city.world, T0 + 50_000, {}).includes('class="statue lit"'))
 })
 
-test('a city saved before the game existed counts as fully built; a never-used one starts bare', () => {
+test('a city saved before the game existed moves to new land with nothing built; a never-used one starts bare', () => {
   const used: World = { ...emptyWorld(), homeRoot: HOME, home: 'home', flushedAt: T0 }
   delete used.built
   delete used.population
+  delete used.layout
   const city = new City(used)
-  assert.deepEqual(Object.keys(city.world.built!).sort(), [...LANDMARKS].sort())
-  assert.ok(city.world.built!.hall! <= T0, 'built in the past, so no scaffolding on load')
-  assert.equal(city.world.population, fullPopulation())
+  assert.ok('seed' in city.world.layout!.map, 'new land')
+  assert.deepEqual(city.world.built, {})
+  assert.equal(city.world.population, 0)
   assert.equal(city.isNew, false)
-  assert.deepEqual(city.toasts, [], 'no ceremony')
-
-  const withSessions: World = { ...emptyWorld(), sessions: [{ id: 'S1', name: 's', cwd: HOME, root: HOME, color: '#fff', startedAt: T0, updatedAt: T0 }], flushedAt: T0 }
-  delete withSessions.built
-  assert.equal(Object.keys(new City(withSessions).world.built!).length, LANDMARKS.length)
+  assert.equal(city.world.homeRoot, HOME)
 
   const never: World = { ...emptyWorld(), flushedAt: T0 }
   delete never.built
@@ -222,7 +220,7 @@ test('a city saved before the game existed counts as fully built; a never-used o
 })
 
 test('Rebuild clears the progress; Build it all now finishes it without ceremony', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   started(city)
   tool(city, 'S1', 'Read', { file_path: `${HOME}/a.ts` }, T0 + 1000)
   city.toasts.length = 0
@@ -234,19 +232,19 @@ test('Rebuild clears the progress; Build it all now finishes it without ceremony
   assert.ok(!city.ticker.some(i => i.text === 'THE CITY IS COMPLETE'))
   assert.deepEqual(city.toasts, [])
 
-  city.rebuild(T0 + 3000)
+  city.restart(5, T0 + 3000)
   assert.deepEqual(city.world.built, {})
   assert.equal(city.world.population, 0)
   assert.equal(city.isNew, false, 'the session is still here, so no welcome')
   assert.equal(city.world.sessions.length, 1, 'rebuilding touches scenery only')
   assert.equal(city.world.agents.length, 1)
-  // It can be played again.
+  // New land: work builds nothing until it is laid out.
   tool(city, 'S1', 'Edit', { file_path: `${HOME}/a.ts` }, T0 + 4000)
-  assert.deepEqual(built(city), ['workshop'])
+  assert.deepEqual(built(city), [])
 })
 
 test("the first session of a brand-new city arrives by train, and the train leaves empty", () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply(ev('SessionStart', 'S1'), T0)
   const lead = city.world.agents.find(a => a.id === 'lead:S1')!
   assert.equal(lead.at, 'relay', 'it steps off at Grand Central')
@@ -283,13 +281,13 @@ test("the first session of a brand-new city arrives by train, and the train leav
 })
 
 test('a second session, or one in a built city, arrives without a train', () => {
-  const city = new City()
+  const city = cityWith('Brooklyn')
   city.apply(ev('SessionStart', 'S1'), T0)
   city.apply(ev('SessionStart', 'S2'), T0 + 100)
   assert.equal(city.world.trains!.length, 1, 'only the first')
   assert.equal(city.world.agents.find(a => a.id === 'lead:S2')!.at, 'hall')
 
-  const old = new City()
+  const old = cityWith('Brooklyn')
   old.buildAll(T0)
   old.apply(ev('SessionStart', 'S1'), T0 + 100)
   assert.equal(old.world.trains, undefined)

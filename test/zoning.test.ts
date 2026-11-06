@@ -72,9 +72,6 @@ test('a park cell draws lawn and trees and takes no building', () => {
   const trees = (svg: string) => (svg.match(/<circle [^>]*fill="#1(66534|5803d)"/g) ?? []).length
   assert.ok(trees(park) >= trees(bare) + 4, `trees: ${trees(bare)} then ${trees(park)}`)
   assert.equal(canPlace(city.world.layout!, 'library', x, y), 'Something is already there')
-  // The preset's own parks stay drawn by their landmarks, not twice.
-  const preset = new City()
-  assert.ok(!mapOf(preset.world.layout!, 0).includes('class="lawn"'))
 })
 
 test('the Statue stands in the water, goes up as she is placed, and a road over water is a bridge', () => {

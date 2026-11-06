@@ -1,14 +1,13 @@
 import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
-import { BLOCK_EVERY, PROFILE, SITES, burbBuilding, burbGeo, cellsOf, deltaOf, doorOf, edges, isWaiting, lots, roomOf, route, siteFor, spotFor } from '../layout.ts'
+import { FULL_POPULATION, SITES, burbBuilding, burbGeo, cellsOf, deltaOf, doorOf, isWaiting, roomOf, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
 import type { Cost } from '../costs.ts'
 
-// The map's geometry, shared by every layer: the projection, the island and
-// its neighbours, where districts and boroughs are, and how agents walk. The
-// island, the sites, the boroughs and the lots are the Manhattan preset's,
-// kept in src/layout.ts (docs/city-builder.md) and re-exported here.
+// The map's geometry, shared by every layer: the projection, where districts
+// and boroughs are, and how agents walk. The sites and the lots are kept in
+// src/layout.ts (docs/city-builder.md) and re-exported here.
 
-export { BLOCK_EVERY, BURBS, BURB_ORDER, PROFILE, RESERVED, SITES, burbGeo, edges, isReserved, isWaiting, lots, seeded } from '../layout.ts'
+export { BLOCK_EVERY, SITES, burbGeo, isWaiting, seeded } from '../layout.ts'
 export type { Lot, Site } from '../layout.ts'
 
 export const LABELS: Record<District, string> = {
@@ -88,73 +87,6 @@ export function esc(text: string): string {
   return text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
 }
 
-// ---- the island -----------------------------------------------------------
-
-export const ISLAND: [number, number][] = [
-  ...PROFILE.map(([gy, w]) => [w, gy] as [number, number]),
-  ...PROFILE.slice()
-    .reverse()
-    .map(([gy, , e]) => [e, gy] as [number, number]),
-]
-
-export const NEW_JERSEY: [number, number][] = [
-  [-40, -20],
-  [2.6, -20],
-  ...PROFILE.map(([gy, w]) => [w - 5 - gy * 0.02, gy] as [number, number]),
-  [-1.5, 66],
-  [-40, 70],
-]
-export const BRONX: [number, number][] = [
-  [9.4, -20],
-  [60, -20],
-  [60, 15.6],
-  [16.4, 15.6],
-  [14.6, 13],
-  [13.8, 8],
-  [13.1, 3],
-  [11.3, -1],
-  [9.6, -3.4],
-]
-export const QUEENS: [number, number][] = [
-  [17.4, 19.5],
-  [60, 19.5],
-  [60, 46],
-  [21, 46],
-  [19, 40],
-  [18.6, 33],
-  [18.2, 25],
-]
-export const BROOKLYN: [number, number][] = [
-  [21, 46],
-  [60, 46],
-  [60, 90],
-  [15, 90],
-  [12.6, 70],
-  [14.8, 64],
-  [16.8, 60],
-  [19.2, 56.5],
-  [20.8, 52],
-  [21.3, 48.5],
-]
-export const ROOSEVELT: [number, number][] = [
-  [17, 27],
-  [17.5, 27.4],
-  [17.6, 36],
-  [17.1, 35.8],
-]
-export const RANDALLS: [number, number][] = [
-  [15.6, 15.8],
-  [17.4, 16],
-  [17.6, 19],
-  [15.8, 19.2],
-]
-export const GOVERNORS: [number, number][] = [
-  [9.5, 64.2],
-  [11.4, 64.4],
-  [11.8, 66.4],
-  [9.8, 66.6],
-]
-
 // ---- districts ------------------------------------------------------------
 
 // Each district's own colour: its plaza, its landmark's lights, its name.
@@ -172,14 +104,14 @@ export const ACCENT: Record<District, string> = {
 // Midtown's five sit a block or two apart, so their names wait for a zoom.
 export const MIDTOWN = new Set<District>(['observatory', 'library', 'relay', 'workshop', 'foundry'])
 
-// Where a district's agents stand: its preset spot, moved with its building.
+// Where a district's agents stand: its own spot, moved with its building.
 export function spotOf(d: District, [dx, dy]: [number, number] = [0, 0]): [number, number] {
   const [sx, sy] = SITES[d].spot
   return [sx + dx, sy + dy]
 }
 
 // The shift of the building a district's agents use, in cells; none when
-// nothing of the kind is placed (its agents then stand at the preset spot).
+// nothing of the kind is placed (its agents then stand at its own spot).
 export function shiftFor(layout: Layout | undefined, d: District): [number, number] {
   const b = layout && siteFor(layout, d)
   return b ? deltaOf(b) : [0, 0]
@@ -220,8 +152,7 @@ export function standAt(d: District, i: number, [sx, sy]: [number, number] = SIT
 // ---- boroughs: one per other repository -----------------------------------
 
 // Rows along the borough's front edge, facing the viewer, a body's width
-// apart: on a preset borough's square in front of its houses, on a drawn one
-// along the middle of its front edge, rows stepping back into it. A
+// apart, along the middle of its front edge, rows stepping back into it. A
 // repository with no borough waits on the station's forecourt.
 export function burbAt(b: Burb, i: number, layout?: Layout): [number, number] {
   const g = burbGeo(layout, b)
@@ -229,7 +160,6 @@ export function burbAt(b: Burb, i: number, layout?: Layout): [number, number] {
   const [cx, cy] = g.square
   const col = i % 3
   const row = Math.floor(i / 3)
-  if (g.preset) return [cx - 2.8 + col * 2 + (row % 2) * 1, cy + 3 + row * 1.4]
   const step = Math.min(1.6, (g.rect[2] - g.rect[0] - 1) / 3)
   return [cx - step + col * step + (row % 2) * (step / 2), cy - row * 0.9]
 }
@@ -241,7 +171,7 @@ export function waitAt(layout: Layout | undefined, i: number): [number, number] 
   return [sx + 1.6 + (i % 4) * 0.45, sy + 0.25 + Math.floor(i / 4) * 0.3]
 }
 
-// Where an agent stands: in Manhattan at its district's door; in a borough
+// Where an agent stands: on the island at its district's door; in a borough
 // at the building of its kind the person placed there, else on the square.
 export function placeAt(place: Place, i: number, layout?: Layout): [number, number] {
   if (!place.burb) return standAt(place.at, i, layout ? spotFor(layout, place.at) : undefined, roomOf(layout && siteFor(layout, place.at)))
@@ -278,16 +208,16 @@ export const BLUEPRINTS: Record<Landmark, { name: string; hint: string }> = {
 export const SCAFFOLD_MS = 6_000
 export const FIREWORKS_MS = 20_000
 
-// The filler blocks (the preset's lots, in src/layout.ts): one more for every
-// BLOCK_EVERY tool calls, Midtown and downtown first, until the island is full.
+// The filler blocks (the zoned lots, in src/layout.ts): one more for every
+// BLOCK_EVERY tool calls, in zoning order, until every lot has one.
 // The population at which every lot has its block.
 export function fullPopulation(): number {
-  return lots().length * BLOCK_EVERY
+  return FULL_POPULATION
 }
 
 // How many blocks a population has earned, of `all` lots: quick at first (a
 // morning's work shows), then one or two a day for weeks, until they are full.
-export function blocksFor(population: number, all = lots().length): number {
+export function blocksFor(population: number, all: number): number {
   if (!Number.isFinite(population)) return all
   return Math.min(all, Math.floor(all * Math.sqrt(Math.max(0, population) / fullPopulation())))
 }
@@ -328,7 +258,7 @@ export function walk(from: Place, to: Place, end: [number, number], layout?: Lay
 
 export type Frame = { x: number; y: number; w: number; h: number }
 
-// The whole map: the island, the bay and Liberty Island, and every borough in use.
+// The whole map: all its land, and every borough in use.
 export function frame(burbs: Burb[], layout?: Layout): Frame {
   let x0 = Infinity
   let x1 = -Infinity
@@ -341,26 +271,14 @@ export function frame(burbs: Burb[], layout?: Layout): Frame {
     y0 = Math.min(y0, y)
     y1 = Math.max(y1, y)
   }
-  if (layout && !('preset' in layout.map)) {
-    // A generated map: all of it (the page opens on the island, zoomed in).
+  if (layout) {
+    // All of it (the page opens on the island, zoomed in).
     for (const [y, x0, x1] of layout.land) {
       take(x0, y)
       take(x1, y)
       take(x0, y + 1)
       take(x1, y + 1)
     }
-  } else {
-    for (let gy = -3; gy <= 71; gy += 0.5) {
-      const [w, e] = edges(gy)
-      take(w - 1, gy)
-      take(e + 1, gy)
-    }
-    for (const [gx, gy] of [
-      [0.5, 71],
-      [3.5, 71.5],
-      [12, 67],
-      [-3, 70],
-    ] as const) take(gx, gy)
   }
   for (const b of burbs) {
     const g = burbGeo(layout, b)
@@ -379,7 +297,7 @@ export function frame(burbs: Burb[], layout?: Layout): Frame {
 // What every layer knows about this frame.
 export type Scene = {
   now: number
-  // Manhattan's agents by district; the others by borough.
+  // Home's agents by district; the others by borough.
   byDistrict: Map<District, Agent[]>
   byBurb: Map<Burb, Agent[]>
   // Districts with someone working in them.

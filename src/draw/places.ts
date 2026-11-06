@@ -1,5 +1,5 @@
 import type { Agent, District, Landmark, World } from '../types.ts'
-import { ACCENT, BLUEPRINTS, ISLAND, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
+import { ACCENT, BLUEPRINTS, LABELS, burbGeo, dayOf, esc, p, pts, usd } from './geo.ts'
 import type { Pt, Scene } from './geo.ts'
 import { SIZES, boroughRect, cellsOf, deltaOf, groupOf } from '../layout.ts'
 import { blockTip, blueprintPlots, censusText, placeBlocks, runsOf, slotsOf } from './blocks.ts'
@@ -54,7 +54,7 @@ const ABOUT: Record<keyof typeof LABELS, string> = {
   plaza: 'Finished subagents rest on its lawn before they leave.',
 }
 
-// Each kind's hover box at its preset origin, and how tall it stands.
+// Each kind's hover box at its drawing origin, and how tall it stands.
 const BOXES: Record<Kind, [[number, number, number, number], number]> = {
   plaza: [[5, 22, 9, 35], 14],
   observatory: [[3, 37, 7.35, 39], 70],
@@ -196,10 +196,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   // packed up, and the drawn boroughs nobody has moved into yet.
   const boxOf = (b: string): [number, number, number, number] | undefined => {
     const g = burbGeo(sc.layout, b)
-    if (!g) return undefined
-    if (!g.preset) return g.rect
-    const [cx, cy] = g.square
-    return [cx - 3, cy - 3, cx + 3, cy + 4.6]
+    return g?.rect
   }
   const seen = new Set<string>()
   for (const [b, repo] of sc.repoOf) {
@@ -231,7 +228,7 @@ export function drawPlaces(world: World, sc: Scene): string {
     })
   }
   for (const bo of sc.layout.boroughs) {
-    if (bo.preset || seen.has(bo.id)) continue
+    if (seen.has(bo.id)) continue
     zones.push({
       borough: bo.id,
       box: boroughRect(bo),
@@ -253,7 +250,7 @@ export function drawPlaces(world: World, sc: Scene): string {
     const census = repo.census
     const g = burbGeo(sc.layout, b)
     if (!census || !g) continue
-    const placed = placeBlocks(slotsOf(sc.layout, b, g.preset), census)
+    const placed = placeBlocks(slotsOf(sc.layout, b), census)
     // Its blueprints: the folders it is about to get.
     const planned = unbuilt(repo.blueprints, census, sc.now)
     for (const { path, plots } of blueprintPlots(placed, planned.map(p => p.path))) {
@@ -285,9 +282,7 @@ export function drawPlaces(world: World, sc: Scene): string {
   houses.sort((a, b) => a.box[0] + a.box[1] + a.box[3] - (b.box[0] + b.box[1] + b.box[3]))
   zones.push(...houses)
 
-  // Manhattan itself, under everything else.
   let s = `<g class="places">`
-  if ('preset' in sc.layout.map) s += `<polygon class="zone ground" points="${pts(ISLAND.map(([gx, gy]) => p(gx, gy)))}" data-tip-title="${esc(`Home: ${world.home || 'the first repository seen'}`)}" data-tip-text="${esc(`The island is home. Its districts stand for kinds of work: hover over one to see which.${costLine(sc, world.homeRoot)}`)}"/>`
   for (const z of zones) {
     const who = z.who ? whoLines(world, z.who) : ''
     const more = [z.extra, who].filter(Boolean).join('\n')

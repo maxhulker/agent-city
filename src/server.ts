@@ -37,7 +37,7 @@ import { base, City, forgetRoots, SCAFFOLD_MS } from './world.ts'
 import type { HookEvent, TickerItem } from './world.ts'
 
 // Crosswalk: a local server Claude Code sessions post their hook events to,
-// and a page that draws every session at work in one isometric Manhattan.
+// and a page that draws every session at work in one isometric city.
 // One city per Claude Code config folder (src/cities.ts): the page shows one
 // at a time, with a tab for each.
 
@@ -240,7 +240,7 @@ function accountsHere(town: Town, now: number) {
   return recent.sort((a, b) => b[1].lastAt - a[1].lastAt).map(([key, a]) => ({ key, email: a.email, org: a.org, sessions: a.sessions.size, lastAt: a.lastAt }))
 }
 
-// Folders the page offers for a new task: Manhattan, the boroughs, and wherever sessions run.
+// Folders the page offers for a new task: home, the boroughs, and wherever sessions run.
 function places(world: World): { path: string; name: string }[] {
   const seen = new Set<string>()
   const out: { path: string; name: string }[] = []
@@ -325,7 +325,7 @@ function game({ city, connected }: Town, now: number) {
 const sameRoot = (a: string, b: string) => a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 
 // A repository the city knows (one with a borough or waiting for one, or
-// Manhattan's), as the city has it; nothing for any other folder.
+// home), as the city has it; nothing for any other folder.
 function knownRoot(world: World, root: string): string | undefined {
   if (!root) return undefined
   if (world.homeRoot && sameRoot(world.homeRoot, root)) return world.homeRoot
@@ -354,7 +354,7 @@ function meta(town: Town) {
     // The boroughs nobody lives in now, which the card offers to move into.
     free: (world.layout?.boroughs ?? []).filter(b => !world.repos.some(r => r.burb === b.id && !r.left)).map(b => ({ id: b.id, name: b.name, lots: lotsInBorough(world, b.id) })),
     // How many zoned lots each drawn borough has: none, and its houses have nowhere to go.
-    lots: Object.fromEntries((world.layout?.boroughs ?? []).filter(b => !b.preset).map(b => [b.id, lotsInBorough(world, b.id)])),
+    lots: Object.fromEntries((world.layout?.boroughs ?? []).map(b => [b.id, lotsInBorough(world, b.id)])),
     sessions: world.sessions.map(s => ({
       ...s,
       agents: world.agents
@@ -890,7 +890,7 @@ const server = createServer(async (req, res) => {
         save()
         return reply(res, 200, '{"ok":true}')
       }
-      // The welcome's map picker: a new city starts on a generated map, or on Manhattan.
+      // The welcome's map picker: a new city starts on the map of a seed.
       if (url.pathname === '/newmap') {
         const r = city.newMap((args as { seed?: unknown }).seed, Date.now())
         if ('error' in r) return reply(res, 400, JSON.stringify(r))
@@ -904,9 +904,8 @@ const server = createServer(async (req, res) => {
       if (url.pathname === '/lastcall') return reply(res, 200, JSON.stringify({ ok: true, left: city.lastCall(Date.now()) }))
       // The onboarding game: back to bare land, or everything built at once.
       if (url.pathname === '/rebuild' || url.pathname === '/buildall') {
-        // Rebuild offers the two starts: a fresh map to lay out, or Manhattan whole.
-        const start = (args as { start?: unknown }).start
-        if (url.pathname === '/rebuild') city.restart(start === 'manhattan' ? 'manhattan' : 1 + Math.floor(Math.random() * 2147483000), Date.now())
+        // Rebuild starts again on a fresh map to lay out.
+        if (url.pathname === '/rebuild') city.restart(1 + Math.floor(Math.random() * 2147483000), Date.now())
         else city.buildAll(Date.now())
         save()
         return reply(res, 200, '{"ok":true}')

@@ -4,7 +4,7 @@ import { burbGeo, spotFor } from '../layout.ts'
 import type { Link, World } from '../types.ts'
 
 // Power lines between projects worked on together (World.links): lattice
-// pylons from one project's square to the other's (Manhattan's by City
+// pylons from one project's square to the other's (home's by City
 // Hall), a cable for each session that crossed (up to three), sagging
 // between the towers. While work crosses the line it is lit, and sparks run
 // along it.

@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { LANDMARKS } from '../src/city.ts'
-import { GEN, canPlace, cellsOf, manhattanLayout } from '../src/layout.ts'
+import { GEN, canPlace, cellsOf } from '../src/layout.ts'
+import { cityWith } from './whole.ts'
 import type { Building, Kind } from '../src/layout.ts'
 import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
@@ -106,20 +106,9 @@ test('the Empire State is placeable only once every district stands', () => {
   assert.ok(city.toasts.includes('The city is complete'))
 })
 
-test('Start from Manhattan is the preset, whole; Rebuild offers both starts', () => {
-  const city = new City()
-  assert.ok('ok' in city.newMap('manhattan', T0))
-  const l = city.world.layout!
-  assert.deepEqual(l.map, { preset: 'manhattan' })
-  assert.deepEqual(
-    l.buildings.map(b => b.id),
-    manhattanLayout().buildings.map(b => b.id),
-  )
-  assert.ok(l.buildings.every(b => b.built !== undefined), 'every building stands')
-  assert.ok(LANDMARKS.every(id => city.world.built?.[id] !== undefined), 'every landmark recorded')
-  assert.equal(city.quests(), undefined, 'no quests on the preset')
-
-  // A repository in Brooklyn, then Rebuild on new land: it waits at the station.
+test('Rebuild starts again on new land: a repository with a borough waits for another', () => {
+  const city = cityWith('Brooklyn')
+  city.buildAll(T0)
   city.apply(ev('SessionStart', 'S1'), T0 + 100)
   city.apply(ev('SessionStart', 'S2', { cwd: 'C:/fake/api' }), T0 + 200)
   city.apply(ev('UserPromptSubmit', 'S2', { cwd: 'C:/fake/api', prompt: 'hi' }), T0 + 300)
@@ -132,8 +121,6 @@ test('Start from Manhattan is the preset, whole; Rebuild offers both starts', ()
   assert.equal(state(city, 'road'), 'next')
   assert.ok(city.world.repos[0]!.burb.startsWith('@'), 'Brooklyn is gone: api waits for a borough')
   assert.equal(city.world.sessions.length, 2, 'the sessions stay')
-  city.restart('manhattan', T0 + 600)
-  assert.ok(city.world.layout!.buildings.every(b => b.built !== undefined))
 })
 
 test("the game's record is read from the buildings: one source of truth", () => {
@@ -146,11 +133,10 @@ test("the game's record is read from the buildings: one source of truth", () => 
   assert.equal(city.world.built?.library, undefined, 'bulldozed: off the record')
   assert.notEqual(state(city, 'library'), 'done', 'its quest is open again')
 
-  // A city saved with the old record keeps its torch.
+  // A city saved with the old record, before layouts: new land, nothing standing, no torch.
   const saved = { ...new City().world, built: { harbor: T0, torch: T0 + 5 }, homeRoot: 'C:/fake/home', home: 'home' }
   delete saved.layout
   const old = new City(saved)
-  assert.equal(old.world.torch, T0 + 5)
-  assert.equal(old.world.built?.torch, T0 + 5)
-  assert.equal(old.world.built?.harbor, T0, 'its Seaport stands, from the migrated layout')
+  assert.equal(old.world.torch, undefined)
+  assert.deepEqual(old.world.built, {})
 })

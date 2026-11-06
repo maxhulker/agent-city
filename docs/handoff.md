@@ -278,6 +278,19 @@ section B. Since then: a drawn borough's zoned blocks fill with brownstones
 `World.torch` (migrated from an old record on load). Bulldozing a landmark
 takes it off the record, and Build it all now raises only what is placed.
 
+Since 2026-11-06 the hand-drawn Manhattan preset is retired: every city
+stands on a generated map. `manhattanLayout()`, the four preset boroughs
+(`BURBS`, `houses()`), the island outline and its backdrop (rivers, bridges,
+traffic, neighbourhood names) are gone, and so are Start from Manhattan and
+Rebuild: Manhattan. A city saved on the preset, or before layouts, moves to
+new land on load and its repositories wait at the station again. Each
+kind's drawing is still made at its old cells, now `ORIGINS` in
+`src/layout.ts`, and shifted to where the building stands; the population
+scale is `FULL_POPULATION` (the old island's 356 lots' worth). The tests'
+whole city is `test/whole.ts`: a generated map (seed 7) with a street grid,
+every landmark placed and the island zoned, and `layoutWith('Brooklyn')`
+for boroughs by name. The golden hash is that city's.
+
 ### G. Buildings in sizes (started 2026-11-02)
 
 The first step in making the landmarks generic rather than Manhattan's

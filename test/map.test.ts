@@ -92,8 +92,6 @@ test("the map's hash changes with the seed, and a generated map draws its own la
   assert.notEqual(a.map!.hash, b.map!.hash)
   assert.equal(frameOf(1).map!.hash, a.map!.hash, 'and keeps it')
   assert.ok(a.map!.svg.includes('class="shore"'), 'its shore')
-  assert.ok(!a.map!.svg.includes('HUDSON RIVER') && !a.map!.svg.includes('BROOKLYN'), "none of the preset's names")
-  assert.ok(!a.overlay.some(i => i.k === 'cars'), "none of the preset's traffic")
   assert.ok(a.map!.svg.includes('stroke="#a16207"'), "the station's clock")
 })
 

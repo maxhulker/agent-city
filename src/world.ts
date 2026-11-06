@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 
 import { AGENT_COLORS, districtFor } from './city.ts'
 import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, fullPopulation, placeAt, usd, walk } from './draw/geo.ts'
-import { FIXED, applyOp, boroughRect, boroughSizeFor, builtOf, burbGeo, cityBuildings, clearBorough, connectBorough, fillBorough, findSite, generateMap, clearBuilt, hubOf, isWaiting, lotsWanted, manhattanLayout, markBuilt, parseOp, sectionSite, waitingId } from './layout.ts'
+import { FIXED, applyOp, boroughRect, boroughSizeFor, builtOf, burbGeo, cityBuildings, clearBorough, connectBorough, fillBorough, findSite, generateMap, hubOf, isWaiting, lotsWanted, markBuilt, parseOp, sectionSite, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
 import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
@@ -49,8 +49,12 @@ const SPAWNS = /^(Agent|Task)$/
 const CD = /(?:^|&&|;|\|\|)\s*(?:cd|Set-Location|pushd)\s+(?:-(?:Literal)?Path\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/
 const GIT_C = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/
 
+// The map an empty world starts on; the server gives a new city a random one.
+const FIRST_SEED = 1
+const randomSeed = () => 1 + Math.floor(Math.random() * 2147483000)
+
 export function emptyWorld(): World {
-  return { home: '', homeRoot: '', repos: [], sessions: [], agents: [], conflicts: [], asks: [], built: {}, population: 0, layout: manhattanLayout(), flushedAt: 0 }
+  return { home: '', homeRoot: '', repos: [], sessions: [], agents: [], conflicts: [], asks: [], built: {}, population: 0, layout: generateMap(FIRST_SEED), flushedAt: 0 }
 }
 
 // Tools that build each landmark the first time any session uses one.
@@ -344,14 +348,19 @@ export class City {
     w.population ??= 0
     // Home no longer moves between repositories: whoever has it keeps it.
     delete (w as World & { homePinned?: boolean }).homePinned
-    // A city saved before layouts existed is today's Manhattan, with the
-    // landmarks it had built standing and the rest still lots.
-    w.layout ??= manhattanLayout(legacy ?? {})
-    if (!legacy) {
-      // A city saved before the game existed. Anyone who has used theirs keeps
-      // it whole; only a city that never saw a session starts as bare land.
-      const used = w.sessions.length || w.agents.length || w.repos.length || w.homeRoot || w.tasks?.length || w.appSessions?.length
-      if (used) this.buildAll(w.flushedAt)
+    // A city saved before layouts existed, or on the hand-drawn Manhattan
+    // (retired 2026-11-06), moves to new land: the sessions stay, and each
+    // repository waits at the station for a borough again.
+    const old = w.layout as { map?: object; rev?: number } | undefined
+    if (!old?.map || !('seed' in old.map)) {
+      w.layout = generateMap(randomSeed())
+      w.layout.rev = (old?.rev ?? 0) + 1
+      w.opened = {}
+      delete w.firstRoad
+      delete w.torch
+      w.population = 0
+      this.rehouse()
+      if (old) this.toasts.push('The hand-drawn Manhattan is retired: new land to lay out your city on')
     }
     this.sync()
     // A city that has seen sessions already knows its landmarks: no burst of
@@ -675,7 +684,6 @@ export class City {
   // order, which nothing enforces; only on a laid-out (generated) map. The
   // next one is the first not done; the Empire State waits for every district.
   quests(): Quest[] | undefined {
-    if ('preset' in this.layout.map) return undefined
     const w = this.world
     const stands = (k: Kind) => cityBuildings(this.layout, k).some(b => b.built !== undefined)
     const allUp = DISTRICT_LANDMARKS.every(d => stands(d))
@@ -702,45 +710,37 @@ export class City {
     })
   }
 
-  // "Rebuild the city" with one of the two starts: a generated map to lay out
-  // (the seed's), or Manhattan, whole. The sessions and their agents stay;
-  // a repository whose borough has gone waits at the station for another.
-  restart(start: number | 'manhattan', now: number) {
+  // "Rebuild the city" on new land: the seed's map, to lay out. The sessions
+  // and their agents stay; a repository whose borough has gone waits at the
+  // station for another.
+  restart(seed: number, now: number) {
     const w = this.world
     const rev = this.layout.rev + 1
     w.opened = {}
     delete w.firstRoad
     delete w.torch
     w.population = 0
-    w.layout = start === 'manhattan' ? manhattanLayout() : generateMap(start)
+    w.layout = generateMap(seed)
     w.layout.rev = rev
-    if (start === 'manhattan') this.buildAll(now)
     this.sync()
+    this.rehouse()
+    for (const a of w.agents) delete a.arriving
+    const text = 'New land: lay out your first district'
+    this.toasts.push(text)
+    this.say(undefined, text, now)
+    this.isDirty = true
+  }
+
+  // A repository whose borough is not on the map waits at the station for
+  // another, and its agents with it.
+  private rehouse() {
+    const w = this.world
     for (const repo of w.repos) {
       if (isWaiting(repo.burb) || burbGeo(this.layout, repo.burb)) continue
       const was = repo.burb
       repo.burb = waitingId(repo.root)
       for (const a of w.agents) if (a.burb === was) a.burb = repo.burb
     }
-    for (const a of w.agents) delete a.arriving
-    const text = start === 'manhattan' ? 'Manhattan stands whole again' : 'New land: lay out your first district'
-    this.toasts.push(text)
-    this.say(undefined, text, now)
-    this.isDirty = true
-  }
-
-  // The old game's Rebuild: the preset island bare again, its landmarks
-  // rising as sessions do each kind of work.
-  rebuild(now: number) {
-    const w = this.world
-    w.population = 0
-    delete w.torch
-    clearBuilt(this.layout)
-    this.sync()
-    for (const a of w.agents) delete a.arriving
-    this.toasts.push('The island is bare again: build it by working')
-    this.say(undefined, 'the island is bare again', now)
-    this.isDirty = true
   }
 
   // "Build it all now": every landmark stands, the fabric is full, no ceremony.
@@ -774,7 +774,7 @@ export class City {
     if (raw && typeof raw === 'object' && (raw as { op?: unknown }).op === 'fill') {
       const { id } = raw as { id?: unknown }
       const bo = typeof id === 'string' ? this.layout.boroughs.find(b => b.id === id) : undefined
-      if (!bo || bo.preset) return { error: 'No such borough' }
+      if (!bo) return { error: 'No such borough' }
       const f = fillBorough(this.layout, bo.id)
       if (!f.added) return { error: f.lots ? `${bo.name} has no room for more lots` : `There is no room for lots in ${bo.name}` }
       w.layout = connectBorough(f.layout, bo.id)
@@ -892,7 +892,7 @@ export class City {
     for (const other of this.world.repos) {
       if (other === repo || other.project !== repo.project || isWaiting(other.burb)) continue
       const bo = this.layout.boroughs.find(b => b.id === other.burb)
-      if (bo && !bo.preset) return bo.of ?? bo.id
+      if (bo) return bo.of ?? bo.id
     }
     return undefined
   }
@@ -930,8 +930,7 @@ export class City {
       this.isDirty = true
       return false
     }
-    if (!('seed' in this.layout.map)) return done()
-    const drawn = (id: string) => this.layout.boroughs.find(b => b.id === id && !b.preset)
+    const drawn = (id: string) => this.layout.boroughs.find(b => b.id === id)
     const housed = w.repos.filter(r => !isWaiting(r.burb) && drawn(r.burb))
     if (housed.some(r => r.project === undefined)) return false
     const hub = hubOf(this.layout)
@@ -939,11 +938,11 @@ export class City {
       for (let y = bo.y; y < bo.y + bo.h; y++) for (let x = bo.x; x < bo.x + bo.w; x++) if (hub(x, y)) return true
       return false
     }
-    const move = new Set(this.layout.boroughs.filter(bo => !bo.preset && onHub(bo)).map(bo => bo.id))
+    const move = new Set(this.layout.boroughs.filter(bo => onHub(bo)).map(bo => bo.id))
     // A borough whose folders are all gone (a worktree removed) is taken up too.
     for (const bo of this.layout.boroughs) {
       const repos = w.repos.filter(r => r.burb === bo.id)
-      if (!bo.preset && repos.length && repos.every(r => !existsSync(r.root))) move.add(bo.id)
+      if (repos.length && repos.every(r => !existsSync(r.root))) move.add(bo.id)
     }
     // Each project's boroughs: the main worktree's (where its git directory
     // sits) stays the main one, else the first laid out; the rest move.
@@ -1017,20 +1016,16 @@ export class City {
   }
 
   // The welcome's map picker (docs/city-builder.md, step seven): a city that
-  // has seen no session yet starts again on the map of a seed, or on the
-  // hand-drawn Manhattan ('manhattan'). Once work has begun the map stays.
+  // has seen no session yet starts again on the map of a seed. Once work has
+  // begun the map stays.
   newMap(seed: unknown, now: number): { ok: true } | { error: string } {
     if (!this.isNew) return { error: 'The city is under way: its map stays' }
     // The revision runs on, so every page takes the new layout.
     const rev = this.layout.rev + 1
-    if (seed === 'manhattan') {
-      // Start from Manhattan: the preset, whole.
-      this.world.layout = manhattanLayout()
-      this.buildAll(now)
-    } else if (typeof seed === 'number' && Number.isInteger(seed) && seed > 0 && seed < 2 ** 31) this.world.layout = generateMap(seed)
+    if (typeof seed === 'number' && Number.isInteger(seed) && seed > 0 && seed < 2 ** 31) this.world.layout = generateMap(seed)
     else return { error: 'Not a map' }
     this.world.layout.rev = rev
-    if (seed !== 'manhattan') delete this.world.torch
+    delete this.world.torch
     this.sync()
     this.isDirty = true
     return { ok: true }
@@ -1261,7 +1256,7 @@ export class City {
       delete pins[folder]
     } else {
       if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return { error: 'Where to?' }
-      const slots = slotsOf(this.layout, repo.burb, !!geo.preset)
+      const slots = slotsOf(this.layout, repo.burb)
       const near = nearestSlot(slots, [x, y])
       if (!near || near.d > 1.6) return { error: `Drop it on a lot in ${geo.name}` }
       const mid = (i: number): [number, number] => {
