@@ -406,6 +406,19 @@ npm start
 
 Open http://localhost:4777.
 
+### The demo city
+
+No Claude Code, or showing someone? `npm run demo` (or **Watch a demo city**
+on the welcome card) adds a **Demo** tab: a city whose sessions are a
+script. A lead raises every landmark with its first day's work; then a shop
+and a weather API arrive and get boroughs, a worktree of the shop branches
+off it as a section, a question waits at City Hall, a pull request goes from
+permit to ribbon and the API ships. After that, work goes on at random. Its
+projects are small real folders in `~/.agent-city/demo` (git repositories
+when git is installed, so their houses follow them; the script's edits and
+commits happen there). The demo is never saved: each start plays it from the
+beginning. **Leave the demo** on its banner closes the tab.
+
 ### Desktop shortcut (Windows)
 
 ```bash
