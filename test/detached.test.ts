@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { SHOW_HIDDEN, launchDetached, launchScript } from '../src/detached.ts'
 import { relaunchLine } from '../src/updates.ts'
 
-// A process started to outlive its starter: through WMI on Windows.
+// A process started to outlive its starter: through WMI on Windows, `sh` elsewhere.
 
 test('the launch script quotes what it is given, and waits first when asked', () => {
   const s = launchScript(`cmd.exe /c title Crosswalk & "C:\\node.exe" "C:\\it's here\\server.ts"`, "C:\\it's here", 2)
@@ -48,5 +48,36 @@ test("a relaunched server gets Crosswalk's own settings, through WMI too", { ski
     assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')), { port: '4799', toast: '1' })
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+
+// The same on a Mac (and Linux): through `sh`, detached from this process.
+test('a detached launch runs the command on its own, on a Mac too', { skip: process.platform === 'win32' && 'Mac and Linux only' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crosswalk-detached-'))
+  const out = join(dir, 'ran.txt')
+  try {
+    launchDetached(`"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1], String(process.ppid))" "${out}"`, tmpdir(), 0)
+    for (let i = 0; i < 60 && !existsSync(out); i++) await new Promise(r => setTimeout(r, 250))
+    // It starts as this process's child, in a process group of its own,
+    // and lives on when this one exits (the system adopts it).
+    assert.ok(existsSync(out), 'it ran')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("a relaunched server gets Crosswalk's own settings on a Mac too", { skip: process.platform === 'win32' && 'Mac and Linux only' }, async () => {
+  const line = relaunchLine('/usr/local/bin/node', '/app/src/server.ts', { AGENT_CITY_PORT: '4788', CLAUDE_CONFIG_DIR: "/Users/me/it's", PATH: 'x', AGENT_CITY_BAD: 'a$b' }, false)
+  assert.equal(line, `env AGENT_CITY_PORT='4788' CLAUDE_CONFIG_DIR='/Users/me/its' "/usr/local/bin/node" "/app/src/server.ts"`)
+  const dir = mkdtempSync(join(tmpdir(), 'crosswalk-relaunch-'))
+  const script = join(dir, 'server.mjs')
+  const out = join(dir, 'env.json')
+  writeFileSync(script, `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(out)}, JSON.stringify({ port: process.env.AGENT_CITY_PORT, toast: process.env.AGENT_CITY_NO_TOAST }))\n`)
+  try {
+    launchDetached(relaunchLine(process.execPath, script, { AGENT_CITY_PORT: '4799', AGENT_CITY_NO_TOAST: '1' }, false), tmpdir(), 0)
+    for (let i = 0; i < 60 && !existsSync(out); i++) await new Promise(r => setTimeout(r, 250))
+    assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')), { port: '4799', toast: '1' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
