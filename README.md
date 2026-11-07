@@ -410,12 +410,12 @@ Open http://localhost:4777.
 
 Crosswalk runs on macOS 13.5 or later as well as Windows, and both are kept
 working ([docs/platforms.md](docs/platforms.md)). From the source, the same
-commands work (`npm start`, `npm run app`, `npm run connect`). To hand it
-over, `npm run build:mac` (on any machine) makes
-`dist/Crosswalk-<version>-mac.zip` with `Crosswalk.app` for Apple silicon and
-Intel Macs, carrying its own Node. It is unsigned for now: the first time,
-macOS needs **Open Anyway** in System Settings > Privacy & Security (the
-steps are in docs/platforms.md).
+commands work (`npm start`, `npm run app`, `npm run connect`). The Mac app to
+hand over, `Crosswalk-<version>-mac.zip` (`Crosswalk.app` for Apple silicon
+and Intel), is built on a Mac (`npm run build:mac`); CI builds it on every
+run, so take it from the latest green run's **Crosswalk-mac** artifact. It is
+unsigned for now: the first time, macOS needs **Open Anyway** in System
+Settings > Privacy & Security (the steps are in docs/platforms.md).
 
 ### The demo city
 
@@ -430,36 +430,36 @@ when git is installed, so their houses follow them; the script's edits and
 commits happen there). The demo is never saved: each start plays it from the
 beginning. **Leave the demo** on its banner closes the tab.
 
-### The desktop app (and the Steam build)
+### The desktop app
 
-`npm run app` runs Crosswalk as an app: it starts the server (or finds one
-already running), opens the city in a window of its own (Edge's app mode,
-with its own profile: no tabs, no address bar) and quits when you close that
-window. **Connect Claude Code** on the welcome card adds the hooks without a
-terminal (to the settings file it names, backed up first), and the
-Blueprints card has **Disconnect** to take them out again. Without Claude
-Code installed, the welcome offers the demo city.
-
-`npm run build:desktop` makes the Windows build Steam ships, in
-`dist/Crosswalk`: this machine's Node (22.18 or newer) as `Crosswalk.exe`,
-marked as a windowed program so no console opens, with the app beside it,
-Node's license, and `STEAM.md` (the launch options and depot settings for
-Steamworks). Run it as `Crosswalk.exe app/src/app.ts`. What it prints goes to
-`~/.agent-city/app.log` too.
+Crosswalk is a desktop app of its own (Electron, `desktop/main.mjs`): its own
+window, name and icon in the taskbar and Dock, and a menu bar on the Mac.
+From the source, `npm install` once, then `npm run app` (`npm run app --
+--demo` for the demo city). It starts the server with Electron's own Node (or
+finds one already running), shows the city, and quits when you close the
+window, stopping the server it started (saved first). Opening it again while
+it runs brings its window forward. **Connect Claude Code** on the welcome
+card adds the hooks without a terminal (to the settings file it names, backed
+up first), and the Blueprints card has **Disconnect** to take them out again.
+Without Claude Code installed, the welcome offers the demo city. What it
+prints goes to `~/.agent-city/app.log`. The server itself still needs nothing
+installed: `npm start` runs it as before.
 
 ### An installer to hand over (Windows)
 
-`npm run build:installer` makes `dist/Crosswalk-Setup-<version>.exe` (about
-25 MB), one file for someone else's machine: no Node, no terminal, no admin
-prompt. It installs for the current user under
-`%LOCALAPPDATA%\Programs\Crosswalk`, adds **Crosswalk** and **Crosswalk demo
-city** to the Start menu (and a desktop shortcut, if ticked), and offers to
-open it. It is in Settings > Apps to uninstall, which stops Crosswalk, takes
-its hooks out of Claude Code's settings and leaves the cities in
-`~/.agent-city`. A newer installer upgrades in place. It needs Inno Setup to
-build (`winget install JRSoftware.InnoSetup --scope user`), and it is
-unsigned: Windows SmartScreen says it doesn't recognise it (More info, then
-Run anyway) until it is signed with a code-signing certificate.
+`npm run build:installer` packages the app (`dist/Crosswalk-win32-x64`) and
+makes `dist/Crosswalk-Setup-<version>.exe`, one file for someone else's
+machine: no Node, no terminal, no admin prompt. It installs for the current
+user under `%LOCALAPPDATA%\Programs\Crosswalk`, adds **Crosswalk** and
+**Crosswalk demo city** to the Start menu (and a desktop shortcut, if
+ticked), and offers to open it. It is in Settings > Apps to uninstall, which
+stops Crosswalk, takes its hooks out of Claude Code's settings and leaves the
+cities in `~/.agent-city`. A newer installer upgrades in place. It needs
+Inno Setup to build (`winget install JRSoftware.InnoSetup --scope user`), and
+it is unsigned: Windows SmartScreen says it doesn't recognise it (More info,
+then Run anyway) until it is signed with a code-signing certificate. For
+Steam, the same `dist/Crosswalk-win32-x64` folder is the depot, launched as
+`Crosswalk.exe` (and `Crosswalk.exe --demo`).
 
 ### Desktop shortcut (Windows)
 
