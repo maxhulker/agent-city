@@ -6,15 +6,20 @@ Crosswalk ships for both, kept working in parallel:
 - **macOS** 13.5 or later, Apple silicon and Intel: `Crosswalk-<version>-mac.zip`,
   holding `Crosswalk.app`.
 
-Both carry their own Node (the version that built them), so neither needs
-anything installed but Claude Code (and git, for borough houses).
+Both are the same desktop app (Electron, `desktop/main.mjs`): a window of
+its own with its own name and icon, drawn by the same Chromium engine on
+both, and the server run by Electron's own Node. Neither needs anything
+installed but Claude Code (and git, for borough houses).
 
 ## Keeping both working
 
 - **CI is the gate** (`.github/workflows/ci.yml`). Every pull request and
   every push to main runs the tests on Windows and on a Mac, builds both
   downloads, installs and starts the Windows one (then uninstalls it), and
-  unzips and starts the Mac one, natively and under Rosetta as an Intel Mac.
+  unzips and starts the Mac one: natively, opened twice through Launch
+  Services as a double-click is, and under Rosetta as an Intel Mac. Each job
+  also takes a picture of the app's window (artifacts **window-windows**
+  and **window-mac**: look at the Mac one, since nobody here has a Mac).
   Merge only when every job is green. Both downloads are kept on the run as
   artifacts (**Crosswalk-windows**, **Crosswalk-mac**).
 - **What differs between them is small and kept in a few places**, each with
@@ -22,12 +27,12 @@ anything installed but Claude Code (and git, for borough houses).
 
   | What | Windows | macOS | Where |
   |---|---|---|---|
-  | The city's own window | Edge in app mode | Chrome, Edge, Brave or Chromium in app mode, else the default browser | `src/browser.ts` |
   | Desktop notifications | a toast through PowerShell (a click opens the city) | AppleScript's `display notification` (a click opens nothing) | `src/notify.ts` |
   | Restarting the server on its own | WMI (`Win32_Process.Create`) | `sh -c … &`, detached | `src/detached.ts` |
   | Starting `claude` | through the shell (`claude.cmd`) | directly | `src/sessions.ts`, `src/tasks.ts` |
-  | The download | Inno Setup installer (`installer/crosswalk.iss`) | `Crosswalk.app` in a zip (`scripts/build-mac.mjs`) | |
-  | Launch scripts for working on Crosswalk itself | `scripts/*.ps1` (desktop shortcut, start at login) | none yet: `npm run app` | |
+  | The menu bar | hidden (its shortcuts still work) | the Mac's own, with the app menu and Edit | `desktop/main.mjs` |
+  | The download | Inno Setup installer (`installer/crosswalk.iss`) | `Crosswalk.app` in a zip, signed ad hoc | `scripts/package-app.mjs` |
+  | Launch scripts for working on Crosswalk itself | `scripts/*.ps1` (desktop shortcut, start at login) | none: `npm run app` | |
 
 - **Paths**: never assume backslashes. Compare paths with slashes made
   forward (`split('\\').join('/')`) and case folded, as `same()` does, and
@@ -39,14 +44,18 @@ anything installed but Claude Code (and git, for borough houses).
 
 ## Building the downloads
 
+`npm install` first (Electron and its packager; the server itself needs
+nothing). Each download is built on its own system:
+
 | | Command | Runs on | Needs |
 |---|---|---|---|
 | Windows installer | `npm run build:installer` | Windows | Inno Setup 6 (`winget install JRSoftware.InnoSetup --scope user`) |
-| Mac app | `npm run build:mac` | any machine | the internet (Node for macOS comes from nodejs.org, checksums checked; cached in `dist/.cache`) |
+| Mac app | `npm run build:mac` | a Mac | nothing more (`codesign` and `ditto` come with macOS) |
 
-Both land in `dist/`. The version is `package.json`'s: raise it before a
-release so an installed Windows copy upgrades in place. Or take both from
-the latest green CI run on main.
+Both land in `dist/`. CI builds both on every run, so the Mac app comes from
+the latest green run's **Crosswalk-mac** artifact. The version is
+`package.json`'s: raise it before a release so an installed Windows copy
+upgrades in place.
 
 ## Opening the Mac app the first time
 
@@ -63,26 +72,31 @@ com.apple.quarantine /Applications/Crosswalk.app` does the same.) Signing
 and notarising with an Apple Developer account ($99 a year) removes this;
 on Windows a code-signing certificate does the same for SmartScreen.
 
-On the Mac the city opens in Chrome, Edge or Brave's app mode when one is
-installed (a window of its own with its own Dock icon), else in a tab of the
-default browser. Closing that window quits Crosswalk after ten seconds.
-`~/.agent-city/app.log` has what it printed.
+Opening it again while it runs brings its window forward. Closing the
+window quits Crosswalk and stops its server. `~/.agent-city/app.log` has
+what it printed.
+
+Builds before 0.2.0 opened the city in a browser's app mode instead; on
+0.1.0, opening it a second time said "the application is not responding"
+(quit `node-arm64` or `node-x64` in Activity Monitor). 0.2.0 replaces them.
 
 ## Checking a Mac build by hand
 
-CI starts the Mac app but can't look at it. On a real Mac, once per release:
+CI starts the Mac app and takes a picture of its window, but nobody there
+uses it. On a real Mac, once per release:
 
-1. It opens (after the first-time steps above) and the city shows in a
-   window of its own.
+1. It opens (after the first-time steps above), the city shows in a window
+   of its own, and Crosswalk is in the Dock and the menu bar.
 2. **Watch a demo city** on the welcome card plays: landmarks go up, two
    boroughs arrive, one branches off as a section.
 3. With Claude Code installed: **Connect Claude Code** says it changed
    `~/.claude/settings.json`; a new `claude` session in a terminal arrives
    by train, and its work shows up in the city.
 4. A borough's houses appear for a git repository the session works in.
-5. A desktop notification shows when an update is ready (if one is).
-6. Closing the window quits Crosswalk (Activity Monitor: no `node-arm64`
-   or `node-x64` after ten seconds).
-7. **Disconnect** on the Blueprints card takes the hooks out again.
+5. Copy and paste work in the conversation box (Cmd-C, Cmd-V).
+6. Opening Crosswalk again from the Dock or Finder brings its window back.
+7. Quitting it (Cmd-Q, or closing the window) leaves nothing running in
+   Activity Monitor.
+8. **Disconnect** on the Blueprints card takes the hooks out again.
 
 Anything that fails: `~/.agent-city/app.log` and a screenshot.

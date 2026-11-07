@@ -113,6 +113,28 @@ jobs:
           curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null || { cat "$RUNNER_TEMP/app.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
           echo "The app's server answers on $(uname -m)."
           kill $pid
+      - name: Open it twice, the way Finder does
+        # Through Launch Services, as a double-click is: opening it again while
+        # it runs must reach the running app (a tester's Mac once said "the
+        # application is not responding" here, before the app was Electron).
+        run: |
+          set -e
+          app="$RUNNER_TEMP/cw/Crosswalk.app"
+          home="$RUNNER_TEMP/home-open"
+          mkdir -p "$home"
+          env="--env AGENT_CITY_PORT=4793 --env AGENT_CITY_NO_WINDOW=1 --env AGENT_CITY_NO_TOAST=1 --env HOME=$home"
+          log="$home/.agent-city/app.log"
+          trap 'pkill -f "$app/Contents/MacOS/Crosswalk" || true' EXIT
+          open $env "$app"
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4793/state.json > /dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:4793/ > /dev/null || { cat "$log"; exit 1; }
+          echo "Opened once: the city answers."
+          open $env "$app" || { echo "Opening it a second time failed"; cat "$log"; exit 1; }
+          for i in $(seq 1 20); do grep -q "Opened again" "$log" 2> /dev/null && break; sleep 0.5; done
+          grep -q "Opened again" "$log" || { echo "The second open never reached Crosswalk"; cat "$log"; exit 1; }
+          curl -sf http://127.0.0.1:4793/state.json > /dev/null
+          [ "$(pgrep -f "$app/Contents/MacOS/Crosswalk" | wc -l)" -ge 1 ]
+          echo "Opened twice: the second open reached the running app."
       - name: Start again as an Intel Mac (Rosetta)
         env:
           AGENT_CITY_PORT: '4791'

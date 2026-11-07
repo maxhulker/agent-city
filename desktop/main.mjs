@@ -156,10 +156,21 @@ function run() {
     )
   }
 
-  app.on('second-instance', () => {
-    if (!win) return
+  // Opened again while it runs (a second double-click; on the Mac, the Dock
+  // or Finder): the window comes forward, or back if it was closed.
+  const reopen = how => {
+    log(`Opened again (${how}): showing the window`)
+    if (process.env.AGENT_CITY_NO_WINDOW) return
+    if (!win || win.isDestroyed()) return openWindow()
     if (win.isMinimized()) win.restore()
+    win.show()
     win.focus()
+  }
+  app.on('second-instance', () => reopen('a second launch'))
+  // (Not while starting: macOS activates a new app as it launches.)
+  let started = false
+  app.on('activate', () => {
+    if (started) reopen('activate')
   })
 
   // Closing the window quits, on the Mac too: there is nothing to keep open.
@@ -182,6 +193,7 @@ function run() {
     } else {
       log(`Crosswalk is already running on ${ADDRESS}: a window onto it`)
     }
+    started = true
     if (process.env.AGENT_CITY_NO_WINDOW) return
     openWindow()
     const shot = process.env.AGENT_CITY_SHOT
