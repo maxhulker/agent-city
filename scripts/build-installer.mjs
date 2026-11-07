@@ -2,7 +2,8 @@
 //
 //   node scripts/build-installer.mjs
 //
-// Builds dist/Crosswalk first (scripts/build-desktop.mjs), then compiles
+// Packages the app first (scripts/package-app.mjs win32: Electron, in
+// dist/Crosswalk-win32-x64), then compiles
 // installer/crosswalk.iss with Inno Setup's ISCC: found through the ISCC
 // variable, the PATH, or where Inno Setup 6 installs (get it with
 // `winget install JRSoftware.InnoSetup --scope user`).
@@ -14,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = join(ROOT, 'dist')
-const SOURCE = join(DIST, 'Crosswalk')
+const SOURCE = join(DIST, 'Crosswalk-win32-x64')
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 
 function iscc() {
@@ -35,7 +36,7 @@ if (!compiler) {
   process.exit(1)
 }
 
-execFileSync(process.execPath, [join(ROOT, 'scripts', 'build-desktop.mjs'), SOURCE], { stdio: 'inherit' })
+execFileSync(process.execPath, [join(ROOT, 'scripts', 'package-app.mjs'), 'win32'], { stdio: 'inherit' })
 execFileSync(compiler, ['/Q', `/DSource=${SOURCE}`, `/DAppVersion=${version}`, `/O${DIST}`, join(ROOT, 'installer', 'crosswalk.iss')], { stdio: 'inherit' })
 
 const out = join(DIST, `Crosswalk-Setup-${version}.exe`)

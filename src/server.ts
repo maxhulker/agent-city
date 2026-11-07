@@ -1120,17 +1120,12 @@ server.listen(PORT, HOST, () => {
   if (!existsSync(stateFile(HOME))) console.log('Waiting for the first Claude Code session to post an event.')
 })
 
-// How many pages are watching, in every city: the desktop app (src/app.ts)
-// quits once its window has closed and nobody is.
-export function watching(): number {
-  let n = 0
-  for (const t of towns.values()) n += t.clients.size
-  return n
-}
-
 // Everything saved and every process this server started stopped: on a
-// signal, and when the desktop app's window closes.
-export function shutdown() {
+// signal, and when the desktop app (desktop/main.mjs) quits.
+let stopped = false
+function shutdown() {
+  if (stopped) return
+  stopped = true
   for (const { tasks, appSessions, city, save } of towns.values()) {
     tasks.stopAll()
     // App sessions go to sleep; the next message wakes them with their history.
@@ -1139,12 +1134,19 @@ export function shutdown() {
     save()
   }
 }
+const stop = () => {
+  shutdown()
+  process.exit(0)
+}
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => {
-    shutdown()
-    process.exit(0)
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, stop)
+// Started by the desktop app: it says when to stop (Windows has no signals
+// to send), and if the app is gone without saying, the server goes too.
+if (process.send) {
+  process.on('message', m => {
+    if (m === 'shutdown') stop()
   })
+  process.on('disconnect', stop)
 }
 
 updates.watch()

@@ -1,7 +1,8 @@
 # Crosswalk runs on Windows and macOS, and both are kept working
 # (docs/platforms.md): every pull request and every push to main runs the
-# tests on each, builds each one's download, and starts the built app.
-# Both downloads are kept as artifacts on the run.
+# tests on each, builds each one's download (the Electron app), starts the
+# built app, and takes a picture of its window. The downloads and the
+# pictures are kept as artifacts on the run.
 
 name: CI
 
@@ -23,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      # The server needs nothing installed: no npm ci here.
       - run: npm test
         env:
           AGENT_CITY_NO_TOAST: '1'
@@ -38,6 +40,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci
       - name: Inno Setup
         shell: pwsh
         run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
@@ -51,19 +54,35 @@ jobs:
           set -e
           dir="$RUNNER_TEMP/cw-install"
           ./dist/Crosswalk-Setup-*.exe //VERYSILENT //SUPPRESSMSGBOXES //NORESTART "//DIR=$(cygpath -w "$dir")" //TASKS=
-          test -f "$dir/Crosswalk.exe" && test -f "$dir/app/src/app.ts" && test -f "$dir/unins000.exe"
-          (cd "$dir" && ./Crosswalk.exe app/src/app.ts --demo &)
+          test -f "$dir/Crosswalk.exe" && test -f "$dir/resources/app/src/server.ts" && test -f "$dir/unins000.exe"
+          "$dir/Crosswalk.exe" --demo &
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:4790/state.json > /dev/null && break; sleep 0.5; done
           curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null
-          echo "The installed app answers."
+          echo "The installed app's server answers."
           "$dir/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
           for i in $(seq 1 40); do [ -f "$dir/Crosswalk.exe" ] || break; sleep 0.5; done
           test ! -f "$dir/Crosswalk.exe"
           echo "Uninstalled."
+      - name: A picture of the window
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          AGENT_CITY_PORT: '4792'
+          AGENT_CITY_NO_TOAST: '1'
+          AGENT_CITY_SHOT_DELAY: '20000'
+        run: |
+          AGENT_CITY_SHOT="$(cygpath -w "$PWD/dist/window-windows.png")" ./dist/Crosswalk-win32-x64/Crosswalk.exe --demo
+          test -s dist/window-windows.png
       - uses: actions/upload-artifact@v4
         with:
           name: Crosswalk-windows
           path: dist/Crosswalk-Setup-*.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-windows
+          path: dist/window-windows.png
+          if-no-files-found: ignore
 
   mac-build:
     name: Mac app
@@ -73,6 +92,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci
       - run: npm run build:mac
       - name: Unzip and start
         env:
@@ -84,13 +104,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/cw" "$RUNNER_TEMP/home"
           ditto -x -k dist/Crosswalk-*-mac.zip "$RUNNER_TEMP/cw"
           app="$RUNNER_TEMP/cw/Crosswalk.app"
-          test -x "$app/Contents/MacOS/Crosswalk"
+          codesign --verify --deep "$app"
           plutil -lint "$app/Contents/Info.plist"
+          lipo -archs "$app/Contents/MacOS/Crosswalk"
           HOME="$RUNNER_TEMP/home" "$app/Contents/MacOS/Crosswalk" --demo > "$RUNNER_TEMP/app.out" 2>&1 &
           pid=$!
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:4790/state.json > /dev/null && break; sleep 0.5; done
-          curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null || { cat "$RUNNER_TEMP/app.out"; exit 1; }
-          echo "The app answers on $(uname -m)."
+          curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null || { cat "$RUNNER_TEMP/app.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
+          echo "The app's server answers on $(uname -m)."
           kill $pid
       - name: Start again as an Intel Mac (Rosetta)
         env:
@@ -105,9 +126,25 @@ jobs:
           pid=$!
           for i in $(seq 1 90); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
           curl -sf http://127.0.0.1:4791/ > /dev/null || { cat "$RUNNER_TEMP/app-x64.out"; exit 1; }
-          echo "The app answers under Rosetta (Intel Node)."
+          echo "The app's server answers under Rosetta (Intel)."
           kill $pid
+      - name: A picture of the window
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          AGENT_CITY_PORT: '4792'
+          AGENT_CITY_NO_TOAST: '1'
+          AGENT_CITY_SHOT_DELAY: '20000'
+        run: |
+          AGENT_CITY_SHOT="$PWD/dist/window-mac.png" HOME="$RUNNER_TEMP/home" "$RUNNER_TEMP/cw/Crosswalk.app/Contents/MacOS/Crosswalk" --demo
+          test -s dist/window-mac.png
       - uses: actions/upload-artifact@v4
         with:
           name: Crosswalk-mac
           path: dist/Crosswalk-*-mac.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-mac
+          path: dist/window-mac.png
+          if-no-files-found: ignore
