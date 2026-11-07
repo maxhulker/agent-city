@@ -2,6 +2,7 @@ import type { Agent, District, Hat, Session, World } from '../types.ts'
 import { LABELS, TRAIN_MS, esc, hash, isWaiting, keyed, n, p, placeAt, standAt, waitAt, walk } from './geo.ts'
 import type { OverlayItem, Scene, Sprite } from './geo.ts'
 import { cityBuildings, roomOf, siteFor, spotFor, trackOf } from '../layout.ts'
+import { VERDICT_MS } from '../sites.ts'
 
 // The agents: who they are, where they stand, what they are doing. They go
 // to the page as sprites (docs/frames.md): the figure, the spot, and the walk
@@ -97,17 +98,42 @@ function inkOn(color: string): string {
   return lum > 0.6 ? INK : '#fff'
 }
 
+// At work and waiting on tests (or CI): it shows the waiting, not the work.
+export function isTesting(a: Agent): boolean {
+  return a.status === 'working' && !!a.waitingOn
+}
+
 // How big a figure stands against the city: below the scene's scale, so a
 // crowd leaves the streets visible. Names keep their size and stagger.
 const SIZE = 0.7
 
-function figure(a: Agent, label: boolean, lift: number, k: number, session?: Session, note = ''): string {
+// Waiting on tests: a stopwatch in hand, its hand going round, in place of
+// the district's prop (drawn in the same 6x6 box).
+const STOPWATCH =
+  `<circle cx="0" cy=".6" r="4.4" fill="#22d3ee" opacity=".22"/><rect x="-.7" y="-3.9" width="1.4" height="1.1" fill="#94a3b8" stroke="${INK}" stroke-width=".35"/>` +
+  `<circle cx="0" cy=".6" r="3.1" fill="#f8fafc" stroke="${INK}" stroke-width=".6"/><path d="M0 -2V-1.4M2.6 .6H2M0 3.2V2.6M-2.6 .6H-2" stroke="#64748b" stroke-width=".4"/>` +
+  `<g transform="translate(0,.6)"><path d="M0 0V-2.2" stroke="#dc2626" stroke-width=".6" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="2s" repeatCount="indefinite"/></path></g><circle cx="0" cy=".6" r=".45" fill="${INK}"/>`
+
+// Its badge: an hourglass on a teal disc, turned over every few seconds.
+const HOURGLASS =
+  `<g><animateTransform attributeName="transform" type="rotate" values="0;0;180" keyTimes="0;.8;1" dur="2.4s" repeatCount="indefinite"/>` +
+  `<path d="M-2.2 -2.8H2.2M-2.2 2.8H2.2" stroke="#fff" stroke-width=".8" stroke-linecap="round"/><path d="M-1.7 -2.6H1.7L0 0L1.7 2.6H-1.7L0 0z" fill="#ecfeff" stroke="#fff" stroke-width=".4"/><path d="M-.9 2.6L0 1.3L.9 2.6z" fill="#fbbf24"/><path d="M-1.1 -2.1H1.1L0 -.7z" fill="#fbbf24"/></g>`
+
+function figure(a: Agent, label: boolean, lift: number, k: number, session?: Session, note = '', now = 0): string {
   const u = k * SIZE
   const s = (a.isMain ? 1.3 : 1) * u
   const isWorking = a.status === 'working'
+  const testing = isTesting(a)
   let body = `<ellipse class="ring" cx="0" cy="0" rx="${n(9 * s)}" ry="${n(4.5 * s)}" fill="none" stroke="#fde047" stroke-width="${n(1.6 * u)}"/>`
-  body += `<ellipse cx="0" cy="0" rx="${n(5 * s)}" ry="${n(2.5 * s)}" fill="#000" opacity=".4"/><g>`
-  if (isWorking) {
+  body += `<ellipse cx="0" cy="0" rx="${n(5 * s)}" ry="${n(2.5 * s)}" fill="#000" opacity=".4"/>`
+  // Waiting on tests, it stands still and taps its foot, rocking a little on its heels.
+  if (testing) {
+    body += `<ellipse cx="${n(2.4 * s)}" cy="${n(-0.9 * s)}" rx="${n(1.7 * s)}" ry="${n(0.9 * s)}" fill="${INK}"><animateTransform attributeName="transform" type="translate" values="0,0;0,${n(-1.4 * s)};0,0;0,0" dur=".5s" repeatCount="indefinite"/></ellipse>`
+  }
+  body += `<g>`
+  if (testing) {
+    body += `<animateTransform attributeName="transform" type="rotate" values="-3;3;-3" dur="1.8s" repeatCount="indefinite"/>`
+  } else if (isWorking) {
     body += `<animateTransform attributeName="transform" type="translate" values="0,0;0,${n(-2.4 * s)};0,0" dur=".55s" repeatCount="indefinite"/>`
   }
   body += `<rect x="${n(-4 * s)}" y="${n(-13 * s)}" width="${n(8 * s)}" height="${n(10.5 * s)}" rx="${n(3.6 * s)}" fill="${a.color}" stroke="#0b1224" stroke-width="${n(0.8 * u)}"/>`
@@ -117,12 +143,23 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
   if (hat) body += `<g transform="translate(0,${n(-16 * s)}) scale(${n(s)})">${hat}</g>`
   // The tool in hand, by where the agent is.
   if (a.status === 'working' || a.status === 'waiting') {
-    body += `<g transform="translate(${n(7.4 * s)},${n(-6.5 * s)}) scale(${n(s)})">${PROPS[a.at] ?? ''}</g>`
+    body += `<g${testing ? ' class="stopwatch"' : ''} transform="translate(${n(7.4 * s)},${n(-6.5 * s)}) scale(${n(s)})">${testing ? STOPWATCH : (PROPS[a.at] ?? '')}</g>`
   }
   const badge = (fill: string, mark: string, ink: string, pulse: boolean) =>
     `<g>${pulse ? '<animate attributeName="opacity" values="1;.35;1" dur="1s" repeatCount="indefinite"/>' : ''}<circle cx="${n(8 * s)}" cy="${n(-26 * s)}" r="${n(5.5 * s)}" fill="${fill}" stroke="#fff" stroke-width="${n(1.2 * u)}"/><text x="${n(8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(8 * s)}" font-weight="800" fill="${ink}">${mark}</text></g>`
+  // The badge's disc, popping in, with its mark drawn about the middle.
+  const disc = (cls: string, fill: string, mark: string) =>
+    `<g class="${cls}" transform="translate(${n(8 * s)},${n(-26 * s)})"><g><animateTransform attributeName="transform" type="scale" values="0;1.25;1" dur=".35s" fill="freeze"/>` +
+    `<circle r="${n(5.5 * s)}" fill="${fill}" stroke="#fff" stroke-width="${n(1.2 * u)}"/><g transform="scale(${n(s)})">${mark}</g></g></g>`
+  const verdict = a.verdict && now - a.verdict.at < VERDICT_MS ? a.verdict : undefined
   if (a.status === 'waiting') body += badge('#fbbf24', '?', '#111827', true)
   else if (a.status === 'failed') body += badge('#ef4444', '!', '#fff', false)
+  else if (testing) body += disc('hourglass', '#0e7490', HOURGLASS)
+  else if (verdict) {
+    body += verdict.passed
+      ? disc('verdict passed', '#16a34a', `<path d="M-2.4 .2L-.7 2L2.6 -1.9" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`)
+      : disc('verdict failed', '#dc2626', `<path d="M-2 -2L2 2M2 -2L-2 2" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>`)
+  }
   // The session's line badge, left of the name badge: a letter on a rounded tile.
   if (session?.bullet) {
     body += `<rect x="${n(-13 * s)}" y="${n(-31 * s)}" width="${n(10 * s)}" height="${n(10 * s)}" rx="${n(2 * s)}" fill="${esc(session.color)}" stroke="#fff" stroke-width="${n(1 * u)}"/><text x="${n(-8 * s)}" y="${n(-23.2 * s)}" text-anchor="middle" font-size="${n(7.6 * s)}" font-weight="800" fill="${inkOn(session.color)}">${esc(session.bullet.slice(0, 1))}</text>`
@@ -144,7 +181,7 @@ function figure(a: Agent, label: boolean, lift: number, k: number, session?: Ses
   const top = -33 * s - lift * k
   if (label) {
     const name = esc(a.name.length > 18 ? a.name.slice(0, 17) + '…' : a.name)
-    const minor = a.isMain || a.status === 'waiting' || a.status === 'failed' ? '' : ' minor'
+    const minor = a.isMain || a.status === 'waiting' || a.status === 'failed' || testing ? '' : ' minor'
     body += `<g class="name${minor}" transform="translate(0,${n(top)})"><g class="tx"><text x="0" y="0" text-anchor="middle" font-size="${a.isMain ? 11 : 10}">${name}</text></g></g>`
   }
   // Speech bubble, hidden until the page hovers, selects or waits on it.
@@ -202,7 +239,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
       : !a.burb && a.at !== 'relay' && !siteFor(sc.layout, a.at)
         ? `waiting at Central Station: no ${LABELS[a.at]} yet`
         : ''
-    let fig = figure(a, label, lift, k, sessions.get(a.session), forecourt)
+    let fig = figure(a, label, lift, k, sessions.get(a.session), forecourt, sc.now)
     if (a.arriving && a.arriving > sc.now) {
       // Still aboard: it steps onto the platform once its train is in.
       fig = `<g opacity="0"><animate attributeName="opacity" values="0;1" begin="${n((a.arriving - sc.now) / 1000)}s" dur=".4s" fill="freeze"/>${fig}</g>`
@@ -213,7 +250,7 @@ export function drawSprites(world: World, sc: Scene): Sprite[] {
     const sprite: Sprite = {
       id: a.id,
       session: a.session,
-      cls: `agent ${a.status}`,
+      cls: `agent ${a.status}${isTesting(a) ? ' testing' : ''}`,
       x: round(x),
       y: round(y),
       z: at[0] + at[1],

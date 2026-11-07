@@ -49,6 +49,12 @@ export type Agent = {
   // is over, so every frame can give the page the whole route.
   walk?: { from: Place; at: number }
   activity: string
+  // Waiting on tests: a test run, or CI (a run watched, a pull request's
+  // checks), under way since `since`; `id` is its tool call's, so only that
+  // call's result ends the wait.
+  waitingOn?: { what: 'tests' | 'ci'; since: number; id?: string }
+  // How the last test run or CI wait came out, shown over its head a moment.
+  verdict?: { passed: boolean; at: number }
   tools: number
   inFlight: number
   startedAt: number

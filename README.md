@@ -8,7 +8,7 @@ subagents walk between landmarks as they call tools:
 | --- | --- |
 | Public Library | Read, Grep, Glob |
 | Mill District | Edit, Write |
-| Rail Yards | shell commands |
+| Rail Yards | shell commands, and waiting on tests or CI |
 | Neon Square | WebFetch, WebSearch, browsers |
 | Central Station | Agent, SendMessage, MCP tools |
 | Seaport | git (merge conflicts light it up) |
@@ -251,13 +251,22 @@ sessions run and what that prints, and shown on a board on its square
 | --- | --- |
 | A branch other than main checked out | **Permit pending**, with the branch |
 | `gh pr create` | **Building permit #N**; a click opens the pull request |
-| A test run (`npm test`, `node --test`, `vitest`, `jest`, `pytest`, `go test`, `cargo test`…) or `gh pr checks` | An inspection tag under the board: green **✓ Passed**, or red **✗ Failed** (it pulses, and a notice says how many failed) |
+| A test run (`npm test`, `node --test`, `vitest`, `jest`, `pytest`, `go test`, `cargo test`…), `gh pr checks` or `gh run watch` | An inspection tag under the board: green **✓ Passed**, or red **✗ Failed** (it pulses, and a notice says how many failed) |
 | `gh pr merge` | The ribbon is cut across the square, with confetti, and the board reads **Now open · #N merged** for half an hour |
 
 The ticker carries each one. An inspection shows for six hours, and only
 for work since the last ribbon cutting; a permit for two weeks, or until its
 pull request is merged. A pull request merged on GitHub's site, rather than
 by a session, isn't seen.
+
+While a session waits on its tests (a test run like those above) or on CI
+(`gh run watch`, `gh pr checks`, `gh run view`, loops of them included), its
+agent waits at the Rail Yards: it stops bouncing and taps its foot, holds a
+stopwatch, and an hourglass turns over its head. Its speech bubble, the
+ticker and its sidebar card say **Waiting on tests** or **Waiting on CI**
+with the command. When the result is back, a green tick or a red cross pops
+over its head for a few seconds. A test run sent to the background isn't
+waited on.
 
 ## Shipping
 

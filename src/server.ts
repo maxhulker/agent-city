@@ -34,7 +34,7 @@ import { DEMO, DemoPlayer, demoConf, demoFolders, demoWorld } from './demo.ts'
 import { imageBlocks, pruneUploads, saveUpload, UPLOAD_MAX } from './uploads.ts'
 import { toast } from './notify.ts'
 import type { Agent, Decision, District, Task, World } from './types.ts'
-import { base, City, forgetRoots, SCAFFOLD_MS } from './world.ts'
+import { base, City, forgetRoots, SCAFFOLD_MS, waitingLine } from './world.ts'
 import type { HookEvent, TickerItem } from './world.ts'
 
 // Crosswalk: a local server Claude Code sessions post their hook events to,
@@ -294,7 +294,7 @@ function tickerNow(city: City, now: number): TickerItem[] {
     const detail = a.activity
       .replace(/^Thinking:\s*/, '')
       .replace(/^(Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|WebFetch|WebSearch|Bash|PowerShell)\b:?\s*/, '')
-    const text = a.status === 'waiting' ? 'NEEDS YOU' : `${DOING[a.at]} ${detail}`.replace(/\s+/g, ' ').trim()
+    const text = a.status === 'waiting' ? 'NEEDS YOU' : (waitingLine(a) ?? `${DOING[a.at]} ${detail}`).replace(/\s+/g, ' ').trim()
     live.push({ at: a.updatedAt, bullet: s?.bullet ?? '', color: s?.color ?? a.color, who: a.name, text: text.length > 48 ? text.slice(0, 47) + '…' : text })
   }
   const busy = new Set(live.map(i => i.who))
@@ -399,6 +399,7 @@ function meta(town: Town) {
           status: a.status,
           tools: a.tools,
           activity: a.activity,
+          ...(a.waitingOn && a.status === 'working' ? { waitingOn: a.waitingOn.what } : {}),
           where: a.burb
             ? `${burbGeo(world.layout, a.burb)?.name ?? 'Central Station'} (${world.repos.find(r => r.burb === a.burb && !r.left)?.name ?? 'another repo'})`
             : LABELS[a.at],

@@ -16,6 +16,8 @@ export const INSPECTION_MS = 6 * 3600_000
 export const OPENED_MS = 30 * 60_000
 // The ribbon cutting itself: the ribbon across the square, and confetti.
 export const RIBBON_MS = 2 * 60_000
+// A test run's or a CI wait's verdict, a tick or a cross over its agent's head.
+export const VERDICT_MS = 6_000
 
 const MAIN_BRANCHES = /^(main|master|trunk|develop|HEAD)$/
 
@@ -55,6 +57,24 @@ export function isTestRun(code: string): boolean {
   return parts(code).some(p => TEST_RUNNER.test(p))
 }
 
+// Waiting on CI, at the start of a command part (after any VAR=value, a
+// loop's `until` or `while`, or a `watch`): a workflow run watched or looked
+// at, or a pull request's checks. Reading a run's logs, or opening it in the
+// browser, is not waiting on it.
+const CI_WAIT =
+  /^(?:\w+=(?:\$\([^)]*\)|\S*)\s+)*(?:(?:until|while|if|then|do|!|time|watch(?:\s+-n\s*\S+)?|timeout\s+\S+)\s+)*gh\s+(?:run\s+(?:watch|view)|pr\s+checks)\b/
+const CI_LOOK = /\s--(?:log|log-failed|web)\b/
+
+export function isCiWait(code: string): boolean {
+  return parts(code).some(p => CI_WAIT.test(p) && !CI_LOOK.test(p))
+}
+
+// What a shell command waits on, if it waits on tests: a test run, or CI.
+export type TestWait = 'tests' | 'ci'
+export function testWaitOf(code: string): TestWait | undefined {
+  return isTestRun(code) ? 'tests' : isCiWait(code) ? 'ci' : undefined
+}
+
 const num = (re: RegExp, text: string): number | undefined => {
   const m = re.exec(text)
   return m ? Number(m[1]) : undefined
@@ -66,6 +86,11 @@ export function verdictOf(text: string, failed: boolean, isChecks = false): { pa
   if (isChecks) {
     if (/Some checks were not successful|\bfail(?:ed|ure)?\t/i.test(text)) return { passed: false, detail: 'checks failed' }
     if (/All checks were successful/i.test(text) || (/\bpass\t/.test(text) && !/\bpending\t/.test(text))) return { passed: true, detail: 'checks passed' }
+    // A workflow run watched to its end (`gh run watch`), or its conclusion asked for.
+    if (/completed with '?(?:failure|cancelled|timed_out|startup_failure)\b|"conclusion":\s*"(?:failure|cancelled|timed_out|startup_failure)"/.test(text)) return { passed: false, detail: 'CI failed' }
+    if (/completed with '?success\b|"conclusion":\s*"success"/.test(text)) return { passed: true, detail: 'CI passed' }
+    // Still pending: `gh pr checks` exits non-zero while it waits, which is no failure.
+    if (/\bpending\t|\b(?:in_progress|queued)\b|still pending/i.test(text)) return undefined
     return failed ? { passed: false, detail: 'checks failed' } : undefined
   }
   const failCount =
@@ -108,7 +133,7 @@ export function siteEventOf(code: string, output: string, failed: boolean): Site
     const pr = url ? Number(url[1]) : arg ? Number(arg[1]) : said ? Number(said[1]) : undefined
     return { kind: 'opened', ...(pr ? { pr } : {}), ...(url ? { url: url[0] } : {}) }
   }
-  const isChecks = PR_CHECKS.test(code)
+  const isChecks = PR_CHECKS.test(code) || isCiWait(code)
   if (isChecks || isTestRun(code)) {
     const v = verdictOf(output, failed, isChecks)
     if (!v) return undefined

@@ -128,7 +128,11 @@ jobs:
           open $env "$app"
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:4793/state.json > /dev/null && break; sleep 0.5; done
           curl -sf http://127.0.0.1:4793/ > /dev/null || { cat "$log"; exit 1; }
-          echo "Opened once: the city answers."
+          # The server can answer a moment before the app has finished
+          # starting; a second open in that moment is (rightly) let pass.
+          for i in $(seq 1 40); do grep -q "Ready" "$log" 2> /dev/null && break; sleep 0.25; done
+          grep -q "Ready" "$log" || { echo "The app never said it was ready"; cat "$log"; exit 1; }
+          echo "Opened once: the city answers and the app is ready."
           open $env "$app" || { echo "Opening it a second time failed"; cat "$log"; exit 1; }
           for i in $(seq 1 20); do grep -q "Opened again" "$log" 2> /dev/null && break; sleep 0.5; done
           grep -q "Opened again" "$log" || { echo "The second open never reached Crosswalk"; cat "$log"; exit 1; }
@@ -150,8 +154,10 @@ jobs:
           for i in $(seq 1 40); do pgrep -f "$app/Contents/MacOS/Crosswalk" > /dev/null || break; sleep 0.5; done
           HOME="$RUNNER_TEMP/home" arch -x86_64 "$app/Contents/MacOS/Crosswalk" > "$RUNNER_TEMP/app-x64.out" 2>&1 &
           pid=$!
-          for i in $(seq 1 90); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
-          curl -sf http://127.0.0.1:4791/ > /dev/null || { cat "$RUNNER_TEMP/app-x64.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
+          # Rosetta translates all of Electron (Intel) the first time it runs:
+          # on a busy runner that alone can take a minute or two.
+          for i in $(seq 1 360); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:4791/ > /dev/null || { echo "No answer after 3 minutes"; ps -axo pid,etime,arch,command | grep -i crosswalk | grep -v grep; cat "$RUNNER_TEMP/app-x64.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
           echo "The app's server answers under Rosetta (Intel)."
           kill $pid
       - name: A picture of the window
