@@ -419,6 +419,23 @@ when git is installed, so their houses follow them; the script's edits and
 commits happen there). The demo is never saved: each start plays it from the
 beginning. **Leave the demo** on its banner closes the tab.
 
+### The desktop app (and the Steam build)
+
+`npm run app` runs Crosswalk as an app: it starts the server (or finds one
+already running), opens the city in a window of its own (Edge's app mode,
+with its own profile: no tabs, no address bar) and quits when you close that
+window. **Connect Claude Code** on the welcome card adds the hooks without a
+terminal (to the settings file it names, backed up first), and the
+Blueprints card has **Disconnect** to take them out again. Without Claude
+Code installed, the welcome offers the demo city.
+
+`npm run build:desktop` makes the Windows build Steam ships, in
+`dist/Crosswalk`: this machine's Node (22.18 or newer) as `Crosswalk.exe`,
+marked as a windowed program so no console opens, with the app beside it,
+Node's license, and `STEAM.md` (the launch options and depot settings for
+Steamworks). Run it as `Crosswalk.exe app/src/app.ts`. What it prints goes to
+`~/.agent-city/app.log` too.
+
 ### Desktop shortcut (Windows)
 
 ```bash

@@ -131,11 +131,11 @@ function strip(settings: Settings) {
   else delete settings.hooks
 }
 
-function add(settings: Settings, query: string) {
+function add(settings: Settings, query: string, quiet: boolean) {
   settings.hooks ??= {}
   for (const event of EVENTS) {
     const held = HELD_EVENTS.includes(event)
-    const hook: Handler = isQuiet
+    const hook: Handler = quiet
       ? { type: 'command', command: curl(hookUrl(query), held ? HELD_TIMEOUT : 1), timeout: held ? HELD_TIMEOUT : 3 }
       : { type: 'http', url: hookUrl(query), ...HTTP_WHO, timeout: held ? HELD_TIMEOUT : 2 }
     const group: Group = { hooks: [hook] }
@@ -158,43 +158,57 @@ function cityConf(): CityConf {
   return known
 }
 
-function main() {
-  const conf = cityConf()
+// Adds Crosswalk's hooks (and status line) to a city's Claude Code settings,
+// or takes them out: the command below, and the page's Connect and
+// Disconnect buttons. Every other setting stays as it is; the file as it was
+// before Crosswalk is backed up once, beside it. With `print`, nothing is
+// written: the settings it would write come back.
+export function setHooks(
+  conf: CityConf,
+  opts: { uninstall?: boolean; quiet?: boolean; settingsPath?: string; print?: boolean } = {},
+): { path: string; text: string; message: string; backup?: string } {
   // A city sharing the folder (home, or one claiming an account) shares its hooks too.
   const query = conf.ownFolder ? cityQuery(conf.id) : ''
-  if (isUninstall && !conf.ownFolder && conf.id !== HOME) {
+  if (opts.uninstall && !conf.ownFolder && conf.id !== HOME) {
     throw new Error(`The ${conf.id} city shares ${conf.config}'s hooks with the others; take it out of ~/.agent-city/cities.json to fold it back in`)
   }
-  const path = option('--settings') ?? join(conf.config, 'settings.json')
-  if (!option('--settings') && conf.ownFolder && !existsSync(conf.config)) throw new Error(`${conf.config} is not a folder: give the folder Claude Code's CLAUDE_CONFIG_DIR points at`)
+  const path = opts.settingsPath ?? join(conf.config, 'settings.json')
+  if (!opts.settingsPath && conf.ownFolder && !existsSync(conf.config)) throw new Error(`${conf.config} is not a folder: give the folder Claude Code's CLAUDE_CONFIG_DIR points at`)
   const settings: Settings = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Settings) : {}
   strip(settings)
   if (isOurStatus(settings.statusLine)) delete settings.statusLine
-  if (!isUninstall) {
-    add(settings, query)
+  if (!opts.uninstall) {
+    add(settings, query, !!opts.quiet)
     if (!settings.statusLine) settings.statusLine = { type: 'command', command: statusCommand(query), padding: 0 }
   }
   const text = JSON.stringify(settings, null, 2) + '\n'
-
-  if (isPrint) {
-    process.stdout.write(text)
-    return
-  }
+  const claims = conf.accounts.length ? `\nThe ${conf.name} city hears sessions signed in as ${conf.accounts.join(', ')}.` : ''
+  const message = opts.uninstall
+    ? `Removed Crosswalk's hooks from ${path}.`
+    : `Added Crosswalk's hooks to ${path} (${EVENTS.length} events → ${hookUrl(query)}; ${opts.quiet ? 'quiet mode, curl command hooks' : 'HTTP hooks'}).${claims}\nSessions started from now on report to Crosswalk; restart any that are open.`
+  if (opts.print) return { path, text, message }
   const backup = `${path}.agent-city-backup`
+  let backedUp: string | undefined
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true })
   } else if (!existsSync(backup)) {
     // The first backup only: it keeps the settings as they were before Crosswalk.
     copyFileSync(path, backup)
-    console.log(`Backed up ${path} to ${backup}`)
+    backedUp = backup
   }
   writeFileSync(path, text)
-  const claims = conf.accounts.length ? `\nThe ${conf.name} city hears sessions signed in as ${conf.accounts.join(', ')}.` : ''
-  console.log(
-    isUninstall
-      ? `Removed Crosswalk's hooks from ${path}.`
-      : `Added Crosswalk's hooks to ${path} (${EVENTS.length} events → ${hookUrl(query)}; ${isQuiet ? 'quiet mode, curl command hooks' : 'HTTP hooks'}).${claims}\nSessions started from now on report to Crosswalk; restart any that are open.`,
-  )
+  return { path, text, message, ...(backedUp ? { backup: backedUp } : {}) }
+}
+
+function main() {
+  const settingsPath = option('--settings')
+  const r = setHooks(cityConf(), { uninstall: isUninstall, quiet: isQuiet, print: isPrint, ...(settingsPath ? { settingsPath } : {}) })
+  if (isPrint) {
+    process.stdout.write(r.text)
+    return
+  }
+  if (r.backup) console.log(`Backed up ${r.path} to ${r.backup}`)
+  console.log(r.message)
 }
 
 // Only when run as a command: importing this file (to check it loads) changes nothing.

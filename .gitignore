@@ -3,3 +3,4 @@ node_modules/
 hooks.json
 .DS_Store
 assets/*.bmp
+dist/
