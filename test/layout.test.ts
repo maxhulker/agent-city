@@ -12,7 +12,7 @@ import type { World } from '../src/types.ts'
 import { addBorough, missing, wholeLayout } from './whole.ts'
 
 // The layout (docs/city-builder.md): every city stands on a generated map;
-// one saved before layouts existed, or on the retired hand-drawn Manhattan,
+// one saved before layouts existed, or on the retired hand-drawn island,
 // moves to new land. The map's hash covers the layout's revision, and the
 // golden hash pins the drawing of a whole city.
 
@@ -46,7 +46,7 @@ test('the test city has every kind placed, the station standing and the rest lot
   for (const b of l.buildings) assert.equal(b.built !== undefined, FIXED.includes(b.kind), `${b.kind} is a lot unless fixed`)
 })
 
-test('a world saved before layouts existed, or on the hand-drawn Manhattan, moves to new land', () => {
+test('a world saved before layouts existed, or on the hand-drawn island, moves to new land', () => {
   const saved = { ...emptyWorld(), sessions: [], built: { hall: 3, library: 5 }, flushedAt: 9 } as World
   delete saved.layout
   const city = new City(saved)
@@ -55,7 +55,7 @@ test('a world saved before layouts existed, or on the hand-drawn Manhattan, move
   assert.deepEqual(l.buildings.map(b => b.kind), ['station'], 'bare land with its station')
   assert.deepEqual(city.toasts, [], 'nothing to say: it never had a city')
 
-  // On the retired hand-drawn Manhattan, with a repository in one of its boroughs.
+  // On the retired hand-drawn island, with a repository in one of its boroughs.
   const old = {
     ...emptyWorld(),
     homeRoot: HOME,
@@ -74,7 +74,7 @@ test('a world saved before layouts existed, or on the hand-drawn Manhattan, move
   assert.equal(moved.world.agents[0]!.burb, '@c:/fake/api', 'and its agents with it')
   assert.equal(moved.world.torch, undefined)
   assert.equal(moved.world.homeRoot, HOME, 'home stays home')
-  assert.ok(moved.toasts.some(t => t.includes('Manhattan is retired')))
+  assert.ok(moved.toasts.some(t => t.includes('island is retired')))
 })
 
 test('a lot rises with its first work; Build it all now finishes the rest', () => {

@@ -61,7 +61,7 @@ test('a new repository waits at the station until a borough is laid out for it, 
   const city = twoRepos()
   const repo = () => city.world.repos.find(r => r.root === OTHER)!
   assert.ok(repo().burb.startsWith('@'), 'no borough yet')
-  assert.ok(city.toasts.includes('api arrived at Grand Central. Lay out a borough for it.'))
+  assert.ok(city.toasts.includes('api arrived at Central Station. Lay out a borough for it.'))
   const waiting = leadAt(city, T0 + 300)
   assert.deepEqual(waiting.at, round(p(...waitAt(city.world.layout, 0))), 'on the forecourt')
   assert.ok(waiting.title.includes('api has no borough yet'), waiting.title)
@@ -151,7 +151,7 @@ test('a bulldozed borough sends its repository back to the station, announced ag
   assert.ok('ok' in city.build({ op: 'remove', id: inwood.id }, T0 + 500))
   const repo = city.world.repos.find(r => r.root === OTHER)!
   assert.ok(repo.burb.startsWith('@'))
-  assert.ok(city.toasts.includes('api arrived at Grand Central. Lay out a borough for it.'))
+  assert.ok(city.toasts.includes('api arrived at Central Station. Lay out a borough for it.'))
   const back = leadAt(city, T0 + 600)
   assert.deepEqual(back.at, round(p(...waitAt(city.world.layout, 0))), 'back on the forecourt')
   assert.ok(!back.frame.map?.svg.includes('RED HOOK'))

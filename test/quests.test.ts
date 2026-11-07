@@ -8,7 +8,7 @@ import { City } from '../src/world.ts'
 import type { HookEvent } from '../src/world.ts'
 
 // Build your first district (docs/city-builder.md, step eight): on a laid-out
-// map the quests go road, City Hall, the districts, zoning, the Empire State;
+// map the quests go road, City Hall, the districts, zoning, the Crown Tower;
 // placing builds, and the first use of a landmark opens its doors.
 
 const T0 = 1_700_000_000_000
@@ -91,7 +91,7 @@ test('work of a kind nothing stands for builds nothing; the first use of a place
   assert.ok(!city.toasts.some(t => t.includes('opened')), 'once')
 })
 
-test('the Empire State is placeable only once every district stands', () => {
+test('the Crown Tower is placeable only once every district stands', () => {
   const city = laidOut()
   let now = T0
   for (const k of ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor'] as Kind[]) place(city, k, (now += 100))

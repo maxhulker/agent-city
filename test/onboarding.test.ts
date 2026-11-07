@@ -96,7 +96,7 @@ test('a git command is a shell command too, but only a commit builds the Seaport
   assert.deepEqual(built(city), ['foundry', 'hall'])
   tool(city, 'S1', 'Bash', { command: 'git commit -m "first"' }, T0 + 2000)
   assert.deepEqual(built(city), ['foundry', 'hall', 'harbor'])
-  assert.ok(city.toasts.includes('Seaport and the Statue of Liberty opened'))
+  assert.ok(city.toasts.includes('Seaport and the Harbor Statue opened'))
 })
 
 test('a commit that fails builds nothing; a push builds the Seaport and lights the torch', () => {
@@ -109,10 +109,10 @@ test('a commit that fails builds nothing; a push builds the Seaport and lights t
 
   tool(city, 'S1', 'Bash', { command: 'git push origin main' }, T0 + 2000)
   assert.deepEqual(built(city), ['foundry', 'hall', 'harbor', 'torch'])
-  assert.ok(city.toasts.includes("Liberty's torch is lit"))
+  assert.ok(city.toasts.includes("Harbor Statue's torch is lit"))
 })
 
-test("Central Park greens when the first subagent finishes; a lead's own stop does not count", () => {
+test("Commons Park greens when the first subagent finishes; a lead's own stop does not count", () => {
   const city = cityWith('Brooklyn')
   started(city)
   city.apply(ev('Stop', 'S1'), T0 + 500)
@@ -121,10 +121,10 @@ test("Central Park greens when the first subagent finishes; a lead's own stop do
   assert.deepEqual(built(city), ['hall'], 'starting one is not finishing one')
   city.apply(ev('SubagentStop', 'S1', { agent_id: 'a1' }), T0 + 2000)
   assert.deepEqual(built(city), ['hall', 'plaza'])
-  assert.ok(city.toasts.includes('Central Park is green'))
+  assert.ok(city.toasts.includes('Commons Park is green'))
 })
 
-test('the Empire State goes up once every district is built, with the news once', () => {
+test('the Crown Tower goes up once every district is built, with the news once', () => {
   const city = cityWith('Brooklyn')
   started(city)
   tool(city, 'S1', 'Read', { file_path: `${HOME}/a.ts` }, T0 + 1000)
@@ -247,7 +247,7 @@ test("the first session of a brand-new city arrives by train, and the train leav
   const city = cityWith('Brooklyn')
   city.apply(ev('SessionStart', 'S1'), T0)
   const lead = city.world.agents.find(a => a.id === 'lead:S1')!
-  assert.equal(lead.at, 'relay', 'it steps off at Grand Central')
+  assert.equal(lead.at, 'relay', 'it steps off at Central Station')
   assert.equal(lead.arriving, T0 + TRAIN_MS)
   const train = city.world.trains![0]!
   assert.equal(train.kind, 'arrive')

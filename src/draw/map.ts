@@ -272,7 +272,7 @@ function spireLight(gx: number, gy: number, z: number, len: number, light = '#f8
 }
 
 // The spires' lights: One World Trade's always, the Chrysler's (on the
-// station) and the Empire State's once they stand, each with its building.
+// station) and the Crown Tower's once they stand, each with its building.
 function spireLights(sc: Scene): string {
   let g = ''
   for (const b of sc.layout.buildings) {
@@ -463,7 +463,7 @@ function keeps(sc: Scene): Keep[] {
     ['plaza', [5.9, 27.4, 8.1, 30.3, 1]], // the Great Lawn
     ['hall', [8.0, 55.3, 9.25, 55.7, 5]], // City Hall
     ['library', [7.25, 39.2, 8.75, 39.8, 6]], // the Library
-    ['station', [9.35, 39.22, 11.75, 39.78, 6]], // Grand Central
+    ['station', [9.35, 39.22, 11.75, 39.78, 6]], // Central Station
     ['harbor', [12.7, 57.2, 14.65, 57.8, 4]], // the Seaport
   ]
   for (const [kind, [x0, y0, x1, y1, slack]] of low) {
@@ -1094,7 +1094,7 @@ const NEON = ['#f43f5e', '#22d3ee', '#a3e635', '#f59e0b', '#c084fc', '#fb7185', 
 // The pieces of the landmarks that light up with work, drawn in the "off"
 // state on the map and again, lit and animated, by the overlay.
 
-// Times Square's screens, on the south and east walls of its towers.
+// Neon Square's screens, on the south and east walls of its towers.
 function billboards(live: boolean): string {
   let g = ''
   let i = 0
@@ -1137,7 +1137,7 @@ function billboards(live: boolean): string {
   return g
 }
 
-// The ball on Times Square's tallest tower, in the district's pink.
+// The ball on Neon Square's tallest tower, in the district's pink.
 function ball(live: boolean): string {
   const [bx, by] = p(5.61, 37.5, 54)
   return `<circle cx="${n(bx)}" cy="${n(by - 9)}" r="2.6" fill="${ACCENT.observatory}" stroke="#fff" stroke-width=".5">${live ? '<animate attributeName="r" values="2.4;3.2;2.4" dur="1s" repeatCount="indefinite"/>' : ''}</circle>`
@@ -1158,7 +1158,7 @@ function readingRoom(live: boolean): string {
   )
 }
 
-// The MetLife sign along the top of the slab behind Grand Central.
+// The MetLife sign along the top of the slab behind Central Station.
 function metlife(live: boolean): string {
   return face(
     [
@@ -1172,7 +1172,7 @@ function metlife(live: boolean): string {
   )
 }
 
-// Grand Central's three great arches, lit teal when messages fly.
+// Central Station's three great arches, lit teal when messages fly.
 function arches(live: boolean): string {
   const [ax, ay] = p(9.65, 39.78)
   let d = ''
@@ -1183,7 +1183,7 @@ function arches(live: boolean): string {
   return `<path transform="translate(${n(ax)} ${n(ay)}) skewY(26.565)" d="${d}" fill="${live ? ACCENT.relay : '#24384a'}" stroke="#e7e5e4" stroke-width=".4">${live ? '<animate attributeName="opacity" values="1;.6;1" dur="1.2s" repeatCount="indefinite"/>' : ''}</path>`
 }
 
-// Hudson Yards' crown lights, in the district's orange.
+// Rail Yards' crown lights, in the district's orange.
 function yardsCrown(live: boolean): string {
   return face(
     [
@@ -1222,8 +1222,8 @@ function flag(): string {
   return `<path d="M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z" fill="#60a5fa"><animate attributeName="d" values="M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z;M${n(dx)} ${n(dy - 12)}l6 2.5l-6 .5z;M${n(dx)} ${n(dy - 12)}l6 1.5l-6 1.5z" dur="1.2s" repeatCount="indefinite"/></path>`
 }
 
-// The Empire State's crown: the colour of the busiest district, as the real
-// one changes colour for the occasion; gold while an update waits.
+// The Crown Tower's crown: the colour of the busiest district, changing
+// for the occasion; gold while an update waits.
 function crownColor(sc: Scene): string {
   let busy: District | undefined
   let most = 0
@@ -1390,7 +1390,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     }
   }
 
-  // Central Park: the Reservoir, the Great Lawn (the plaza's pad), the Lake.
+  // Commons Park: the Reservoir, the Great Lawn (the plaza's pad), the Lake.
   else if (kind === 'plaza') if (!built) {
     // Bare ground, fenced off, until the first subagent comes to rest.
     ground += gRect(5.15, 22.1, 8.85, 34.9, '#3b352c')
@@ -1413,7 +1413,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     trees(list)
   }
 
-  // Times Square: towers wrapped in billboards around a pink-lit plaza with
+  // Neon Square: towers wrapped in billboards around a pink-lit plaza with
   // the red steps; the screens cycle when someone is on the web.
   if (kind === 'observatory') if (!built) {
     lot([3, 37, 7, 38], LABELS.observatory)
@@ -1473,7 +1473,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     ])
   }
 
-  // Grand Central: three great arched windows, the clock and its statues, and
+  // Central Station: three great arched windows, the clock and its statues, and
   // the Chrysler Building's crown beside it once the towers are built. The
   // terminal always stands (it is the way in).
   if (kind === 'station') {
@@ -1494,7 +1494,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     add(39.22 + 9.35 + 2.4, g)
   }
 
-  // Grand Central's towers: the MetLife slab behind the terminal, the game's.
+  // Central Station's towers: the MetLife slab behind the terminal, the game's.
   if (kind === 'relay') if (!built) {
     lot([9, 38, 11, 39], 'Towers', [10, 38.5], true)
   } else {
@@ -1503,7 +1503,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     add(38.25 + 9.75 + 1.35, g)
   }
 
-  // The Garment District: a loft with its water towers, the giant needle and
+  // The Mill District: a loft with its water towers, the giant needle and
   // button in Herald Square, and scaffolding while someone is editing.
   if (kind === 'workshop') if (!built) {
     lot([5, 41, 7, 42], LABELS.workshop, [4.9, 43.1, 'end'])
@@ -1557,10 +1557,10 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     ])
   }
 
-  // The Empire State Building. Its crown (z 78 to 83) is the overlay's: it
+  // The Crown Tower. Its crown (z 78 to 83) is the overlay's: it
   // takes the colour of whichever district is busiest.
   if (kind === 'empire') if (!built) {
-    lot([7, 42, 9, 43], 'Empire State', [8, 42.5], true)
+    lot([7, 42, 9, 43], 'Crown Tower', [8, 42.5], true)
   } else {
     let e = box(7.4, 42.2, 0.8, 0.6, 34, 's')
     e += box(7.52, 42.3, 0.56, 0.4, 30, 's', 34)
@@ -1569,7 +1569,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     add(42.2 + 7.4 + 1.4, e)
   }
 
-  // Hudson Yards: the rail yard, the Shed, two towers with the Edge's deck
+  // Rail Yards: the rail yard, the Shed, two towers with the Edge's deck
   // jutting out, the copper Vessel, and a stack that smokes while the shell
   // is busy.
   if (kind === 'foundry') if (!built) {
@@ -1603,7 +1603,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     add(2.6 + 41.35, v)
   }
 
-  // City Hall in its park, with the fountain, and the Woolworth Building.
+  // City Hall in its park, with the fountain, and the Gothic Tower.
   if (kind === 'hall') if (!built) {
     lot([7, 55, 10, 56], LABELS.hall)
   } else {
@@ -1643,7 +1643,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     g += `<circle cx="${n(ex)}" cy="${n(ey)}" r=".9" fill="#fbbf24"/>`
     add(0.1 + 0.15 + 1.7, g)
   }
-  // The Woolworth Building: scenery, always there.
+  // The Gothic Tower: scenery, always there.
   if (kind === 'woolworth') {
     let w = box(5.5, 55.25, 0.9, 0.55, 40, 's')
     w += box(5.65, 55.35, 0.6, 0.35, 14, 's', 40)
@@ -1653,7 +1653,7 @@ function landmark(items: Item[], sc: Scene, b: Building): string {
     add(55.25 + 5.5 + 1.4, w)
   }
 
-  // One World Trade Center.
+  // Glass Tower.
   if (kind === 'wtc') {
     let g = box(4.2, 57.2, 0.7, 0.7, 84, 'g')
     const [x, y] = p(4.55, 57.55, 84)
@@ -1905,7 +1905,7 @@ function launching(launch: Launch | undefined, now: number): Launch['kind'] | un
   return launch && (now - launch.at) / 1000 < LAUNCH_SECONDS[launch.kind] ? launch.kind : undefined
 }
 
-// The Statue of Liberty: at rest, or mid-launch after a commit (a hop) or a
+// The Harbor Statue: at rest, or mid-launch after a commit (a hop) or a
 // push (liftoff, off the top of the map, and back). The item is sent while a
 // launch is under way, so every animation begins `elapsed` seconds in the
 // past and carries on from there; the page shifts those offsets onto its own
@@ -1984,7 +1984,7 @@ function statue(launch: Launch | undefined, now: number, state: 'dark' | 'unlit'
   return g + '</g>'
 }
 
-// Fireworks over the Empire State while an update waits: rockets climb from the
+// Fireworks over the Crown Tower while an update waits: rockets climb from the
 // spire and burst into rings of sparks, staggered so the sky is never quiet.
 function fireworks(): string {
   const [sx, sy] = p(7.8, 42.5, 98)
@@ -2112,7 +2112,7 @@ export function drawOverlay(world: World, sc: Scene): OverlayItem[] {
     out.push(keyed(i ? `statue:${liberty.id}` : 'statue', [state, kind, kind ? world.launch!.at : 0, kind ? world.launch!.who : '', kind ? world.launch!.repo : '', d], sh(statue(world.launch, sc.now, state), d)))
   })
   put('labels', labels(sc))
-  // Fireworks over the Empire State for an update waiting, and for a while
+  // Fireworks over the Crown Tower for an update waiting, and for a while
   // once the city is complete.
   const empire = cityBuildings(sc.layout, 'empire')[0]
   const finished = sc.built.empire

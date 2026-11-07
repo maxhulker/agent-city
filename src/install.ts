@@ -101,7 +101,7 @@ function saysWho(h: Handler): boolean {
 
 // True when the settings file carries Crosswalk's hooks for this port and
 // city (one with a folder of its own: its ?city=). The server shows it on the
-// welcome card, and lays the rails into Grand Central. With byAccount, only
+// welcome card, and lays the rails into Central Station. With byAccount, only
 // hooks that say who their session is count: a city that claims an account
 // hears nothing without them.
 export function hooksInstalled(settingsPath: string, cityId = HOME, byAccount = false): boolean {

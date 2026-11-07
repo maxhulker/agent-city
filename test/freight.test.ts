@@ -11,7 +11,7 @@ import { cityBuildings, findSite } from '../src/layout.ts'
 import { City, norm } from '../src/world.ts'
 
 // Freight: a project brought in from its address, cloned while its train
-// waits at Grand Central.
+// waits at Central Station.
 
 const T0 = 1_700_000_000_000
 

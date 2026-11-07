@@ -33,8 +33,8 @@ export type LogLine = { at: number; color: string; who: string; text: string }
 // their own, joined to it by a spur street.
 export const SECTION_LOOK = 2
 
-// Subway lines a session can be: one letter or number each, in a circle.
-const BULLETS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'J', 'L', 'M', 'N', 'Q', 'R', 'W', 'Z', '1', '2', '3', '4', '5', '6', '7']
+// The lines a session can be: one letter each (no I or O), on a rounded tile.
+const BULLETS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('')
 
 // One line of the news ticker.
 export type TickerItem = { at: number; bullet: string; color: string; who: string; text: string }
@@ -66,12 +66,12 @@ export function emptyWorld(): World {
 const READS = /^(Read|Grep|Glob|NotebookRead)$/
 const EDITS = /^(Edit|Write|MultiEdit|NotebookEdit)$/
 const SHELLS = /^(Bash|PowerShell)$/
-// The districts whose landmarks must all stand before the Empire State goes up.
+// The districts whose landmarks must all stand before the Crown Tower goes up.
 const DISTRICT_LANDMARKS: District[] = ['hall', 'library', 'workshop', 'foundry', 'observatory', 'relay', 'harbor', 'plaza']
 
 // One of the first district's quests, as the Blueprints card and the
 // catalogue show it: done (with when), the suggested next, still to do, or
-// locked (the Empire State, until every district stands). `opened` is when a
+// locked (the Crown Tower, until every district stands). `opened` is when a
 // landmark was first used.
 export type Quest = { id: string; name: string; hint: string; state: 'done' | 'next' | 'todo' | 'locked'; at?: number; opened?: number }
 
@@ -266,7 +266,7 @@ const BILLBOARD_MISSES = 3
 const BILLBOARD_FORGET_MS = 24 * 60 * 60_000
 const BILLBOARDS_MAX = 40
 
-// Departures, all through Grand Central: an idle agent that has heard nothing
+// Departures, all through Central Station: an idle agent that has heard nothing
 // for this long boards the train home; a finished subagent rests this long
 // after its report has arrived; a borough nobody has worked in for this long
 // packs up; above the cap the longest-idle leave first, whatever the timers say.
@@ -353,7 +353,7 @@ export class City {
     w.population ??= 0
     // Home no longer moves between repositories: whoever has it keeps it.
     delete (w as World & { homePinned?: boolean }).homePinned
-    // A city saved before layouts existed, or on the hand-drawn Manhattan
+    // A city saved before layouts existed, or on the hand-drawn island
     // (retired 2026-11-06), moves to new land: the sessions stay, and each
     // repository waits at the station for a borough again.
     const old = w.layout as { map?: object; rev?: number } | undefined
@@ -365,7 +365,7 @@ export class City {
       delete w.torch
       w.population = 0
       this.rehouse()
-      if (old) this.toasts.push('The hand-drawn Manhattan is retired: new land to lay out your city on')
+      if (old) this.toasts.push('The hand-drawn island is retired: new land to lay out your city on')
     }
     // Sections laid out in an older look are built again (City.regroup).
     if (w.regrouped && w.sectionLook !== SECTION_LOOK) delete w.regrouped
@@ -433,7 +433,7 @@ export class City {
       this.toasts.push('The city is complete')
       this.tick(undefined, 'the city is complete', now)
     } else if (DISTRICT_LANDMARKS.every(d => w.built![d] !== undefined)) {
-      // The old game's Empire State lot rises after the last district; a
+      // The old game's Crown Tower lot rises after the last district; a
       // laid-out city places its own.
       if (cityBuildings(this.layout, 'empire').some(b => b.built === undefined)) this.raise('empire', a, now)
     }
@@ -624,7 +624,7 @@ export class City {
     this.tick(undefined, `${name}: done`, now)
   }
 
-  // Act two's checklist, once the city stands (its Empire State is up).
+  // Act two's checklist, once the city stands (its Crown Tower is up).
   actTwo(): ActTwo[] | undefined {
     const w = this.world
     if (w.built?.empire === undefined) return undefined
@@ -689,7 +689,7 @@ export class City {
 
   // The first district's quests (docs/city-builder.md), in their suggested
   // order, which nothing enforces; only on a laid-out (generated) map. The
-  // next one is the first not done; the Empire State waits for every district.
+  // next one is the first not done; the Crown Tower waits for every district.
   quests(): Quest[] | undefined {
     const w = this.world
     const stands = (k: Kind) => cityBuildings(this.layout, k).some(b => b.built !== undefined)
@@ -700,7 +700,7 @@ export class City {
         const id = k === 'liberty' ? undefined : (k as Landmark)
         const at = stands(k) ? (cityBuildings(this.layout, k).find(b => b.built !== undefined)!.built ?? 0) : undefined
         const opened = id ? w.opened?.[id] : undefined
-        return { id: k, name: k === 'liberty' ? 'Statue of Liberty' : k === 'harbor' ? 'Seaport' : BLUEPRINTS[k as Landmark].name, hint, ...(at !== undefined ? { at } : {}), ...(opened !== undefined ? { opened } : {}) }
+        return { id: k, name: k === 'liberty' ? 'Harbor Statue' : k === 'harbor' ? 'Seaport' : BLUEPRINTS[k as Landmark].name, hint, ...(at !== undefined ? { at } : {}), ...(opened !== undefined ? { opened } : {}) }
       }),
       { id: 'zone', name: 'Zone some blocks', hint: 'The Zone tool, beside a road: the population fills them in', ...(this.layout.zoned.length ? { at: 0 } : {}) },
       { id: 'empire', name: BLUEPRINTS.empire.name, hint: 'Placeable once every district stands; it goes up with fireworks', ...(stands('empire') ? { at: w.built?.empire ?? 0 } : {}) },
@@ -858,7 +858,7 @@ export class City {
   // A borough laid out for the repository at root, with its streets and
   // lots and a road to the city, and the repository moved in. Another
   // worktree of its project has a borough: a section built onto that one.
-  // Otherwise one of its own on the free mainland nearest Grand Central, of
+  // Otherwise one of its own on the free mainland nearest Central Station, of
   // `size` (else the size `want` lots need), or smaller down to a small one.
   private settle(root: string, name: string, want: number, now: number, opts: { size?: [number, number]; quiet?: boolean } = {}): { ok: true; id: string; of?: string } | { error: string } {
     const w = this.world
@@ -1090,7 +1090,7 @@ export class City {
     lead.shown = { at: 'relay' }
     lead.arriving = now + TRAIN_MS
     lead.activity = 'Just off the train'
-    this.tick(lead, 'arrived at Grand Central', now)
+    this.tick(lead, 'arrived at Central Station', now)
     w.trains = [
       ...(w.trains ?? []),
       {
@@ -1209,9 +1209,9 @@ export class City {
     return this.holder(b) ?? this.world.repos.find(r => r.burb === b)
   }
 
-  // A borough's name, or Grand Central's for a repository waiting for one.
+  // A borough's name, or Central Station's for a repository waiting for one.
   burbName(b: Burb): string {
-    return burbGeo(this.layout, b)?.name ?? 'Grand Central'
+    return burbGeo(this.layout, b)?.name ?? 'Central Station'
   }
 
   private news(text: string, now: number) {
@@ -1224,7 +1224,7 @@ export class City {
   // while the page's New arrival card asks for one (docs/city-builder.md).
   private waitForBorough(repo: Repo, now: number) {
     repo.burb = waitingId(repo.root)
-    this.news(`${repo.name} arrived at Grand Central. Lay out a borough for it.`, now)
+    this.news(`${repo.name} arrived at Central Station. Lay out a borough for it.`, now)
   }
 
   // The borough of the repository at root. A new one waits at the station; one
@@ -1602,7 +1602,7 @@ export class City {
   // ---- freight (src/freight.ts): a project brought in from elsewhere ----
 
   // Its borough is laid out (or picked) at once, and a freight train with its
-  // name on the boxcars pulls into Grand Central and stands there while it is
+  // name on the boxcars pulls into Central Station and stands there while it is
   // cloned.
   freightArrives(root: string, name: string, at: Record<string, unknown>, now: number): { ok: true; borough: string; id: string; drawn: boolean } | { error: string } {
     const r = this.groundFor(root, name, at, now, borough => `🚂 ${name} is arriving by freight, for ${borough}`)
@@ -1940,7 +1940,7 @@ export class City {
         const from = placeOf(a)
         a.status = 'done'
         a.inFlight = 0
-        // Finished agents rest in Central Park, whichever borough they worked in.
+        // Finished agents rest in Commons Park, whichever borough they worked in.
         this.goTo(a, 'plaza', undefined)
         a.activity = 'Finished'
         a.updatedAt = now
@@ -1952,7 +1952,7 @@ export class City {
           const to = placeOf(this.lead(s, now))
           this.ride(from, to, a.color, 'report', now)
           a.restUntil = now + walk(from, to, placeAt(to, 0, this.layout), this.layout).dur * 1000 + REST_LEAVE
-          // The first subagent to finish and go to rest greens Central Park.
+          // The first subagent to finish and go to rest greens Commons Park.
           this.raise('plaza', a, now)
         }
         break
@@ -1962,11 +1962,11 @@ export class City {
         const lead = this.lead(s, now)
         lead.status = ev.hook_event_name === 'Stop' ? 'idle' : 'failed'
         lead.inFlight = 0
-        // An idle lead hangs out in Central Park until your next prompt calls it
+        // An idle lead hangs out in Commons Park until your next prompt calls it
         // back to City Hall; one that failed waits at City Hall with its "!".
         if (ev.hook_event_name === 'Stop') this.goTo(lead, 'plaza', undefined)
         else this.goTo(lead, 'hall', this.homeOf(s, now))
-        lead.activity = ev.hook_event_name === 'Stop' ? 'Hanging out in Central Park, waiting for you' : 'Stopped with an error'
+        lead.activity = ev.hook_event_name === 'Stop' ? 'Hanging out in Commons Park, waiting for you' : 'Stopped with an error'
         lead.updatedAt = now
         w.asks = w.asks.filter(q => q.agentId !== lead.id || q.id.startsWith('perm:'))
         break
@@ -2012,7 +2012,7 @@ export class City {
 
   // ---- departures: the last train home --------------------------------------
 
-  // Sends agents to Grand Central to board one train; they are gone when it leaves.
+  // Sends agents to Central Station to board one train; they are gone when it leaves.
   private depart(list: Agent[], now: number, why: string) {
     const w = this.world
     const going = list.filter(a => a.status !== 'leaving')

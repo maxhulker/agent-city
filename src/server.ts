@@ -88,7 +88,7 @@ type Town = {
   approvals: Approvals
   appSessions: AppSessions
   // Whether its Claude Code's settings carry our hooks: the welcome card says
-  // so, and the rails into Grand Central are laid when they do.
+  // so, and the rails into Central Station are laid when they do.
   connected: boolean
   // The accounts its sessions have come from lately (email, else
   // organization), for the card that offers one a city of its own.
@@ -294,7 +294,7 @@ function tickerNow(city: City, now: number): TickerItem[] {
 function routeOf(world: World, a: Agent) {
   return (a.stops ?? []).map(st => {
     const place = st.burb ? { at: st.at, burb: st.burb } : { at: st.at }
-    const name = !st.burb ? LABELS[st.at] : isWaiting(st.burb) ? 'Grand Central' : `${burbGeo(world.layout, st.burb)?.name ?? 'a borough'}`
+    const name = !st.burb ? LABELS[st.at] : isWaiting(st.burb) ? 'Central Station' : `${burbGeo(world.layout, st.burb)?.name ?? 'a borough'}`
     const [x, y] = p(...placeAt(place, 0, world.layout))
     return { name, t: st.t, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }
   })
@@ -350,7 +350,7 @@ function meta(town: Town) {
     homeRoot: world.homeRoot,
     boot: BOOT,
     // A repository waiting at the station for a borough gets the page's New arrival card.
-    repos: world.repos.map(r => ({ ...r, borough: burbGeo(world.layout, r.burb)?.name ?? 'Grand Central', waiting: isWaiting(r.burb) })),
+    repos: world.repos.map(r => ({ ...r, borough: burbGeo(world.layout, r.burb)?.name ?? 'Central Station', waiting: isWaiting(r.burb) })),
     // The boroughs nobody lives in now, which the card offers to move into.
     free: (world.layout?.boroughs ?? []).filter(b => !world.repos.some(r => r.burb === b.id && !r.left)).map(b => ({ id: b.id, name: b.name, lots: lotsInBorough(world, b.id) })),
     // How many zoned lots each drawn borough has: none, and its houses have nowhere to go.
@@ -369,7 +369,7 @@ function meta(town: Town) {
           tools: a.tools,
           activity: a.activity,
           where: a.burb
-            ? `${burbGeo(world.layout, a.burb)?.name ?? 'Grand Central'} (${world.repos.find(r => r.burb === a.burb && !r.left)?.name ?? 'another repo'})`
+            ? `${burbGeo(world.layout, a.burb)?.name ?? 'Central Station'} (${world.repos.find(r => r.burb === a.burb && !r.left)?.name ?? 'another repo'})`
             : LABELS[a.at],
           ...(a.order ? { order: a.order } : {}),
           route: routeOf(world, a),

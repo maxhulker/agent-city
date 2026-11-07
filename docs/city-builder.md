@@ -60,14 +60,14 @@ themselves, is a later nicety, not part of this.
 ## What the person places
 
 - **Landmarks.** One per kind of work: City Hall, the Public Library, the
-  Garment District, Hudson Yards, Times Square, the Seaport, Central Park,
-  and Grand Central's towers; then the Empire State Building as the capstone,
-  and the Statue of Liberty, which stands in water. Each has a footprint in
+  Mill District, Rail Yards, Neon Square, the Seaport, Commons Park,
+  and Central Station's towers; then the Crown Tower as the capstone,
+  and the Harbor Statue, which stands in water. Each has a footprint in
   whole cells (the rectangles `RESERVED` lists today: the Library is 2×1,
-  Grand Central 4×1, Central Park 4×13) and a front, the side agents stand
+  Central Station 4×1, Commons Park 4×13) and a front, the side agents stand
   on. Placing one in the city builds it: scaffolding for a few seconds, then
   the landmark. Several of a kind are allowed (two Libraries, one at each
-  end of town); agents go to the nearest. Grand Central's terminal is placed
+  end of town); agents go to the nearest. Central Station's terminal is placed
   from the start, as the city's entrance: it is where the rails arrive and
   where everyone steps off and boards.
 - **Zoned blocks.** The filler fabric is no longer sprinkled by the renderer:
@@ -82,7 +82,7 @@ themselves, is a later nicety, not part of this.
   lamps, as today). Roads of a real width, taking the cells beside their
   line, are a later addition that this leaves room for: the routing graph
   is the same, and only the occupancy check and the drawing grow.
-- **Parks.** A paint for cells: lawn and trees. Central Park is a landmark
+- **Parks.** A paint for cells: lawn and trees. Commons Park is a landmark
   (it has a spot where agents rest); parks are scenery.
 - **A borough per project.** A rectangle of cells the person draws and names
   for a repository. It holds its own roads, blocks and buildings, and a
@@ -137,7 +137,7 @@ else:
 ```ts
 type Layout = {
   rev: number                       // bumps on every change; the map hash covers it
-  // The map: a generated one by its seed, or the hand-drawn Manhattan, whose
+  // The map: a generated one by its seed, or the hand-drawn island, whose
   // smooth shoreline, mainland, small islands, Liberty Island and named
   // rivers are drawn as its backdrop. Either way `land` holds the cells.
   map: { seed: number } | { preset: 'manhattan' }
@@ -185,7 +185,7 @@ count on, so:
 
 - A building's **door** is the midpoint of its front edge, on the road
   there. Its agents stand along that edge (`standAt` as today, spread along
-  the front; Central Park's lawn keeps its loose rows).
+  the front; Commons Park's lawn keeps its loose rows).
 - `route(layout, from, to)` finds the shortest way over the road graph
   (nodes at grid points, one edge per road segment; a breadth-first search
   is enough at this size) from one door to the other, and returns the
@@ -194,7 +194,7 @@ count on, so:
 - No road between them: the agent walks straight, as the crow flies, and the
   tooltip on its destination says "no road here yet". The game layer never
   blocks the work.
-- Grand Central's rails run from the station's back east to the map's edge;
+- Central Station's rails run from the station's back east to the map's edge;
   trains arrive and leave along them wherever the station is.
 - A kind of work with no building placed for it (a Read before the Library
   has a lot) sends the agent to the station's forecourt, with its activity
@@ -222,14 +222,14 @@ nothing enforces:
 3. **Place City Hall** on that road. It goes up at once, in scaffolding
    first, and the lead walks over on the next prompt: the catalogue's line
    says what it is for ("where your sessions think and wait for you").
-4. **The Library, the Garment District, Hudson Yards, Times Square, Grand
-   Central's towers, the Seaport (on a shore), Central Park, the Statue (in
+4. **The Library, the Mill District, Rail Yards, Neon Square, Grand
+   Central's towers, the Seaport (on a shore), Commons Park, the Statue (in
    the water).** Place each where you like. Each goes up as it is placed,
    and the first time a session uses it the ticker says so ("THE LIBRARY
    OPENED ITS DOORS"), so the legend is still learnt by watching the work.
 5. **Zone some blocks.** The population fills them in. "Population" in the
    header keeps counting tool calls.
-6. **The Empire State Building** becomes placeable once every district
+6. **The Crown Tower** becomes placeable once every district
    stands, and goes up with the fireworks. "THE CITY IS COMPLETE".
 
 Act two (run the city: answer at City Hall, send a telegram, open a work
@@ -250,7 +250,7 @@ square. From now on:
 
 - When a session first works in a repository that has no borough, the city
   announces it: a toast and a "New arrival" card in the sidebar, "`api`
-  arrived at Grand Central. Lay out a borough for it." Its agents wait on the
+  arrived at Central Station. Lay out a borough for it." Its agents wait on the
   station's forecourt, with the repository's name on a sign, and work from
   there. Nothing is blocked.
 - The person draws a borough with the Borough tool, picks the repository (the
@@ -271,7 +271,7 @@ square. From now on:
 - **Make Manhattan** keeps its meaning: the chosen repository's agents take
   the city's districts, and the old home takes the borough it names.
 - **The hub is the city's own.** On a generated map the island in the middle
-  (`hubOf`: the land joined to the map's centre) holds Grand Central, the
+  (`hubOf`: the land joined to the map's centre) holds Central Station, the
   landmarks and the fabric. No borough goes on it: `findSite` skips it, and
   the `borough` op refuses it ("The island is the city's own: boroughs go on
   the mainland"), so the Borough tool does too. The Manhattan preset, all one
@@ -430,7 +430,7 @@ until the final check.
    Rebuild's two starts, the quests' states on the catalogue, the "opened
    its doors" lines on first use, the toasts.
    Tests: a new city's first quest is the road, then City Hall; placing City
-   Hall completes its quest with no work; the Empire State is placeable
+   Hall completes its quest with no work; the Crown Tower is placeable
    only once every district stands; "Start from Manhattan" is the preset,
    whole.
 9. **Zoning, parks and the Statue.** Zoned lots fill with the population;

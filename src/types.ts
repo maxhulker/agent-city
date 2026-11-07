@@ -11,18 +11,18 @@ export type District =
   | 'plaza'
 
 // What the onboarding game builds: each district's landmark, the Statue's
-// torch, and the Empire State Building as the capstone.
+// torch, and the Crown Tower as the capstone.
 export type Landmark = District | 'torch' | 'empire'
 
 // Where a repository other than home lives: a borough's id in the layout,
 // or, while it has none,
-// `@<root>`: its agents wait on Grand Central's forecourt (`waitingId` in
+// `@<root>`: its agents wait on Central Station's forecourt (`waitingId` in
 // src/layout.ts).
 export type Burb = string
 
 export type View = 'island' | 'uptown' | 'midtown' | 'downtown'
 
-// 'leaving': on its way to Grand Central for the train home; it is gone once
+// 'leaving': on its way to Central Station for the train home; it is gone once
 // the train pulls out (Agent.leaving).
 export type AgentStatus = 'working' | 'idle' | 'waiting' | 'done' | 'failed' | 'leaving'
 
@@ -55,7 +55,7 @@ export type Agent = {
   updatedAt: number
   // A finished subagent rests until then (its report has arrived, plus a while).
   restUntil?: number
-  // When its train leaves Grand Central; set once it is on its way there.
+  // When its train leaves Central Station; set once it is on its way there.
   leaving?: number
   // When it steps off the train it arrived on (a brand-new city's first lead).
   arriving?: number
@@ -81,7 +81,7 @@ export type PlanItem = { id: string; subject: string; state: 'todo' | 'doing' | 
 export type WorkOrder = { no: string; title: string; brief: string; issuedBy: string; at: number }
 export type Stop = { at: District; burb?: Burb; t: number }
 
-// A train at Grand Central. Departing: it waits while its passengers walk
+// A train at Central Station. Departing: it waits while its passengers walk
 // over, pulls out at leaveAt, and is gone a few seconds later. Arriving: it
 // comes in from the east at `at`, stands at the platform, and leaves empty at
 // leaveAt.
@@ -112,7 +112,7 @@ export type Session = {
   color: string
   // Its lead's hat, when the person picked one (else the crown).
   hat?: Hat
-  // Its subway bullet: a letter in a circle of its color, shared by its agents.
+  // Its line badge: a letter on a rounded tile of its color, shared by its agents.
   bullet?: string
   // How many work orders its lead has issued (subagents started).
   orders?: number
@@ -425,7 +425,7 @@ export type Ask = { id: string; agentId: string; label: string; at: number }
 // a message from one agent to another.
 export type Ride = { at: number; from: Place; to: Place; color: string; kind: 'report' | 'message' }
 
-// The latest commit or push: the Statue of Liberty hops for one, launches for the other.
+// The latest commit or push: the Harbor Statue hops for one, launches for the other.
 export type Launch = { kind: 'commit' | 'push'; at: number; who: string; repo: string }
 
 export type World = {
@@ -441,7 +441,7 @@ export type World = {
   launch?: Launch
   // Taxis on the road now (each lasts a few seconds).
   rides?: Ride[]
-  // Trains boarding or pulling out of Grand Central.
+  // Trains boarding or pulling out of Central Station.
   trains?: Train[]
   // Tasks started from the page, newest last (the last 20).
   tasks?: Task[]
@@ -454,7 +454,7 @@ export type World = {
   // and when the person laid their first road: the quests read them.
   opened?: Partial<Record<Landmark, number>>
   firstRoad?: number
-  // When Liberty's torch was lit (the first push): the one landmark with no
+  // When the Harbor Statue's torch was lit (the first push): the one landmark with no
   // building of its own.
   torch?: number
   // Act two of the onboarding (docs/onboarding.md): when each of the app's
@@ -485,7 +485,7 @@ export type World = {
   // Cumulative tool calls: the filler blocks grow with it.
   population?: number
   // What stands where (docs/city-builder.md). A city saved before layouts
-  // existed, or on the retired hand-drawn Manhattan, gets new land on load.
+  // existed, or on the retired hand-drawn island, gets new land on load.
   layout?: Layout
   // Once the boroughs were moved off the hub island and each project's
   // worktrees gathered into one borough (2026-11-05): done once per city.
