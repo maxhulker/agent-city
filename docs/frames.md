@@ -93,7 +93,7 @@ agents the taxis (`ride:…`) and the fireworks (`fireworks`).
 type Sprite = {
   id: string
   session: string
-  cls: string // 'agent working' / 'agent idle' / … (the page adds 'sel')
+  cls: string // 'agent working' / 'agent idle' / … ('agent working testing' while it waits on tests; the page adds 'sel')
   x: number   // where it stands now (SVG units), its feet
   y: number
   z: number   // paint order: higher draws later (in front)

@@ -274,7 +274,7 @@ export class DemoPlayer {
 
     // A pull request: a permit, an inspection, and the ribbon cut on merge.
     this.tool(132, 'demo-shop', shop, 'Bash', { command: 'gh pr create --fill' }, { out: 'https://github.com/demo/webshop/pull/7' })
-    this.tool(137, 'demo-shop', shop, 'Bash', { command: 'gh pr checks 7' }, { out: 'All checks were successful' })
+    this.tool(137, 'demo-shop', shop, 'Bash', { command: 'gh pr checks 7 --watch' }, { dur: 4, out: 'All checks were successful' })
     this.tool(142, 'demo-shop', shop, 'Bash', { command: 'gh pr merge 7 --merge' }, { out: '✓ Merged pull request demo/webshop#7' })
     // And the API ships.
     this.tool(147, 'demo-api', api, 'Bash', { command: 'vercel --prod' }, { dur: 5, out: 'Production: https://weather-demo.vercel.app [3s]' })

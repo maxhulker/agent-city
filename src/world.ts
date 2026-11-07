@@ -6,7 +6,7 @@ import { BLUEPRINTS, FIREWORKS_MS, LANDMARKS, SCAFFOLD_MS, TRAIN_MS, dayOf, full
 import { FIXED, applyOp, boroughRect, boroughSizeFor, builtOf, burbGeo, cityBuildings, clearBorough, connectBorough, fillBorough, findSite, generateMap, hubOf, isWaiting, lotsWanted, markBuilt, parseOp, sectionSite, spurSection, waitingId } from './layout.ts'
 import { sameCensus } from './census.ts'
 import { devCommand, hostOf, litFor, localUrls, portOf, watchedTool } from './billboards.ts'
-import { applySiteEvent, branchAtWork, outputOf, siteEventOf } from './sites.ts'
+import { VERDICT_MS, applySiteEvent, branchAtWork, outputOf, siteEventOf, testWaitOf, verdictOf } from './sites.ts'
 import { costsByRoot } from './costs.ts'
 import { nearestSlot, placeBlocks, slotsOf } from './draw/blocks.ts'
 import { addBlueprints, censusHas, newFolders, pathsInPlan, relativeTo, unbuilt } from './blueprints.ts'
@@ -241,6 +241,14 @@ function tickerFor(tool: string, input: Record<string, unknown>): string | undef
   if (tool === 'SendMessage') return 'SENT A MESSAGE'
   if (ASKS.test(tool)) return 'NEEDS YOU'
   return undefined
+}
+
+// The ticker's live line for an agent waiting on tests, with its command:
+// "WAITING ON TESTS npm test", "WAITING ON CI gh pr checks 5 --watch".
+export function waitingLine(a: Agent): string | undefined {
+  if (!a.waitingOn || a.status !== 'working') return undefined
+  const what = a.waitingOn.what === 'ci' ? 'CI' : 'TESTS'
+  return `WAITING ON ${what} ${a.activity.replace(/^Waiting on (?:tests|CI):\s*/, '')}`.trim()
 }
 
 function placeOf(a: Agent): Place {
@@ -1569,6 +1577,22 @@ export class City {
     this.isDirty = true
   }
 
+  // A test run or a CI wait came back: the agent stops waiting (its own call's
+  // result, not another's run alongside it), and a verdict the output gives
+  // shows over its head for a moment.
+  private testsBack(a: Agent, code: string, input: Record<string, unknown>, ev: HookEvent, now: number) {
+    const id = str(ev.tool_use_id)
+    const was = a.waitingOn
+    if (was && (!id || !was.id || was.id === id)) {
+      delete a.waitingOn
+      a.activity = activityFor(str(ev.tool_name), input)
+    }
+    const wait = input.run_in_background !== true ? testWaitOf(code) : undefined
+    if (!wait) return
+    const v = verdictOf(outputOf(ev.tool_response ?? ev.error), ev.hook_event_name === 'PostToolUseFailure', wait === 'ci')
+    if (v) a.verdict = { passed: v.passed, at: now }
+  }
+
   // Breaking ground (src/groundbreak.ts): a new project at root gets a
   // borough, one drawn now (x, y, w, h, with its streets and lots when `fill`)
   // or one nobody lives in (id), and moves in.
@@ -1771,7 +1795,9 @@ export class City {
     return a
   }
 
+  // Going anywhere ends a wait on tests (a test run sets it again after).
   private goTo(a: Agent, at: District, burb: Burb | undefined) {
+    delete a.waitingOn
     a.at = at
     if (burb) a.burb = burb
     else delete a.burb
@@ -1828,9 +1854,19 @@ export class City {
         else if (tool === 'Write' && path && worked) this.workBlueprint(worked, path, now)
         const before = placeOf(a)
         const isAsk = ASKS.test(tool)
-        this.goTo(a, isAsk ? 'hall' : districtFor(tool, str(input.command)), isAsk ? this.homeOf(s, now) : burb)
+        const code = shellCode(str(input.command))
+        this.goTo(a, isAsk ? 'hall' : districtFor(tool, code), isAsk ? this.homeOf(s, now) : burb)
         a.status = isAsk ? 'waiting' : 'working'
         a.activity = activityFor(tool, input)
+        // Waiting on tests: a test run or CI, in the foreground. Any other
+        // call means it has moved on.
+        const wait = SHELLS.test(tool) && input.run_in_background !== true ? testWaitOf(code) : undefined
+        if (wait) {
+          const id = str(ev.tool_use_id)
+          a.waitingOn = { what: wait, since: now, ...(id ? { id } : {}) }
+          a.activity = `Waiting on ${wait === 'ci' ? 'CI' : 'tests'}: ${short(str(input.command))}`
+          delete a.verdict
+        } else delete a.waitingOn
         a.tools += 1
         a.inFlight += 1
         a.updatedAt = now
@@ -1926,7 +1962,10 @@ export class City {
           if (kind === 'push') this.raise('torch', a, now)
         }
         // The project's construction site: a permit filed, an inspection, a ribbon cut.
-        if (tool === 'Bash' || tool === 'PowerShell') this.siteWork(a, code, ev, now)
+        if (tool === 'Bash' || tool === 'PowerShell') {
+          this.siteWork(a, code, ev, now)
+          this.testsBack(a, code, input, ev, now)
+        }
         break
       }
       case 'SubagentStart': {
@@ -2105,6 +2144,8 @@ export class City {
     for (const [id, at] of Object.entries(w.built ?? {}) as [Landmark, number][]) {
       if (within(at, SCAFFOLD_MS) || (id === 'empire' && within(at, FIREWORKS_MS))) return true
     }
+    // A test verdict over an agent's head is taken down.
+    if (w.agents.some(a => a.verdict && now >= a.verdict.at + VERDICT_MS)) return true
     return false
   }
 
@@ -2187,8 +2228,11 @@ export class City {
       if (!s.messages.length) delete s.messages
     }
     for (const a of w.agents) {
-      // Ten quiet minutes while "working" means the session went away unannounced.
-      if ((a.status === 'working' || a.status === 'waiting') && now - a.updatedAt > 10 * 60_000) {
+      if (a.verdict && now >= a.verdict.at + VERDICT_MS) delete a.verdict
+      // Ten quiet minutes while "working" means the session went away
+      // unannounced; twenty while waiting on tests, which can take that long.
+      const quietMax = a.waitingOn ? 20 * 60_000 : 10 * 60_000
+      if ((a.status === 'working' || a.status === 'waiting') && now - a.updatedAt > quietMax) {
         a.status = 'idle'
         a.inFlight = 0
         a.activity = 'Quiet for a while'

@@ -2,6 +2,7 @@ import type { Agent, Burb, District, Landmark, Place, Repo } from '../types.ts'
 import { FULL_POPULATION, SITES, burbBuilding, burbGeo, cellsOf, deltaOf, doorOf, isWaiting, roomOf, route, siteFor, spotFor } from '../layout.ts'
 import type { Layout } from '../layout.ts'
 import type { Cost } from '../costs.ts'
+import { testWaitOf } from '../sites.ts'
 
 // The map's geometry, shared by every layer: the projection, where districts
 // and boroughs are, and how agents walk. The sites and the lots are kept in
@@ -35,10 +36,11 @@ export const AGENT_COLORS = [
 
 export const mainColor = '#fbbf24'
 
-// Which district a tool call sends its agent to.
+// Which district a tool call sends its agent to. Waiting on tests, a test
+// run's or CI's, is done at the Rail Yards.
 export function districtFor(tool: string, command = ''): District {
   if (tool === 'Bash' || tool === 'PowerShell') {
-    return /(^|[\s;&|(])(git|gh)\s/.test(command) ? 'harbor' : 'foundry'
+    return /(^|[\s;&|(])(git|gh)\s/.test(command) && !testWaitOf(command) ? 'harbor' : 'foundry'
   }
   if (/^(Read|Grep|Glob|NotebookRead|LSP|Skill|ToolSearch)$/.test(tool)) return 'library'
   if (/^(Edit|Write|MultiEdit|NotebookEdit|Artifact|ArtifactData)$/.test(tool)) return 'workshop'

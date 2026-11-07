@@ -76,7 +76,7 @@
   #city > svg.map { will-change: transform; }
   #city .agent.leaving { opacity: 0; transition: opacity .35s; pointer-events: none; }
   .agent { cursor: pointer; }
-  .agent:hover .bubble, .agent.sel .bubble, .agent.waiting .bubble { display: inline; }
+  .agent:hover .bubble, .agent.sel .bubble, .agent.waiting .bubble, .agent.testing .bubble { display: inline; }
   #map .sel .ring { display: inline; animation: ringpulse 1.6s ease-in-out infinite; }
   @keyframes ringpulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
   #map [data-session] { cursor: pointer; }
@@ -230,6 +230,7 @@
   .status.waiting { background: #713f12; color: #fde68a; }
   .status.failed { background: #7f1d1d; color: #fecaca; }
   .status.leaving { background: #1e3a5f; color: #bfdbfe; }
+  .status.testing { background: #164e63; color: #a5f3fc; white-space: nowrap; }
   .log { list-style: none; padding: 0; margin: 0; }
   .log li { padding: 3px 0; border-bottom: 1px solid var(--line); }
   .empty { color: var(--dim); font-style: italic; }
@@ -1294,17 +1295,23 @@
   const MSG_TTL = 10 * 60 * 1000
   const VIA = { tool: 'mid-task', prompt: 'with your prompt', stop: 'at end of turn' }
 
+  // An agent's status chip; one waiting on tests (or CI) says so.
+  function statusChip(a) {
+    if (a.waitingOn) return `<span class="status testing" title="Waiting for its ${a.waitingOn === 'ci' ? 'CI run' : 'test run'} to finish">⏳ waiting on ${a.waitingOn === 'ci' ? 'CI' : 'tests'}</span>`
+    return `<span class="status ${esc(a.status)}">${esc(a.status)}</span>`
+  }
+
   function headHtml(s) {
     const lead = s.agents.find(a => a.isMain)
     const subs = s.agents.filter(a => !a.isMain)
     return `<div class="row">${s.bullet ? bullet(s.bullet, s.color) : `<span class="dot" style="background:${esc(s.color)}"></span>`}
         <span class="name">${esc(lead?.name ?? s.name)}</span>
-        ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : ''}
+        ${lead ? statusChip(lead) : ''}
         <button class="btn sm" type="button" data-send-home="${esc(s.id)}" title="Its agents take the last train home now; it arrives fresh if it speaks again" style="margin-left:auto">Send home</button></div>
       <div class="path" style="margin-left:26px">${esc(s.cwd)}</div>
       ${lead ? `<div class="small dim" style="margin-left:26px">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}
       ${subs.length ? `<ul class="agents">${subs.map(a => `<li data-session-card="${esc(s.id)}"><div class="row">${s.bullet ? bullet(s.bullet, a.color || s.color, true) : `<span class="dot" style="background:${esc(a.color)}"></span>`}
-        <span>${esc(a.name)}</span><span class="status ${esc(a.status)}">${esc(a.status)}</span></div>
+        <span>${esc(a.name)}</span>${statusChip(a)}</div>
         <div class="small dim" style="margin-left:22px">${esc(a.where)} · ${esc(a.activity)}</div></li>`).join('')}</ul>` : ''}`
   }
 
@@ -2607,7 +2614,7 @@
     const route = ag?.route?.length > 1 ? `<div class="route small">${ag.route.map((q, i) => `<span><b>${i + 1}</b> ${esc(q.name)}</span>`).join(' → ')}</div>` : ''
     const head = s
       ? `<div class="row">${dotOrBullet(s)}<span class="name">${esc(leadOf(s)?.name ?? s.name)}</span>
-          ${lead ? `<span class="status ${esc(lead.status)}">${esc(lead.status)}</span>` : '<span class="status">ended</span>'}</div>
+          ${lead ? statusChip(lead) : '<span class="status">ended</span>'}</div>
         <div class="path">${esc(s.cwd)}</div>
         ${lead ? `<div class="small dim">${esc(lead.where)} · ${esc(lead.activity)}</div>` : ''}${who}${order}${route}${sitePlan}`
       : pastInfo.has(cv.sid)
