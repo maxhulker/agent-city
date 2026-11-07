@@ -154,6 +154,12 @@ function zip(entries) {
 
 // ---- the bundle ----------------------------------------------------------------
 
+// Opened from Finder or the Dock, macOS keeps talking to the process it
+// started: opening the app again asks that process to come forward, and Node
+// can't answer, so macOS says "the application is not responding". So the
+// launcher starts Crosswalk on its own and finishes: each open is a fresh
+// launcher, and a second one finds the city running and opens a window onto
+// it. Run from a terminal, it stays in front, printing as it goes.
 const LAUNCHER = `#!/bin/sh
 # Crosswalk's launcher: the Node for this Mac (Apple silicon or Intel), then the app.
 here="$(cd "$(dirname "$0")/../Resources" && pwd)"
@@ -161,7 +167,12 @@ case "$(uname -m)" in
   arm64) node="$here/node-arm64" ;;
   *) node="$here/node-x64" ;;
 esac
-exec "$node" "$here/app/src/app.ts" "$@"
+if [ -t 1 ]; then
+  exec "$node" "$here/app/src/app.ts" "$@"
+fi
+# Opened from Finder: Crosswalk runs on its own (~/.agent-city/app.log has
+# what it prints), and this finishes, so macOS has nothing left to wait on.
+nohup "$node" "$here/app/src/app.ts" "$@" < /dev/null > /dev/null 2>&1 &
 `
 
 const plist = `<?xml version="1.0" encoding="UTF-8"?>

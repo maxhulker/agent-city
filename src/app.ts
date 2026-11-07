@@ -5,13 +5,16 @@ import { format } from 'node:util'
 
 import { appBrowser } from './browser.ts'
 import { stateDir } from './cities.ts'
+import { FALLBACK_MS, GIVE_UP_MS, windowStep, type WindowKind } from './window.ts'
 
 // The desktop app: what the Steam build runs (scripts/build-desktop.mjs).
 // Starts the server, unless one already answers on the port, opens Crosswalk
 // in a window of its own (a Chromium browser's app mode: Edge, on every
 // Windows 10 and 11; on a Mac, Chrome, Edge or Brave if one is installed;
 // else the default browser), and quits once that window has closed: nobody has
-// watched for a few seconds after someone did.
+// watched for a few seconds after someone did. A window that never shows up is
+// tried in the default browser, and if nobody watches at all it stops rather
+// than run unseen (src/window.ts).
 //
 //   node src/app.ts [--demo]
 
@@ -49,48 +52,70 @@ async function answers(): Promise<boolean> {
   }
 }
 
+function defaultBrowser() {
+  const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', ADDRESS]] : process.platform === 'darwin' ? ['open', [ADDRESS]] : ['xdg-open', [ADDRESS]]
+  const child = spawn(cmd as string, args as string[], { stdio: 'ignore', detached: true })
+  child.on('error', err => console.error(`Couldn't open ${ADDRESS} in the default browser:`, err.message))
+  child.unref()
+}
+
 // A window of its own: Edge in app mode with a profile of Crosswalk's, so it
 // has no tabs or address bar and remembers its size. Else the default browser.
-function openWindow(): ReturnType<typeof spawn> | undefined {
+function openWindow(): { kind: WindowKind; child?: ReturnType<typeof spawn> } {
   // For tests of the app itself: whoever watches opens the page.
-  if (process.env.AGENT_CITY_NO_WINDOW) return undefined
+  if (process.env.AGENT_CITY_NO_WINDOW) return { kind: 'none' }
   const browser = appBrowser()
   if (browser) {
-    return spawn(browser, [`--app=${ADDRESS}`, `--user-data-dir=${join(STATE, 'window')}`, '--window-size=1440,900', '--no-first-run', '--no-default-browser-check'], { stdio: 'ignore', windowsHide: false })
+    console.log(`Opening the city's window in ${browser}`)
+    const child = spawn(browser, [`--app=${ADDRESS}`, `--user-data-dir=${join(STATE, 'window')}`, '--window-size=1440,900', '--no-first-run', '--no-default-browser-check'], { stdio: 'ignore', windowsHide: false })
+    // A browser that won't start (not an uncaught error, which would stop Crosswalk): the default one.
+    child.on('error', err => {
+      console.error(`${browser} wouldn't start (${err.message}): opening the default browser`)
+      defaultBrowser()
+    })
+    return { kind: 'app', child }
   }
-  const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', ADDRESS]] : process.platform === 'darwin' ? ['open', [ADDRESS]] : ['xdg-open', [ADDRESS]]
-  spawn(cmd as string, args as string[], { stdio: 'ignore', detached: true }).unref()
-  return undefined
+  console.log(`Opening ${ADDRESS} in the default browser`)
+  defaultBrowser()
+  return { kind: 'browser' }
 }
 
 async function main() {
   if (await answers()) {
     // Crosswalk is running already (another window, or `npm start`): a window onto it.
     console.log(`Crosswalk is already running on ${ADDRESS}: opening a window onto it`)
-    const win = openWindow()
-    if (win) await new Promise(r => win.on('exit', r))
+    const { child } = openWindow()
+    if (child) await new Promise(r => child.on('exit', r).on('error', r))
     return
   }
   const server = (await import('./server.ts')) as { watching(): number; shutdown(): void }
   for (let i = 0; i < 50 && !(await answers()); i++) await sleep(100)
-  openWindow()
-  // Quit once the window has closed: someone watched, and for ten seconds
-  // nobody has (a reload reconnects well within that).
+  const startedAt = Date.now()
+  const { kind } = openWindow()
   let seen = false
   let quietSince = 0
+  let triedDefault = false
   for (;;) {
     await sleep(1000)
-    const n = server.watching()
-    if (n > 0) {
+    if (server.watching() > 0) {
       seen = true
       quietSince = 0
-      continue
+    } else if (seen) {
+      quietSince ||= Date.now()
     }
-    if (!seen) continue
-    quietSince ||= Date.now()
-    if (Date.now() - quietSince >= 10_000) break
+    const step = windowStep({ now: Date.now(), startedAt, window: kind, seen, quietSince, triedDefault })
+    if (step === 'default-browser') {
+      console.warn(`Nobody is watching ${FALLBACK_MS / 1000} s after opening the window: opening the default browser too`)
+      triedDefault = true
+      defaultBrowser()
+    } else if (step === 'give-up') {
+      console.warn(`Nobody watched the city in ${GIVE_UP_MS / 60_000} minutes: Crosswalk is stopping (open it again to retry)`)
+      break
+    } else if (step === 'quit') {
+      console.log('The window closed: Crosswalk is stopping')
+      break
+    }
   }
-  console.log('The window closed: Crosswalk is stopping')
   server.shutdown()
   process.exit(0)
 }

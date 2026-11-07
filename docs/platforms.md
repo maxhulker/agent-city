@@ -68,6 +68,20 @@ installed (a window of its own with its own Dock icon), else in a tab of the
 default browser. Closing that window quits Crosswalk after ten seconds.
 `~/.agent-city/app.log` has what it printed.
 
+The app's launcher starts Crosswalk on its own and finishes at once, so
+macOS never waits on Node (which can't answer it). Opening the app again
+while the city runs opens another window onto it. If no window has
+connected 20 seconds after opening one, the default browser opens the city
+too; if nobody has watched it after three minutes, Crosswalk stops rather
+than run unseen. Run from Terminal
+(`/Applications/Crosswalk.app/Contents/MacOS/Crosswalk`) it stays in front
+and prints as it goes.
+
+Builds before 0.1.1 kept the launcher running instead. On those, opening the
+app a second time says "the application is not responding": quit the hidden
+copy (`pkill -f Crosswalk.app` in Terminal, or `node-arm64` / `node-x64` in
+Activity Monitor) and open it again.
+
 ## Checking a Mac build by hand
 
 CI starts the Mac app but can't look at it. On a real Mac, once per release:
