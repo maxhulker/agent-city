@@ -150,8 +150,10 @@ jobs:
           for i in $(seq 1 40); do pgrep -f "$app/Contents/MacOS/Crosswalk" > /dev/null || break; sleep 0.5; done
           HOME="$RUNNER_TEMP/home" arch -x86_64 "$app/Contents/MacOS/Crosswalk" > "$RUNNER_TEMP/app-x64.out" 2>&1 &
           pid=$!
-          for i in $(seq 1 90); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
-          curl -sf http://127.0.0.1:4791/ > /dev/null || { cat "$RUNNER_TEMP/app-x64.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
+          # Rosetta translates all of Electron (Intel) the first time it runs:
+          # on a busy runner that alone can take a minute or two.
+          for i in $(seq 1 360); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:4791/ > /dev/null || { echo "No answer after 3 minutes"; ps -axo pid,etime,arch,command | grep -i crosswalk | grep -v grep; cat "$RUNNER_TEMP/app-x64.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
           echo "The app's server answers under Rosetta (Intel)."
           kill $pid
       - name: A picture of the window
