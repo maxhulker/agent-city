@@ -144,13 +144,18 @@ jobs:
           set -e
           if ! arch -x86_64 /usr/bin/true 2> /dev/null; then echo "No Rosetta on this runner: skipped."; exit 0; fi
           app="$RUNNER_TEMP/cw/Crosswalk.app"
+          # One Crosswalk at a time (its lock is in the real home, whatever
+          # HOME says): the last step's must be gone first.
+          pkill -f "$app/Contents/MacOS/Crosswalk" || true
+          for i in $(seq 1 40); do pgrep -f "$app/Contents/MacOS/Crosswalk" > /dev/null || break; sleep 0.5; done
           HOME="$RUNNER_TEMP/home" arch -x86_64 "$app/Contents/MacOS/Crosswalk" > "$RUNNER_TEMP/app-x64.out" 2>&1 &
           pid=$!
           for i in $(seq 1 90); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
-          curl -sf http://127.0.0.1:4791/ > /dev/null || { cat "$RUNNER_TEMP/app-x64.out"; exit 1; }
+          curl -sf http://127.0.0.1:4791/ > /dev/null || { cat "$RUNNER_TEMP/app-x64.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
           echo "The app's server answers under Rosetta (Intel)."
           kill $pid
       - name: A picture of the window
+        if: always()
         continue-on-error: true
         timeout-minutes: 3
         env:
@@ -158,8 +163,11 @@ jobs:
           AGENT_CITY_NO_TOAST: '1'
           AGENT_CITY_SHOT_DELAY: '20000'
         run: |
-          AGENT_CITY_SHOT="$PWD/dist/window-mac.png" HOME="$RUNNER_TEMP/home" "$RUNNER_TEMP/cw/Crosswalk.app/Contents/MacOS/Crosswalk" --demo
-          test -s dist/window-mac.png
+          app="$RUNNER_TEMP/cw/Crosswalk.app"
+          pkill -f "$app/Contents/MacOS/Crosswalk" || true
+          for i in $(seq 1 40); do pgrep -f "$app/Contents/MacOS/Crosswalk" > /dev/null || break; sleep 0.5; done
+          AGENT_CITY_SHOT="$PWD/dist/window-mac.png" HOME="$RUNNER_TEMP/home" "$app/Contents/MacOS/Crosswalk" --demo
+          test -s dist/window-mac.png || cat "$RUNNER_TEMP/home/.agent-city/app.log"
       - uses: actions/upload-artifact@v4
         with:
           name: Crosswalk-mac

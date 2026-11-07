@@ -55,6 +55,7 @@ if (args.includes('--disconnect')) {
 function run() {
   // One Crosswalk at a time: a second launch shows the first one's window.
   if (!app.requestSingleInstanceLock()) {
+    log('Another Crosswalk is running: it shows its window instead')
     app.quit()
     return
   }
