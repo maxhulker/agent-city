@@ -3,8 +3,9 @@ import { spawn } from 'node:child_process'
 // A desktop notification from the server itself, so it reaches the person
 // with no Crosswalk window open. On Windows it is a toast through
 // PowerShell's own notifier (nothing to install); clicking it opens `url`.
-// Elsewhere, and with AGENT_CITY_NO_TOAST set (tests, sandboxed servers),
-// it does nothing.
+// On a Mac it is a notification through AppleScript (a click opens nothing:
+// AppleScript's notifications can't). Elsewhere, and with AGENT_CITY_NO_TOAST
+// set (tests, sandboxed servers), it does nothing.
 
 const xmlEsc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!)
 
@@ -22,8 +23,21 @@ export function toastXml(title: string, body: string, url: string): string {
 const OWN = 'AgentCity.App'
 const POWERSHELL = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'
 
+// The AppleScript for a Mac notification: its strings come from the
+// environment, so nothing in them needs quoting.
+export const MAC_SCRIPT = 'display notification (system attribute "AGENT_CITY_BODY") with title (system attribute "AGENT_CITY_TITLE")'
+
 export function toast(title: string, body: string, url: string) {
-  if (process.platform !== 'win32' || process.env.AGENT_CITY_NO_TOAST) return
+  if (process.env.AGENT_CITY_NO_TOAST) return
+  if (process.platform === 'darwin') {
+    try {
+      spawn('osascript', ['-e', MAC_SCRIPT], { env: { ...process.env, AGENT_CITY_TITLE: title, AGENT_CITY_BODY: body }, stdio: 'ignore' }).unref()
+    } catch {
+      // No osascript: the Crown Tower still lights up.
+    }
+    return
+  }
+  if (process.platform !== 'win32') return
   // The XML goes in through the environment, so nothing in it needs quoting.
   const script = [
     '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null',

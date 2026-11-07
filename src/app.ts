@@ -1,14 +1,16 @@
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { format } from 'node:util'
 
+import { appBrowser } from './browser.ts'
 import { stateDir } from './cities.ts'
 
 // The desktop app: what the Steam build runs (scripts/build-desktop.mjs).
 // Starts the server, unless one already answers on the port, opens Crosswalk
-// in a window of its own (Edge's app mode, on every Windows 10 and 11; else
-// the default browser), and quits once that window has closed: nobody has
+// in a window of its own (a Chromium browser's app mode: Edge, on every
+// Windows 10 and 11; on a Mac, Chrome, Edge or Brave if one is installed;
+// else the default browser), and quits once that window has closed: nobody has
 // watched for a few seconds after someone did.
 //
 //   node src/app.ts [--demo]
@@ -47,21 +49,14 @@ async function answers(): Promise<boolean> {
   }
 }
 
-// Edge, where Windows keeps it.
-function edgePath(): string | undefined {
-  if (process.platform !== 'win32') return undefined
-  const roots = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter((r): r is string => !!r)
-  return roots.map(r => join(r, 'Microsoft', 'Edge', 'Application', 'msedge.exe')).find(p => existsSync(p))
-}
-
 // A window of its own: Edge in app mode with a profile of Crosswalk's, so it
 // has no tabs or address bar and remembers its size. Else the default browser.
 function openWindow(): ReturnType<typeof spawn> | undefined {
   // For tests of the app itself: whoever watches opens the page.
   if (process.env.AGENT_CITY_NO_WINDOW) return undefined
-  const edge = edgePath()
-  if (edge) {
-    return spawn(edge, [`--app=${ADDRESS}`, `--user-data-dir=${join(STATE, 'window')}`, '--window-size=1440,900', '--no-first-run', '--no-default-browser-check'], { stdio: 'ignore', windowsHide: false })
+  const browser = appBrowser()
+  if (browser) {
+    return spawn(browser, [`--app=${ADDRESS}`, `--user-data-dir=${join(STATE, 'window')}`, '--window-size=1440,900', '--no-first-run', '--no-default-browser-check'], { stdio: 'ignore', windowsHide: false })
   }
   const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', ADDRESS]] : process.platform === 'darwin' ? ['open', [ADDRESS]] : ['xdg-open', [ADDRESS]]
   spawn(cmd as string, args as string[], { stdio: 'ignore', detached: true }).unref()
