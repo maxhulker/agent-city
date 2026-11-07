@@ -1,7 +1,8 @@
 # Crosswalk runs on Windows and macOS, and both are kept working
 # (docs/platforms.md): every pull request and every push to main runs the
-# tests on each, builds each one's download, and starts the built app.
-# Both downloads are kept as artifacts on the run.
+# tests on each, builds each one's download (the Electron app), starts the
+# built app, and takes a picture of its window. The downloads and the
+# pictures are kept as artifacts on the run.
 
 name: CI
 
@@ -23,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      # The server needs nothing installed: no npm ci here.
       - run: npm test
         env:
           AGENT_CITY_NO_TOAST: '1'
@@ -38,6 +40,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci
       - name: Inno Setup
         shell: pwsh
         run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
@@ -51,19 +54,35 @@ jobs:
           set -e
           dir="$RUNNER_TEMP/cw-install"
           ./dist/Crosswalk-Setup-*.exe //VERYSILENT //SUPPRESSMSGBOXES //NORESTART "//DIR=$(cygpath -w "$dir")" //TASKS=
-          test -f "$dir/Crosswalk.exe" && test -f "$dir/app/src/app.ts" && test -f "$dir/unins000.exe"
-          (cd "$dir" && ./Crosswalk.exe app/src/app.ts --demo &)
+          test -f "$dir/Crosswalk.exe" && test -f "$dir/resources/app/src/server.ts" && test -f "$dir/unins000.exe"
+          "$dir/Crosswalk.exe" --demo &
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:4790/state.json > /dev/null && break; sleep 0.5; done
           curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null
-          echo "The installed app answers."
+          echo "The installed app's server answers."
           "$dir/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
           for i in $(seq 1 40); do [ -f "$dir/Crosswalk.exe" ] || break; sleep 0.5; done
           test ! -f "$dir/Crosswalk.exe"
           echo "Uninstalled."
+      - name: A picture of the window
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          AGENT_CITY_PORT: '4792'
+          AGENT_CITY_NO_TOAST: '1'
+          AGENT_CITY_SHOT_DELAY: '20000'
+        run: |
+          AGENT_CITY_SHOT="$(cygpath -w "$PWD/dist/window-windows.png")" ./dist/Crosswalk-win32-x64/Crosswalk.exe --demo
+          test -s dist/window-windows.png
       - uses: actions/upload-artifact@v4
         with:
           name: Crosswalk-windows
           path: dist/Crosswalk-Setup-*.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-windows
+          path: dist/window-windows.png
+          if-no-files-found: ignore
 
   mac-build:
     name: Mac app
@@ -73,6 +92,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci
       - run: npm run build:mac
       - name: Unzip and start
         env:
@@ -84,40 +104,37 @@ jobs:
           mkdir -p "$RUNNER_TEMP/cw" "$RUNNER_TEMP/home"
           ditto -x -k dist/Crosswalk-*-mac.zip "$RUNNER_TEMP/cw"
           app="$RUNNER_TEMP/cw/Crosswalk.app"
-          test -x "$app/Contents/MacOS/Crosswalk"
+          codesign --verify --deep "$app"
           plutil -lint "$app/Contents/Info.plist"
-          trap 'pkill -f "$app/Contents/Resources/node" || true' EXIT
-          # With no terminal (as from Finder) the launcher starts Crosswalk on
-          # its own and finishes at once: nothing for macOS to wait on.
+          lipo -archs "$app/Contents/MacOS/Crosswalk"
           HOME="$RUNNER_TEMP/home" "$app/Contents/MacOS/Crosswalk" --demo > "$RUNNER_TEMP/app.out" 2>&1 &
           pid=$!
-          for i in $(seq 1 10); do kill -0 $pid 2> /dev/null || break; sleep 0.5; done
-          if kill -0 $pid 2> /dev/null; then echo "The launcher is still running: it should have finished"; exit 1; fi
-          log="$RUNNER_TEMP/home/.agent-city/app.log"
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:4790/state.json > /dev/null && break; sleep 0.5; done
-          curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null || { cat "$RUNNER_TEMP/app.out" "$log"; exit 1; }
-          echo "The app answers on $(uname -m), and the launcher finished."
+          curl -sf "http://127.0.0.1:4790/?city=demo" > /dev/null || { cat "$RUNNER_TEMP/app.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
+          echo "The app's server answers on $(uname -m)."
+          kill $pid
       - name: Open it twice, the way Finder does
-        # Through Launch Services, as a double-click is: opening it again while it
-        # runs must give a window onto the city, not "the application is not
-        # responding" (what a tester's Mac said).
+        # Through Launch Services, as a double-click is: opening it again while
+        # it runs must reach the running app (a tester's Mac once said "the
+        # application is not responding" here, before the app was Electron).
         run: |
           set -e
           app="$RUNNER_TEMP/cw/Crosswalk.app"
           home="$RUNNER_TEMP/home-open"
           mkdir -p "$home"
-          env="--env AGENT_CITY_PORT=4792 --env AGENT_CITY_NO_WINDOW=1 --env AGENT_CITY_NO_TOAST=1 --env HOME=$home"
+          env="--env AGENT_CITY_PORT=4793 --env AGENT_CITY_NO_WINDOW=1 --env AGENT_CITY_NO_TOAST=1 --env HOME=$home"
           log="$home/.agent-city/app.log"
-          trap 'pkill -f "$app/Contents/Resources/node" || true' EXIT
+          trap 'pkill -f "$app/Contents/MacOS/Crosswalk" || true' EXIT
           open $env "$app"
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4792/state.json > /dev/null && break; sleep 0.5; done
-          curl -sf http://127.0.0.1:4792/ > /dev/null || { cat "$log"; exit 1; }
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4793/state.json > /dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:4793/ > /dev/null || { cat "$log"; exit 1; }
           echo "Opened once: the city answers."
           open $env "$app" || { echo "Opening it a second time failed"; cat "$log"; exit 1; }
-          for i in $(seq 1 20); do grep -q "already running" "$log" 2> /dev/null && break; sleep 0.5; done
-          grep -q "already running" "$log" || { echo "The second open never reached Crosswalk"; cat "$log"; exit 1; }
-          curl -sf http://127.0.0.1:4792/state.json > /dev/null
-          echo "Opened twice: the second open reached the running city."
+          for i in $(seq 1 20); do grep -q "Opened again" "$log" 2> /dev/null && break; sleep 0.5; done
+          grep -q "Opened again" "$log" || { echo "The second open never reached Crosswalk"; cat "$log"; exit 1; }
+          curl -sf http://127.0.0.1:4793/state.json > /dev/null
+          [ "$(pgrep -f "$app/Contents/MacOS/Crosswalk" | wc -l)" -ge 1 ]
+          echo "Opened twice: the second open reached the running app."
       - name: Start again as an Intel Mac (Rosetta)
         env:
           AGENT_CITY_PORT: '4791'
@@ -127,13 +144,37 @@ jobs:
           set -e
           if ! arch -x86_64 /usr/bin/true 2> /dev/null; then echo "No Rosetta on this runner: skipped."; exit 0; fi
           app="$RUNNER_TEMP/cw/Crosswalk.app"
-          trap 'pkill -f "$app/Contents/Resources/node" || true' EXIT
-          HOME="$RUNNER_TEMP/home" arch -x86_64 "$app/Contents/MacOS/Crosswalk" > "$RUNNER_TEMP/app-x64.out" 2>&1
+          # One Crosswalk at a time (its lock is in the real home, whatever
+          # HOME says): the last step's must be gone first.
+          pkill -f "$app/Contents/MacOS/Crosswalk" || true
+          for i in $(seq 1 40); do pgrep -f "$app/Contents/MacOS/Crosswalk" > /dev/null || break; sleep 0.5; done
+          HOME="$RUNNER_TEMP/home" arch -x86_64 "$app/Contents/MacOS/Crosswalk" > "$RUNNER_TEMP/app-x64.out" 2>&1 &
+          pid=$!
           for i in $(seq 1 90); do curl -sf http://127.0.0.1:4791/state.json > /dev/null && break; sleep 0.5; done
           curl -sf http://127.0.0.1:4791/ > /dev/null || { cat "$RUNNER_TEMP/app-x64.out" "$RUNNER_TEMP/home/.agent-city/app.log"; exit 1; }
-          pgrep -f "$app/Contents/Resources/node-x64" > /dev/null || { echo "Not the Intel Node"; exit 1; }
-          echo "The app answers under Rosetta (Intel Node)."
+          echo "The app's server answers under Rosetta (Intel)."
+          kill $pid
+      - name: A picture of the window
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          AGENT_CITY_PORT: '4792'
+          AGENT_CITY_NO_TOAST: '1'
+          AGENT_CITY_SHOT_DELAY: '20000'
+        run: |
+          app="$RUNNER_TEMP/cw/Crosswalk.app"
+          pkill -f "$app/Contents/MacOS/Crosswalk" || true
+          for i in $(seq 1 40); do pgrep -f "$app/Contents/MacOS/Crosswalk" > /dev/null || break; sleep 0.5; done
+          AGENT_CITY_SHOT="$PWD/dist/window-mac.png" HOME="$RUNNER_TEMP/home" "$app/Contents/MacOS/Crosswalk" --demo
+          test -s dist/window-mac.png || cat "$RUNNER_TEMP/home/.agent-city/app.log"
       - uses: actions/upload-artifact@v4
         with:
           name: Crosswalk-mac
           path: dist/Crosswalk-*-mac.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-mac
+          path: dist/window-mac.png
+          if-no-files-found: ignore

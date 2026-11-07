@@ -1,19 +1,19 @@
 {
   "name": "agent-city",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Watch every Claude Code session on this machine at work in an isometric city",
   "type": "module",
+  "main": "desktop/main.mjs",
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
     "start": "node src/server.ts",
     "demo": "node src/server.ts --demo",
-    "app": "node src/app.ts",
-    "build:desktop": "node scripts/build-desktop.mjs",
+    "app": "electron .",
     "build:installer": "node scripts/build-installer.mjs",
-    "build:mac": "node scripts/build-mac.mjs",
+    "build:mac": "node scripts/package-app.mjs darwin",
     "test": "node --test test/*.test.ts",
     "connect": "node src/install.ts",
     "disconnect": "node src/install.ts --uninstall",
@@ -21,5 +21,9 @@
     "autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/autostart.ps1",
     "notifications": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/notifications.ps1",
     "icon": "node scripts/make-icon.mjs assets/agent-city.ico assets/agent-city-preview.bmp assets"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "45.2.3"
   }
 }
