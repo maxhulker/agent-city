@@ -436,6 +436,20 @@ Node's license, and `STEAM.md` (the launch options and depot settings for
 Steamworks). Run it as `Crosswalk.exe app/src/app.ts`. What it prints goes to
 `~/.agent-city/app.log` too.
 
+### An installer to hand over (Windows)
+
+`npm run build:installer` makes `dist/Crosswalk-Setup-<version>.exe` (about
+25 MB), one file for someone else's machine: no Node, no terminal, no admin
+prompt. It installs for the current user under
+`%LOCALAPPDATA%\Programs\Crosswalk`, adds **Crosswalk** and **Crosswalk demo
+city** to the Start menu (and a desktop shortcut, if ticked), and offers to
+open it. It is in Settings > Apps to uninstall, which stops Crosswalk, takes
+its hooks out of Claude Code's settings and leaves the cities in
+`~/.agent-city`. A newer installer upgrades in place. It needs Inno Setup to
+build (`winget install JRSoftware.InnoSetup --scope user`), and it is
+unsigned: Windows SmartScreen says it doesn't recognise it (More info, then
+Run anyway) until it is signed with a code-signing certificate.
+
 ### Desktop shortcut (Windows)
 
 ```bash

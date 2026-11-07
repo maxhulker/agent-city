@@ -50,3 +50,15 @@ test("a city claiming an account shares home's hooks: it can't disconnect them a
   const conf: CityConf = { id: 'work', name: 'Work', config: tmpdir(), ownFolder: false, accounts: ['me@example.com'], color: '#fff' }
   assert.throws(() => setHooks(conf, { uninstall: true, print: true }), /shares/)
 })
+
+test('Disconnect where Claude Code never was makes no settings file (the uninstaller runs it anywhere)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cw-connect-'))
+  try {
+    const conf: CityConf = { id: 'home', name: 'Home', config: join(dir, '.claude'), ownFolder: false, accounts: [], color: '#fff' }
+    const r = setHooks(conf, { uninstall: true })
+    assert.match(r.message, /nothing to remove/)
+    assert.equal(existsSync(join(dir, '.claude')), false, 'no folder made')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
