@@ -13,6 +13,7 @@
     "app": "node src/app.ts",
     "build:desktop": "node scripts/build-desktop.mjs",
     "build:installer": "node scripts/build-installer.mjs",
+    "build:mac": "node scripts/build-mac.mjs",
     "test": "node --test test/*.test.ts",
     "connect": "node src/install.ts",
     "disconnect": "node src/install.ts --uninstall",

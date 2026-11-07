@@ -406,6 +406,17 @@ npm start
 
 Open http://localhost:4777.
 
+### On a Mac
+
+Crosswalk runs on macOS 13.5 or later as well as Windows, and both are kept
+working ([docs/platforms.md](docs/platforms.md)). From the source, the same
+commands work (`npm start`, `npm run app`, `npm run connect`). To hand it
+over, `npm run build:mac` (on any machine) makes
+`dist/Crosswalk-<version>-mac.zip` with `Crosswalk.app` for Apple silicon and
+Intel Macs, carrying its own Node. It is unsigned for now: the first time,
+macOS needs **Open Anyway** in System Settings > Privacy & Security (the
+steps are in docs/platforms.md).
+
 ### The demo city
 
 No Claude Code, or showing someone? `npm run demo` (or **Watch a demo city**
