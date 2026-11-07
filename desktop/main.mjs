@@ -195,6 +195,8 @@ function run() {
       log(`Crosswalk is already running on ${ADDRESS}: a window onto it`)
     }
     started = true
+    // From here on, opening it again brings the window back (CI waits for this).
+    log('Ready')
     if (process.env.AGENT_CITY_NO_WINDOW) return
     openWindow()
     const shot = process.env.AGENT_CITY_SHOT

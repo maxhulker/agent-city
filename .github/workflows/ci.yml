@@ -128,7 +128,11 @@ jobs:
           open $env "$app"
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:4793/state.json > /dev/null && break; sleep 0.5; done
           curl -sf http://127.0.0.1:4793/ > /dev/null || { cat "$log"; exit 1; }
-          echo "Opened once: the city answers."
+          # The server can answer a moment before the app has finished
+          # starting; a second open in that moment is (rightly) let pass.
+          for i in $(seq 1 40); do grep -q "Ready" "$log" 2> /dev/null && break; sleep 0.25; done
+          grep -q "Ready" "$log" || { echo "The app never said it was ready"; cat "$log"; exit 1; }
+          echo "Opened once: the city answers and the app is ready."
           open $env "$app" || { echo "Opening it a second time failed"; cat "$log"; exit 1; }
           for i in $(seq 1 20); do grep -q "Opened again" "$log" 2> /dev/null && break; sleep 0.5; done
           grep -q "Opened again" "$log" || { echo "The second open never reached Crosswalk"; cat "$log"; exit 1; }
