@@ -173,6 +173,9 @@ export function setHooks(
     throw new Error(`The ${conf.id} city shares ${conf.config}'s hooks with the others; take it out of ~/.agent-city/cities.json to fold it back in`)
   }
   const path = opts.settingsPath ?? join(conf.config, 'settings.json')
+  // Nothing to take out of settings that aren't there (the uninstaller runs
+  // this on machines that never had Claude Code): no file is made.
+  if (opts.uninstall && !existsSync(path)) return { path, text: '', message: `No settings at ${path}: nothing to remove.` }
   if (!opts.settingsPath && conf.ownFolder && !existsSync(conf.config)) throw new Error(`${conf.config} is not a folder: give the folder Claude Code's CLAUDE_CONFIG_DIR points at`)
   const settings: Settings = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Settings) : {}
   strip(settings)
