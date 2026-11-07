@@ -30,6 +30,7 @@ import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { findTranscript, listTranscripts, readConversation } from './transcripts.ts'
 import { Updates } from './updates.ts'
+import { DEMO, DemoPlayer, demoConf, demoFolders, demoWorld } from './demo.ts'
 import { imageBlocks, pruneUploads, saveUpload, UPLOAD_MAX } from './uploads.ts'
 import { toast } from './notify.ts'
 import type { Agent, Decision, District, Task, World } from './types.ts'
@@ -103,11 +104,14 @@ const settingsOf = (conf: CityConf) => join(conf.config, 'settings.json')
 // folder's plain ones, which must say who their session is for a city that
 // claims an account to hear anything.
 const isConnected = (conf: CityConf) =>
+  conf.id === DEMO ||
   hooksInstalled(settingsOf(conf), conf.ownFolder ? conf.id : HOME, !conf.ownFolder && conf.accounts.length > 0)
 
 function openTown(conf: CityConf): Town {
   const file = stateFile(conf.id)
-  const saved = loadWorld(file)
+  // The demo city starts afresh every time and is never saved (src/demo.ts).
+  const isDemo = conf.id === DEMO
+  const saved = isDemo ? demoWorld() : loadWorld(file)
   const city = new City(saved)
   // Crosswalk's own address is no session's front end.
   city.ignorePorts.add(PORT)
@@ -119,6 +123,7 @@ function openTown(conf: CityConf): Town {
   if (conf.ownFolder) env.CLAUDE_CONFIG_DIR = conf.config
 
   const save = () => {
+    if (isDemo) return
     try {
       mkdirSync(dirname(file), { recursive: true })
       writeFileSync(file, JSON.stringify(city.world))
@@ -176,12 +181,19 @@ function openTown(conf: CityConf): Town {
 // routed by account).
 const towns = new Map<string, Town>()
 let listed: CityConf[] = []
+// The demo city (src/demo.ts): on from the start with `npm run demo` or
+// AGENT_CITY_DEMO=1, or from the welcome card; its tab comes after home's.
+let demoOn = process.argv.includes('--demo') || process.env.AGENT_CITY_DEMO === '1'
+let demoPlayer: DemoPlayer | undefined
 function syncTowns() {
   listed = citiesOf()
+  if (demoOn) listed.splice(1, 0, demoConf(STATE_DIR))
   for (const conf of listed) {
     const town = towns.get(conf.id)
     if (!town) {
-      towns.set(conf.id, openTown(conf))
+      const opened = openTown(conf)
+      towns.set(conf.id, opened)
+      if (conf.id === DEMO) demoPlayer = new DemoPlayer(opened.city, demoFolders(join(STATE_DIR, 'demo')), Date.now())
       continue
     }
     if (JSON.stringify(town.conf) !== JSON.stringify(conf)) {
@@ -191,6 +203,7 @@ function syncTowns() {
   }
 }
 syncTowns()
+setInterval(() => demoPlayer?.step(Date.now()), 250)
 const dirtyAll = () => {
   for (const t of towns.values()) t.city.isDirty = true
 }
@@ -835,6 +848,19 @@ const server = createServer(async (req, res) => {
         process.exit(0)
       }, 300)
       return
+    }
+    // The demo city, from the welcome card: on (its tab opens), or off again.
+    if (req.method === 'POST' && url.pathname === '/demo') {
+      if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
+      const args = JSON.parse((await body(req, 1024)) || '{}') as { on?: unknown }
+      demoOn = args.on !== false
+      if (!demoOn) {
+        towns.delete(DEMO)
+        demoPlayer = undefined
+      }
+      syncTowns()
+      dirtyAll()
+      return reply(res, 200, JSON.stringify({ ok: true, ...(demoOn ? { href: `/?city=${DEMO}` } : {}) }))
     }
     // Another account's sessions get a city of their own: listed in
     // cities.json, they go there from their next event, and their agents

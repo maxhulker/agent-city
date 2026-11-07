@@ -103,6 +103,12 @@
   #welcome .wm { background: #0b1830; border: 1px solid #334155; border-radius: 8px; padding: 3px; cursor: pointer; color: var(--dim); font: inherit; font-size: 11px; }
   #welcome .wm.on { border-color: #7dd3fc; color: #e2e8f0; }
   #welcome .wm svg { display: block; width: 100%; height: auto; }
+  #demo-bar { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 4; background: #0b1224e6; border: 1px solid #94a3b8;
+    border-radius: 999px; padding: 5px 14px; font-size: 12px; color: #cbd5e1; display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+  /* The demo city's sessions are a script: nothing to start, continue or look back on. */
+  body.demo .real-only { display: none !important; }
+  #demo-bar b { letter-spacing: .14em; color: #e2e8f0; }
+  #demo-bar .lnkbtn { background: none; border: 0; padding: 0; color: #7dd3fc; cursor: pointer; font: inherit; text-decoration: underline; }
   #welcome .lnkbtn { background: none; border: 0; padding: 0; color: #7dd3fc; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; }
   /* The Blueprints card: one line per landmark. */
   .bp-line { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
@@ -553,11 +559,13 @@
       <p>Your lead arrives by train at the station. Lay a road from it, place City Hall, then the districts: the First district card keeps the list.</p>
       <p id="w-next">Next step: run <code>npm run connect</code> in the agent-city folder, then start a Claude Code session.</p>
       <div class="wstate" id="w-state"><i></i><span>Checking for the hooks…</span></div>
+      <p class="wskip">No Claude Code here, or just curious? <button class="lnkbtn" type="button" id="w-demo">Watch a demo city</button>: scripted sessions build one while you watch.</p>
       <div class="wmaps" id="w-maps">
         <div class="wm-head"><span>Lay it out yourself: pick the land</span><button class="lnkbtn" type="button" id="wm-shuffle">Shuffle</button></div>
         <div class="wm-row" id="wm-row"></div>
       </div>
     </div>
+    <div id="demo-bar" hidden><b>DEMO CITY</b><span>Scripted sessions in sample projects: nothing here is your work.</span><button class="lnkbtn" type="button" id="demo-leave">Leave the demo</button></div>
     <div id="ticker"><div id="track"></div></div>
     <!-- The city builder (docs/city-builder.md): the build toolbar, the catalogue, the selection card and the borough sheet. -->
     <div id="build" hidden>
@@ -651,7 +659,7 @@
   </div>
   <aside id="side">
     <section id="accounts" hidden></section>
-    <section id="newtask">
+    <section id="newtask" class="real-only">
       <h2 class="fold" id="nt-head" role="button" tabindex="0"><span class="chev">&#9662;</span>New session<span class="tcount" id="nt-count"></span></h2>
       <div id="nt-body">
         <div id="newform">
@@ -704,15 +712,15 @@
     </section>
     <div id="arrivals"></div>
     <div id="needs"><h2 id="needs-h" hidden>Needs you</h2><div id="needs-pending"></div><div id="needs-rest"></div></div>
-    <h2>Sessions in the app</h2>
-    <div id="apps"></div>
+    <h2 class="real-only">Sessions in the app</h2>
+    <div id="apps" class="real-only"></div>
     <h2>Sessions in other windows</h2>
     <div id="sessions"></div>
-    <section id="pastsess">
+    <section id="pastsess" class="real-only">
       <h2 class="fold" id="ps-head" role="button" tabindex="0" title="Sessions that have ended, from Claude Code's own records"><span class="chev">&#9662;</span>Earlier sessions<span class="tcount" id="ps-count"></span></h2>
       <div id="past"></div>
     </section>
-    <section id="earlier" hidden>
+    <section id="earlier" class="real-only" hidden>
       <h2 class="fold" id="et-head" role="button" tabindex="0"><span class="chev">&#9662;</span>Earlier tasks<span class="tcount" id="et-count"></span></h2>
       <div id="tasks"></div>
     </section>
@@ -2178,6 +2186,17 @@
     if (html !== treasuryHtml) { $('treasury').innerHTML = html; treasuryHtml = html }
   }
 
+  // The demo city (src/demo.ts): on from the welcome, off from its own bar.
+  $('w-demo').addEventListener('click', async () => {
+    const r = await fetch('/demo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":true}' }).then(x => x.json()).catch(() => ({}))
+    if (r.href) location.href = r.href
+    else alert(r.error || 'The Crosswalk server running now is older than this page: restart it to watch the demo.')
+  })
+  $('demo-leave').addEventListener('click', async () => {
+    await fetch('/demo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":false}' }).catch(() => {})
+    location.href = '/'
+  })
+
   function drawGame(g) {
     if (!g) return
     const w = $('welcome')
@@ -3445,6 +3464,8 @@
     } else if (m.city && m.city.id !== 'home') {
       $('w-next').innerHTML = `Next step: run <code>${CONNECT}</code> in the agent-city folder, then start a Claude Code session signed in as ${esc(m.city.accounts.join(' or '))}.`
     }
+    $('demo-bar').hidden = m.city?.id !== 'demo'
+    document.body.classList.toggle('demo', m.city?.id === 'demo')
     $('cities').hidden = !multi
     document.body.classList.toggle('multi', multi)
     if (m.city) document.body.style.setProperty('--city', m.city.color)

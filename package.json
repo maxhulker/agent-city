@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.ts",
+    "demo": "node src/server.ts --demo",
     "test": "node --test test/*.test.ts",
     "connect": "node src/install.ts",
     "disconnect": "node src/install.ts --uninstall",
