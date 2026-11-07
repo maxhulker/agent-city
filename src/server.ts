@@ -25,7 +25,7 @@ import { Timelapses } from './timelapse.ts'
 import { checkFreight, cloneProject } from './freight.ts'
 import type { Freight } from './freight.ts'
 import { framesHouses, stageOf } from './draw/timelapse.ts'
-import { hooksInstalled } from './install.ts'
+import { hooksInstalled, setHooks } from './install.ts'
 import { AppSessions } from './sessions.ts'
 import { Tasks } from './tasks.ts'
 import { findTranscript, listTranscripts, readConversation } from './transcripts.ts'
@@ -314,7 +314,20 @@ function routeOf(world: World, a: Agent) {
 }
 
 // The onboarding game, for the Blueprints card, the welcome and the header.
-function game({ city, connected }: Town, now: number) {
+// Whether Claude Code is on this machine: its config folder, or `claude` on
+// the PATH. Without it the welcome offers the demo city instead of Connect.
+const claudeSeen = new Map<string, { at: number; here: boolean }>()
+function claudeHere(conf: CityConf): boolean {
+  const seen = claudeSeen.get(conf.config)
+  if (seen && Date.now() - seen.at < 30_000) return seen.here
+  const names = process.platform === 'win32' ? ['claude.exe', 'claude.cmd', 'claude'] : ['claude']
+  const onPath = (process.env.PATH ?? '').split(process.platform === 'win32' ? ';' : ':').some(dir => dir && names.some(n => existsSync(join(dir, n))))
+  const here = conf.id !== DEMO && (existsSync(conf.config) || onPath)
+  claudeSeen.set(conf.config, { at: Date.now(), here })
+  return here
+}
+
+function game({ city, connected, conf }: Town, now: number) {
   const world = city.world
   const built = world.built ?? {}
   return {
@@ -323,6 +336,11 @@ function game({ city, connected }: Town, now: number) {
     welcome: city.isWelcome,
     pick: city.isNew,
     connected,
+    claude: claudeHere(conf),
+    // What Connect changes, said on the welcome before it is clicked.
+    settings: join(conf.config, 'settings.json'),
+    // A city that claims an account shares the folder's hooks: it connects from the command line.
+    canConnect: conf.id !== DEMO && (conf.ownFolder || conf.id === HOME),
     quests: city.quests(),
     acttwo: city.actTwo(),
     treasury: city.treasuryView(now),
@@ -850,6 +868,21 @@ const server = createServer(async (req, res) => {
       return
     }
     // The demo city, from the welcome card: on (its tab opens), or off again.
+    // Connect (or disconnect) this city's Claude Code from the page: the same
+    // as `npm run connect` (src/install.ts), so nobody needs a terminal.
+    if (req.method === 'POST' && url.pathname === '/connect') {
+      if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
+      const args = JSON.parse((await body(req, 1024)) || '{}') as { on?: unknown }
+      if (town.conf.id === DEMO) return reply(res, 400, JSON.stringify({ error: 'The demo city has no Claude Code to connect' }))
+      try {
+        const r = setHooks(town.conf, { uninstall: args.on === false })
+        town.connected = isConnected(town.conf)
+        dirtyAll()
+        return reply(res, 200, JSON.stringify({ ok: true, message: r.message, ...(r.backup ? { backup: r.backup } : {}) }))
+      } catch (err) {
+        return reply(res, 400, JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
+      }
+    }
     if (req.method === 'POST' && url.pathname === '/demo') {
       if (!origin || !ORIGINS.has(origin)) return reply(res, 403, '{}')
       const args = JSON.parse((await body(req, 1024)) || '{}') as { on?: unknown }
@@ -1087,7 +1120,17 @@ server.listen(PORT, HOST, () => {
   if (!existsSync(stateFile(HOME))) console.log('Waiting for the first Claude Code session to post an event.')
 })
 
-function shutdown() {
+// How many pages are watching, in every city: the desktop app (src/app.ts)
+// quits once its window has closed and nobody is.
+export function watching(): number {
+  let n = 0
+  for (const t of towns.values()) n += t.clients.size
+  return n
+}
+
+// Everything saved and every process this server started stopped: on a
+// signal, and when the desktop app's window closes.
+export function shutdown() {
   for (const { tasks, appSessions, city, save } of towns.values()) {
     tasks.stopAll()
     // App sessions go to sleep; the next message wakes them with their history.

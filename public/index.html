@@ -558,6 +558,10 @@
       <p>Every Claude Code session on this machine, drawn as agents at work in a city. You lay the city out; your sessions bring it to life.</p>
       <p>Your lead arrives by train at the station. Lay a road from it, place City Hall, then the districts: the First district card keeps the list.</p>
       <p id="w-next">Next step: run <code>npm run connect</code> in the agent-city folder, then start a Claude Code session.</p>
+      <div id="w-connect" hidden>
+        <p><button class="btn" type="button" data-connect="on">Connect Claude Code</button></p>
+        <p class="wskip">This adds Crosswalk's hooks to <code id="w-settings">~/.claude/settings.json</code> (backed up first; your other settings stay as they are), so your sessions report to this window. Disconnect any time from the Blueprints card.</p>
+      </div>
       <div class="wstate" id="w-state"><i></i><span>Checking for the hooks…</span></div>
       <p class="wskip">No Claude Code here, or just curious? <button class="lnkbtn" type="button" id="w-demo">Watch a demo city</button>: scripted sessions build one while you watch.</p>
       <div class="wmaps" id="w-maps">
@@ -2186,6 +2190,18 @@
     if (html !== treasuryHtml) { $('treasury').innerHTML = html; treasuryHtml = html }
   }
 
+  // Connect or disconnect this city's Claude Code (src/install.ts).
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-connect]')
+    if (!b) return
+    const on = b.dataset.connect === 'on'
+    if (!on && !confirm("Take Crosswalk's hooks out of Claude Code's settings? Sessions stop reporting here until you connect again.")) return
+    b.disabled = true
+    const r = await post('/connect', { on })
+    b.disabled = false
+    if (r.error) alert(r.error)
+  })
+
   // The demo city (src/demo.ts): on from the welcome, off from its own bar.
   $('w-demo').addEventListener('click', async () => {
     const r = await fetch('/demo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":true}' }).then(x => x.json()).catch(() => ({}))
@@ -2206,10 +2222,16 @@
     if (g.welcome) {
       const st = $('w-state')
       st.className = 'wstate' + (g.connected ? ' on' : '')
-      st.lastElementChild.textContent = g.connected
+      st.lastElementChild.textContent = g.claude === false
+        ? "Claude Code isn't installed on this computer. Crosswalk draws its sessions; until it is, watch the demo city."
+        : g.connected
         ? 'Connected: the rails are laid. Start a Claude Code session and your lead arrives by train.'
-        : 'Not connected yet: no Crosswalk hooks in ~/.claude/settings.json.'
-      $('w-next').hidden = g.connected
+        : `Not connected yet: no Crosswalk hooks in ${g.settings || '~/.claude/settings.json'}.`
+      // Connect from here when this city can; else the command, as before.
+      const button = !g.connected && g.claude !== false && !!g.canConnect
+      $('w-connect').hidden = !button
+      if (g.settings) $('w-settings').textContent = g.settings
+      $('w-next').hidden = g.connected || button || g.claude === false
     }
     const MARK = { blueprint: '◻', building: '▲', built: '✓', done: '✓', next: '★', todo: '◻', locked: '🔒' }
     // Rebuild: new land to lay out.
@@ -2228,7 +2250,13 @@
           <span class="st">${MARK[l.state] || ''}</span><span class="nm">${esc(l.name)}</span><span class="hn">${esc(l.state === 'building' ? 'under construction' : l.hint)}</span></div>`).join('') +
         `<div class="row" style="margin-top:8px"><span class="small dim">${g.landmarks.filter(l => l.state !== 'blueprint').length} of ${g.landmarks.length} built</span>
           </div><div class="row wrap">${rebuild}</div>`
-    if (html !== gameHtml) { $('blueprints').innerHTML = html; gameHtml = html }
+    // Claude Code's connection, for undoing it (or doing it) after the welcome.
+    const link = g.canConnect && g.claude !== false
+      ? `<div class="row wrap" style="margin-top:8px"><span class="small dim">${g.connected ? 'Claude Code connected' : 'Claude Code not connected'}</span>` +
+        `<button class="btn sm" type="button" data-connect="${g.connected ? 'off' : 'on'}" title="${g.connected ? "Take Crosswalk's hooks out of" : "Add Crosswalk's hooks to"}${esc(g.settings || '')}">${g.connected ? 'Disconnect' : 'Connect'}</button></div>`
+      : ''
+    const full = html + link
+    if (full !== gameHtml) { $('blueprints').innerHTML = full; gameHtml = full }
     gameQuests = g.quests || null
     if (typeof drawCatalog === 'function') drawCatalog()
   }
